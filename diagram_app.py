@@ -266,6 +266,15 @@ def _parse_connection_rest(rest):
     return label, hint, condition, weight
 
 
+SETTING_RE = re.compile(r'^setting\s+(\w+)\s+(.+)$')
+
+SETTING_KEYS = {
+    "node_width", "node_height", "h_gap", "v_gap",
+    "font_size", "container_padding", "swimlane_gap",
+    "color_scheme",
+}
+
+
 def parse_diagram(code):
     result = {
         "direction": "top-to-bottom",
@@ -277,6 +286,7 @@ def parse_diagram(code):
         "notes": [],
         "errors": [],
         "_object_lines": {},
+        "_settings": {},  # settings declared in code
     }
     name_map = {}
     current_swimlane = None
@@ -295,6 +305,15 @@ def parse_diagram(code):
         if m:
             raw_dir = m.group(1).lower()
             result["direction"] = DIRECTION_NAMES.get(raw_dir, "top-to-bottom")
+            continue
+
+        # Setting (e.g. "setting node_width 160")
+        m = SETTING_RE.match(line)
+        if m:
+            key = m.group(1)
+            val = m.group(2).strip().strip('"')
+            if key in SETTING_KEYS:
+                result["_settings"][key] = val
             continue
 
         # Note
@@ -683,43 +702,63 @@ def compute_layout(parsed, settings=None):
                     positions[name] = (px, py)
                 y_start += nh + v_gap * 0.5
 
-    # ── Swimlane rects ──
+    # ── Swimlane rects (must fully contain ALL children using actual sizes) ──
     swimlane_rects = {}
     for sl in swimlanes:
         lane = sl["name"]
         if lane not in lane_pos:
             continue
-        cps = [positions[n] for n in sl["object_names"] if n in positions]
-        if not is_horizontal:
-            sx = lane_pos[lane] - pad / 2
-            sw = lane_sizes[lane] + pad
-            sy = margin
-            sh = total_flow - 2 * margin
-            if cps:
-                max_child_y = max(p[1] for p in cps) + base_h / 2
-                sh = max(sh, max_child_y + pad - sy)
-        else:
-            sy = lane_pos[lane] - pad / 2
-            sh_val = lane_sizes[lane] + pad
-            sx = margin
-            sw = total_flow - 2 * margin
-            if cps:
-                max_child_x = max(p[0] for p in cps) + base_w / 2
-                sw = max(sw, max_child_x + pad - sx)
-            swimlane_rects[lane] = (sx, sy, sw, sh_val)
+        child_names = [n for n in sl["object_names"] if n in positions]
+        if not child_names:
             continue
+
+        # Compute tight bounding box from actual child positions + sizes
+        child_lefts, child_rights, child_tops, child_bottoms = [], [], [], []
+        for cn in child_names:
+            cx, cy = positions[cn]
+            cnw, cnh = node_sizes.get(cn, (base_w, base_h))
+            child_lefts.append(cx - cnw / 2)
+            child_rights.append(cx + cnw / 2)
+            child_tops.append(cy - cnh / 2)
+            child_bottoms.append(cy + cnh / 2)
+
+        if not is_horizontal:
+            # TB/BT: swimlane is a vertical column
+            sx = min(child_lefts) - pad
+            sw = max(child_rights) - min(child_lefts) + 2 * pad
+            # Ensure column is at least as wide as lane_sizes
+            sx = min(sx, lane_pos[lane] - pad / 2)
+            sw = max(sw, lane_sizes[lane] + pad)
+            sy = margin
+            sh = max(child_bottoms) + pad - sy
+            sh = max(sh, total_flow - 2 * margin)
+        else:
+            # LR/RL: swimlane is a horizontal row
+            sy = min(child_tops) - pad
+            sh = max(child_bottoms) - min(child_tops) + 2 * pad
+            # Ensure row is at least as tall as lane_sizes
+            sy = min(sy, lane_pos[lane] - pad / 2)
+            sh = max(sh, lane_sizes[lane] + pad)
+            sx = margin
+            sw = max(child_rights) + pad - sx
+            sw = max(sw, total_flow - 2 * margin)
+
         swimlane_rects[lane] = (sx, sy, sw, sh)
 
-    # ── Box rects ──
+    # ── Box rects (must fully contain ALL children using actual sizes) ──
     box_rects = {}
     for box in parsed["boxes"]:
-        cps = [positions[n] for n in box["object_names"] if n in positions]
-        if not cps:
+        child_names = [n for n in box["object_names"] if n in positions]
+        if not child_names:
             continue
-        x1 = min(p[0] for p in cps) - base_w / 2 - pad
-        y1 = min(p[1] for p in cps) - base_h / 2 - pad - box_hdr
-        x2 = max(p[0] for p in cps) + base_w / 2 + pad
-        y2 = max(p[1] for p in cps) + base_h / 2 + pad
+        x1 = min(positions[n][0] - node_sizes.get(n, (base_w, base_h))[0] / 2
+                 for n in child_names) - pad
+        y1 = min(positions[n][1] - node_sizes.get(n, (base_w, base_h))[1] / 2
+                 for n in child_names) - pad - box_hdr
+        x2 = max(positions[n][0] + node_sizes.get(n, (base_w, base_h))[0] / 2
+                 for n in child_names) + pad
+        y2 = max(positions[n][1] + node_sizes.get(n, (base_w, base_h))[1] / 2
+                 for n in child_names) + pad
         box_rects[box["label"]] = (x1, y1, x2 - x1, y2 - y1)
 
     # ── Step bands ──
@@ -1062,9 +1101,33 @@ class DiagramEdge(QGraphicsItem):
         s = min(hw / abs(dx), hh / abs(dy))
         return QPointF(cx + dx * s, cy + dy * s)
 
+    def _port(self, node, port_name):
+        """Get the scene-coordinate position of a named port on a node."""
+        dx, dy = DiagramNode.PORT_OFFSETS[port_name]
+        p = node.scenePos()
+        return QPointF(p.x() + dx * node.node_w, p.y() + dy * node.node_h)
+
+    def _flow_ports(self):
+        """Return (source_port, target_port) names based on flow direction.
+        In TB: source exits bottom, target enters top.
+        In LR: source exits right, target enters left.
+        """
+        d = self.direction
+        if d == "top-to-bottom":
+            return "bottom", "top"
+        elif d == "bottom-to-top":
+            return "top", "bottom"
+        elif d == "left-to-right":
+            return "right", "left"
+        elif d == "right-to-left":
+            return "left", "right"
+        return "bottom", "top"
+
     def _build_path(self):
-        """Compute the edge path from current source/target positions.
-        Direction-aware: adjusts routing for TB, LR, BT, RL.
+        """Compute the edge path using explicit ports based on direction.
+        Edges exit the source from the flow-direction port and enter
+        the target from the opposite port. Cross-lane edges use
+        orthogonal bends.
         """
         sp = self.source.scenePos()
         tp = self.target.scenePos()
@@ -1072,9 +1135,14 @@ class DiagramEdge(QGraphicsItem):
         x2, y2 = tp.x(), tp.y()
         hw = self.source.node_w / 2
         hh = self.source.node_h / 2
+        hw2 = self.target.node_w / 2
+        hh2 = self.target.node_h / 2
 
         path = QPainterPath()
+        d = self.direction
+        is_horizontal = d in ("left-to-right", "right-to-left")
 
+        # Self-loop
         if self.source is self.target:
             loop_r = 28
             path.moveTo(x1 + hw, y1 - 8)
@@ -1086,56 +1154,53 @@ class DiagramEdge(QGraphicsItem):
             self._label_pos = QPointF(x1 + hw + loop_r + 4, y1 - 8)
             return path
 
-        s = self._clip(x1, y1, x2, y2, hw, hh)
-        hw2 = self.target.node_w / 2
-        hh2 = self.target.node_h / 2
-        e = self._clip(x2, y2, x1, y1, hw2, hh2)
+        # Determine flow direction and detect back-edges
+        src_port, tgt_port = self._flow_ports()
 
-        d = self.direction
-        is_horizontal = d in ("left-to-right", "right-to-left")
-
-        # Determine the "flow axis" distance and "cross axis" distance
-        if is_horizontal:
-            flow_dist = x2 - x1  # positive = forward in LR
-            cross_dist = abs(y2 - y1)
-            aligned = cross_dist < 8
-        else:
-            flow_dist = y2 - y1  # positive = forward in TB
-            cross_dist = abs(x2 - x1)
-            aligned = cross_dist < 8
-
-        # Back-edge: flow goes against direction
         is_back = False
-        if d == "top-to-bottom" and flow_dist < -self.source.node_h:
+        if d == "top-to-bottom" and y2 < y1 - self.source.node_h:
             is_back = True
-        elif d == "bottom-to-top" and flow_dist > self.source.node_h:
+        elif d == "bottom-to-top" and y2 > y1 + self.source.node_h:
             is_back = True
-        elif d == "left-to-right" and flow_dist < -self.source.node_w:
+        elif d == "left-to-right" and x2 < x1 - self.source.node_w:
             is_back = True
-        elif d == "right-to-left" and flow_dist > self.source.node_w:
+        elif d == "right-to-left" and x2 > x1 + self.source.node_w:
             is_back = True
 
         if is_back:
+            # Swap ports for back-edges (exit from opposite side)
+            src_port, tgt_port = tgt_port, src_port
+
+        s = self._port(self.source, src_port)
+        e = self._port(self.target, tgt_port)
+
+        # Check if nodes are roughly aligned on the cross-axis
+        if is_horizontal:
+            aligned = abs(y2 - y1) < 8
+        else:
+            aligned = abs(x2 - x1) < 8
+
+        if is_back:
+            # Route around with detour
             offset = 40
             if is_horizontal:
-                mid_y = max(y1, y2) + offset
-                path.moveTo(x1, y1 + hh)
-                path.lineTo(x1, mid_y)
-                path.lineTo(x2, mid_y)
-                path.lineTo(x2, y2 + hh2)
-                self._arrow_tip = QPointF(x2, y2 + hh2)
-                self._arrow_dir = (0, -1)
+                mid_y = max(y1 + hh, y2 + hh2) + offset
+                path.moveTo(s)
+                path.lineTo(s.x(), mid_y)
+                path.lineTo(e.x(), mid_y)
+                path.lineTo(e)
+                self._arrow_dir = (0, -1 if e.y() < mid_y else 1)
             else:
-                mid_x = max(x1, x2) + offset
-                path.moveTo(x1 + hw, y1)
-                path.lineTo(mid_x, y1)
-                path.lineTo(mid_x, y2)
-                path.lineTo(x2 + hw2, y2)
-                self._arrow_tip = QPointF(x2 + hw2, y2)
-                self._arrow_dir = (-1, 0)
-            self._label_pos = QPointF((x1 + x2) / 2, (y1 + y2) / 2)
+                mid_x = max(x1 + hw, x2 + hw2) + offset
+                path.moveTo(s)
+                path.lineTo(mid_x, s.y())
+                path.lineTo(mid_x, e.y())
+                path.lineTo(e)
+                self._arrow_dir = (-1 if e.x() < mid_x else 1, 0)
+            self._arrow_tip = e
+            self._label_pos = QPointF((s.x() + e.x()) / 2, (s.y() + e.y()) / 2)
         elif aligned:
-            # Straight line along flow axis
+            # Straight line between ports
             path.moveTo(s)
             path.lineTo(e)
             angle = math.atan2(e.y() - s.y(), e.x() - s.x())
@@ -1143,25 +1208,23 @@ class DiagramEdge(QGraphicsItem):
             self._arrow_dir = (math.cos(angle), math.sin(angle))
             self._label_pos = QPointF((s.x() + e.x()) / 2, (s.y() + e.y()) / 2)
         else:
-            # Orthogonal L-bend
+            # Orthogonal bend — exit from port, bend, enter port
             if is_horizontal:
                 mid_x = (s.x() + e.x()) / 2
                 path.moveTo(s)
                 path.lineTo(mid_x, s.y())
                 path.lineTo(mid_x, e.y())
                 path.lineTo(e)
-                self._arrow_tip = e
                 self._arrow_dir = (1 if e.x() > mid_x else -1, 0)
-                self._label_pos = QPointF(mid_x, (s.y() + e.y()) / 2)
             else:
                 mid_y = (s.y() + e.y()) / 2
                 path.moveTo(s)
                 path.lineTo(s.x(), mid_y)
                 path.lineTo(e.x(), mid_y)
                 path.lineTo(e)
-                self._arrow_tip = e
                 self._arrow_dir = (0, 1 if e.y() > mid_y else -1)
-                self._label_pos = QPointF((s.x() + e.x()) / 2, mid_y)
+            self._arrow_tip = e
+            self._label_pos = QPointF((s.x() + e.x()) / 2, (s.y() + e.y()) / 2)
 
         return path
 
@@ -1685,7 +1748,7 @@ class DiagramHighlighter(QSyntaxHighlighter):
 
         self._rules = [
             (re.compile(r'//.*$'), comment_fmt),
-            (re.compile(r'\b(swimlane|group|note|direction|box)\b'), keyword_fmt),
+            (re.compile(r'\b(swimlane|group|note|direction|box|setting)\b'), keyword_fmt),
             (re.compile(r'\b(top-to-bottom|left-to-right|bottom-to-top|right-to-left)\b'), step_fmt),
             (re.compile(r'\[(rect|rounded|diamond|circle|parallelogram|hexagon|cylinder|stadium)\]'), shape_fmt),
             (re.compile(r'"[^"]*"'), string_fmt),
@@ -2142,8 +2205,12 @@ class PDFExporter:
 #  Example Code & Help
 # ═══════════════════════════════════════════════
 
-EXAMPLE_CODE = r"""// Direction: top-to-bottom, left-to-right, bottom-to-top, right-to-left
+EXAMPLE_CODE = r"""// Settings (these sync with the settings panel)
 direction top-to-bottom
+setting node_width 140
+setting node_height 50
+setting h_gap 60
+setting v_gap 70
 
 // === Swimlanes contain objects ===
 swimlane "Product Team" {
@@ -2269,6 +2336,20 @@ DIRECTION
 NOTES
 ─────
   note "Text" [object_name]
+
+SETTINGS (in code — syncs with settings panel)
+───────────────────────────────────────────────
+  setting node_width 160
+  setting node_height 60
+  setting h_gap 80
+  setting v_gap 90
+  setting font_size 12
+  setting container_padding 25
+  setting swimlane_gap 15
+  setting color_scheme Dark
+
+  Changing a setting in code updates the panel.
+  Changing the panel updates the code.
 
 FILTER (toolbar field)
 ──────────────────────
@@ -3138,6 +3219,27 @@ class DiagramEditor(QMainWindow):
         self.direction_combo.blockSignals(False)
 
         self._apply_diagram_settings()
+
+        # Apply code-declared settings (override panel values)
+        code_settings = parsed.get("_settings", {})
+        for key, val in code_settings.items():
+            if key == "color_scheme":
+                self._diagram_settings[key] = val
+                idx_s = self.scheme_combo.findText(val)
+                if idx_s >= 0:
+                    self.scheme_combo.blockSignals(True)
+                    self.scheme_combo.setCurrentIndex(idx_s)
+                    self.scheme_combo.blockSignals(False)
+            elif key in self._slider_widgets:
+                try:
+                    int_val = int(val)
+                    self._diagram_settings[key] = int_val
+                    self._slider_widgets[key].blockSignals(True)
+                    self._slider_widgets[key].setValue(int_val)
+                    self._slider_widgets[key].blockSignals(False)
+                except ValueError:
+                    pass
+
         layout = compute_layout(parsed, self._diagram_settings)
 
         self._suppress_scene_update = True
