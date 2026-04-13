@@ -48,13 +48,19 @@ from PySide6.QtSvg import QSvgGenerator
 # ═══════════════════════════════════════════════
 
 def hex_to_rgb(h):
-    h = h.lstrip("#")
-    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+    try:
+        h = h.lstrip("#")
+        return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+    except (ValueError, IndexError):
+        return (128, 128, 128)
 
 
 def hex_to_qcolor(h):
-    r, g, b = hex_to_rgb(h)
-    return QColor(r, g, b)
+    try:
+        r, g, b = hex_to_rgb(h)
+        return QColor(r, g, b)
+    except Exception:
+        return QColor(128, 128, 128)
 
 
 # ═══════════════════════════════════════════════
@@ -1079,6 +1085,7 @@ class DiagramEdge(QGraphicsItem):
         self.setZValue(0)
         self.setAcceptHoverEvents(True)
         self._hovered = False
+        self._cached_path = None
 
         # Build tooltip
         tip = [f"{conn_data['from_name']} \u2192 {conn_data['to_name']}"]
@@ -1228,6 +1235,15 @@ class DiagramEdge(QGraphicsItem):
 
         return path
 
+    def _get_path(self):
+        """Return the cached path, rebuilding only if invalidated."""
+        if self._cached_path is None:
+            self._cached_path = self._build_path()
+        return self._cached_path
+
+    def _invalidate_path(self):
+        self._cached_path = None
+
     def boundingRect(self):
         # Use a generous bounding rect that covers both nodes + margin
         sp = self.source.scenePos()
@@ -1237,7 +1253,7 @@ class DiagramEdge(QGraphicsItem):
         return r.adjusted(-m, -m, m, m)
 
     def shape(self):
-        return self._build_path()
+        return self._get_path()
 
     def paint(self, painter, option, widget=None):
         painter.setRenderHint(QPainter.Antialiasing)
@@ -1258,15 +1274,26 @@ class DiagramEdge(QGraphicsItem):
         is_back = False
         sp = self.source.scenePos()
         tp = self.target.scenePos()
-        if self.source is not self.target and tp.y() < sp.y() - self.source.node_h:
-            is_back = True
+        if self.source is not self.target:
+            d = self.direction
+            if d == "top-to-bottom" and tp.y() < sp.y() - self.source.node_h:
+                is_back = True
+            elif d == "bottom-to-top" and tp.y() > sp.y() + self.source.node_h:
+                is_back = True
+            elif d == "left-to-right" and tp.x() < sp.x() - self.source.node_w:
+                is_back = True
+            elif d == "right-to-left" and tp.x() > sp.x() + self.source.node_w:
+                is_back = True
+        if is_back:
             pen.setStyle(Qt.DashDotLine)
 
         if self._hovered:
             pen.setColor(hex_to_qcolor(self.colors.get("port_hover", "#1976d2")))
             pen.setWidthF(w + 1)
 
-        path = self._build_path()
+        # Invalidate cache since node positions may have changed
+        self._invalidate_path()
+        path = self._get_path()
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
         painter.drawPath(path)
@@ -1465,14 +1492,14 @@ class DiagramScene(QGraphicsScene):
 
         # Groups (dashed overlay)
         for grp in parsed["groups"]:
-            gpos = [positions[n] for n in grp["object_names"] if n in positions]
-            if not gpos:
+            gnames = [n for n in grp["object_names"] if n in positions]
+            if not gnames:
                 continue
             pad = 20
-            gx1 = min(p[0] for p in gpos) - node_w / 2 - pad
-            gy1 = min(p[1] for p in gpos) - node_h / 2 - pad - 16
-            gx2 = max(p[0] for p in gpos) + node_w / 2 + pad
-            gy2 = max(p[1] for p in gpos) + node_h / 2 + pad
+            gx1 = min(positions[n][0] - node_sizes.get(n, (node_w, node_h))[0] / 2 for n in gnames) - pad
+            gy1 = min(positions[n][1] - node_sizes.get(n, (node_w, node_h))[1] / 2 for n in gnames) - pad - 16
+            gx2 = max(positions[n][0] + node_sizes.get(n, (node_w, node_h))[0] / 2 for n in gnames) + pad
+            gy2 = max(positions[n][1] + node_sizes.get(n, (node_w, node_h))[1] / 2 for n in gnames) + pad
             pen = QPen(hex_to_qcolor(colors["phase_line"]), 1.5, Qt.DashLine)
             rect = self.addRect(QRectF(gx1, gy1, gx2 - gx1, gy2 - gy1), pen, QBrush(Qt.NoBrush))
             rect.setZValue(-1)
@@ -1517,10 +1544,11 @@ class DiagramScene(QGraphicsScene):
             if target not in positions:
                 continue
             tx, ty = positions[target]
-            nx = tx + node_w / 2 + 15
-            ny = ty - node_h / 2 - 20
+            t_nw, t_nh = node_sizes.get(target, (node_w, node_h))
+            nx = tx + t_nw / 2 + 15
+            ny = ty - t_nh / 2 - 20
             # Line
-            line = self.addLine(QLineF(tx + node_w / 2, ty - node_h / 2, nx + 2, ny + 18),
+            line = self.addLine(QLineF(tx + t_nw / 2, ty - t_nh / 2, nx + 2, ny + 18),
                                 QPen(hex_to_qcolor(colors["note_stroke"]), 1, Qt.DashLine))
             line.setZValue(2)
             # Note rect
@@ -1630,19 +1658,6 @@ class DiagramScene(QGraphicsScene):
             event.accept()
             return
         super().mouseReleaseEvent(event)
-
-    def _draw_arrowhead(self, x, y, dx, dy, color_hex):
-        size = 8
-        angle = math.atan2(dy, dx)
-        a1 = angle + math.pi * 0.85
-        a2 = angle - math.pi * 0.85
-        poly = QPolygonF([
-            QPointF(x, y),
-            QPointF(x + size * math.cos(a1), y + size * math.sin(a1)),
-            QPointF(x + size * math.cos(a2), y + size * math.sin(a2)),
-        ])
-        item = self.addPolygon(poly, QPen(Qt.NoPen), QBrush(hex_to_qcolor(color_hex)))
-        item.setZValue(0.5)
 
 
 # ═══════════════════════════════════════════════
@@ -2025,14 +2040,14 @@ class PDFExporter:
 
         # ── Groups ──
         for grp in parsed["groups"]:
-            gpos = [positions[n] for n in grp["object_names"] if n in positions]
-            if not gpos:
+            gnames = [n for n in grp["object_names"] if n in positions]
+            if not gnames:
                 continue
             pad = 25
-            gx1 = min(p[0] for p in gpos) - base_w / 2 - pad
-            gy1 = min(p[1] for p in gpos) - base_h / 2 - pad - 16
-            gx2 = max(p[0] for p in gpos) + base_w / 2 + pad
-            gy2 = max(p[1] for p in gpos) + base_h / 2 + pad
+            gx1 = min(positions[n][0] - node_sizes.get(n, (base_w, base_h))[0] / 2 for n in gnames) - pad
+            gy1 = min(positions[n][1] - node_sizes.get(n, (base_w, base_h))[1] / 2 for n in gnames) - pad - 16
+            gx2 = max(positions[n][0] + node_sizes.get(n, (base_w, base_h))[0] / 2 for n in gnames) + pad
+            gy2 = max(positions[n][1] + node_sizes.get(n, (base_w, base_h))[1] / 2 for n in gnames) + pad
             set_draw(colors["phase_line"])
             pdf.set_line_width(0.2 * sc)
             for ax, ay, bxx, byy in [
@@ -2059,14 +2074,8 @@ class PDFExporter:
 
         for conn in parsed["connections"]:
             fn, tn = conn["from_name"], conn["to_name"]
-            if fn not in positions or tn not in positions or fn == tn:
+            if fn not in positions or tn not in positions:
                 continue
-            x1, y1 = positions[fn]
-            x2, y2 = positions[tn]
-            nw1, nh1 = node_sizes.get(fn, (base_w, base_h))
-            nw2, nh2 = node_sizes.get(tn, (base_w, base_h))
-            sx_e, sy_e = clip(x1, y1, x2, y2, nw1 / 2, nh1 / 2)
-            ex_e, ey_e = clip(x2, y2, x1, y1, nw2 / 2, nh2 / 2)
 
             set_draw(colors["edge_stroke"])
             etype = conn["type"]
@@ -2075,6 +2084,29 @@ class PDFExporter:
             if etype == "thick":
                 lw = max(lw, 0.8 * sc)
             pdf.set_line_width(lw)
+
+            x1, y1 = positions[fn]
+            x2, y2 = positions[tn]
+            nw1, nh1 = node_sizes.get(fn, (base_w, base_h))
+
+            # Self-loop
+            if fn == tn:
+                loop_r = 28
+                # Draw a small arc to the right of the node
+                arc_cx = tx(x1 + nw1 / 2 + loop_r * 0.7)
+                arc_cy = ty(y1)
+                arc_r = s(loop_r * 0.8)
+                pdf.ellipse(arc_cx - arc_r, arc_cy - arc_r, arc_r * 2, arc_r * 2, "D")
+                if conn["label"]:
+                    set_text_c(colors["edge_label"])
+                    pdf.set_font("Helvetica", "", max(5, font_size * sc * 0.65))
+                    pdf.set_xy(arc_cx + arc_r + 1, arc_cy - pdf.font_size * 0.6)
+                    pdf.cell(0, pdf.font_size * 1.2, conn["label"])
+                continue
+
+            nw2, nh2 = node_sizes.get(tn, (base_w, base_h))
+            sx_e, sy_e = clip(x1, y1, x2, y2, nw1 / 2, nh1 / 2)
+            ex_e, ey_e = clip(x2, y2, x1, y1, nw2 / 2, nh2 / 2)
 
             if etype == "dashed":
                 pdf.dashed_line(tx(sx_e), ty(sy_e), tx(ex_e), ty(ey_e), 2 * sc, 1 * sc)
@@ -3287,32 +3319,43 @@ class DiagramEditor(QMainWindow):
             return
         self._suppress_code_update = True
         try:
-            code = self.code_editor.toPlainText()
-            lines = code.split("\n")
+            doc = self.code_editor.document()
             dir_re = re.compile(
                 r'^(\s*)direction\s+'
                 r'(top-to-bottom|left-to-right|bottom-to-top|right-to-left'
                 r'|TB|LR|BT|RL)\s*$',
                 re.IGNORECASE,
             )
+            # Find the direction line and replace it surgically
             found = False
-            for i, line in enumerate(lines):
-                if dir_re.match(line):
-                    lines[i] = f"direction {new_direction}"
+            block = doc.begin()
+            while block.isValid():
+                if dir_re.match(block.text()):
+                    cursor = QTextCursor(block)
+                    cursor.movePosition(QTextCursor.StartOfBlock)
+                    cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+                    self._suppress_scene_update = True
+                    cursor.insertText(f"direction {new_direction}")
+                    self._suppress_scene_update = False
                     found = True
                     break
+                block = block.next()
+
             if not found:
                 # Insert at top, after any leading comments
-                insert_at = 0
-                for i, line in enumerate(lines):
-                    if line.strip() and not line.strip().startswith("//"):
-                        insert_at = i
+                block = doc.begin()
+                insert_block = doc.begin()
+                while block.isValid():
+                    text = block.text().strip()
+                    if text and not text.startswith("//"):
+                        insert_block = block
                         break
-                lines.insert(insert_at, f"direction {new_direction}")
-
-            self._suppress_scene_update = True
-            self.code_editor.setPlainText("\n".join(lines))
-            self._suppress_scene_update = False
+                    block = block.next()
+                cursor = QTextCursor(insert_block)
+                cursor.movePosition(QTextCursor.StartOfBlock)
+                self._suppress_scene_update = True
+                cursor.insertText(f"direction {new_direction}\n")
+                self._suppress_scene_update = False
         finally:
             self._suppress_code_update = False
         self._schedule_update()
@@ -3390,6 +3433,8 @@ class DiagramEditor(QMainWindow):
         # the user put it, and the edges followed).
         code = self.code_editor.toPlainText()
         self._last_parsed = parse_diagram(code)
+        # Check if the node was dragged into a different swimlane
+        self._check_swimlane_reparent(name, x, y)
 
     def _write_position_pin(self, name, x, y):
         """Insert or update @(x,y) on the object's code line.
@@ -3628,10 +3673,16 @@ class DiagramEditor(QMainWindow):
         replacement = self.replace_input.text()
         if not query:
             return
-        text = self.code_editor.toPlainText()
-        new_text = text.replace(query, replacement)
-        if new_text != text:
-            self.code_editor.setPlainText(new_text)
+        # Use QTextCursor to preserve undo history
+        cursor = QTextCursor(self.code_editor.document())
+        cursor.beginEditBlock()
+        while True:
+            found = self.code_editor.document().find(query, cursor)
+            if found.isNull():
+                break
+            found.insertText(replacement)
+            cursor = found
+        cursor.endEditBlock()
 
     # ─── File I/O ────────────────────────────
     def _new_file(self):
