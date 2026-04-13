@@ -4,8 +4,8 @@
 
 Diagram Editor is a desktop application for creating diagrams by writing code. It follows a **bidirectional editing** model: you write code in the editor and see the diagram update live, but you can also drag nodes in the preview and the code updates automatically. Think of it as Mermaid meets Visio — the precision of code with the interactivity of a visual editor.
 
-**Stack:** Python 3.12, PySide6 (Qt), fpdf2  
-**Architecture:** Single file (`diagram_app.py`, ~3900 lines)  
+**Stack:** Python 3.10+, PySide6 (Qt), fpdf2  
+**Architecture:** Single file (`diagram_app.py`, ~4000 lines)  
 **Platforms:** Windows (tested), macOS/Linux (PySide6 is cross-platform)
 
 ---
@@ -22,13 +22,39 @@ python run.py
 Double-click `DiagramEditor.bat` — it finds Python, installs dependencies if needed, and launches.
 
 ### Standalone Executable (no Python needed)
-Unzip `DiagramEditor-standalone.zip`, run `DiagramEditor.exe`.
+Build with `python build_exe.py`, then run `dist/DiagramEditor/DiagramEditor.exe`.
 
 ### Build Your Own Executable
 ```bash
 python build_exe.py
 ```
 Output: `dist/DiagramEditor/DiagramEditor.exe`
+
+### Troubleshooting Installation
+
+**`pip install pyside6` fails or PySide6 won't import:**
+- PySide6 requires Python 3.10 or newer. Check with `python --version`.
+- On Linux, you may need system packages: `sudo apt install libgl1-mesa-glx libegl1` (Ubuntu/Debian) or equivalent for your distro.
+- If you have multiple Python versions, ensure you're using the right one: `python3.10 -m pip install pyside6 fpdf2`.
+
+**Application launches but the window is blank or crashes immediately:**
+- Make sure your graphics drivers are up to date. PySide6 uses OpenGL by default.
+- Try setting the environment variable `QT_QUICK_BACKEND=software` before launching to force software rendering.
+
+**`ModuleNotFoundError: No module named 'fpdf'`:**
+- Install with `pip install fpdf2` (note: the package is `fpdf2`, not `fpdf`).
+
+**Windows: `python` is not recognized:**
+- Ensure Python is added to your PATH during installation, or use the full path (e.g., `C:\Python312\python.exe run.py`).
+- Alternatively, use `DiagramEditor.bat` which auto-detects common Python install locations.
+
+**macOS/Linux: untested platform issues:**
+- The application is developed and tested on Windows. PySide6 is cross-platform, but minor rendering or font differences may occur on macOS/Linux.
+- On macOS, you may need to allow the app in System Preferences > Security & Privacy if Gatekeeper blocks it.
+
+**Build executable fails (`python build_exe.py`):**
+- PyInstaller must be installed: `pip install pyinstaller`.
+- Some antivirus software flags PyInstaller output as suspicious — add an exclusion for the `dist/` directory.
 
 ---
 
@@ -41,7 +67,7 @@ Output: `dist/DiagramEditor/DiagramEditor.exe`
 | `requirements.txt` | Python dependencies |
 | `DiagramEditor.bat` | Windows launcher with auto-install |
 | `build_exe.py` | PyInstaller build script |
-| `DiagramEditor-standalone.zip` | Pre-built Windows executable |
+| `examples/` | Sample diagram files (.dgm and .txt) |
 | `README.md` | Quick readme |
 | `GUIDE.md` | This document |
 

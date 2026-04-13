@@ -11,7 +11,7 @@ python run.py
 
 Or on Windows, double-click `DiagramEditor.bat`.
 
-Or unzip `DiagramEditor-standalone.zip` and run `DiagramEditor.exe` (no Python needed).
+Or build a standalone executable with `python build_exe.py` and run `dist/DiagramEditor/DiagramEditor.exe` (no Python needed).
 
 ## Documentation
 

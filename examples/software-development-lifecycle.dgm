@@ -1,0 +1,14 @@
+{
+  "version": 3,
+  "code": "// Software Development Lifecycle\n// Demonstrates: swimlanes, all 8 shapes, connections, groups, notes\n\ndirection top-to-bottom\n\nswimlane \"Product\" {\n    [rounded] gather_reqs \"Gather\\nRequirements\" step:1 type:process owner:\"alice\" status:active tags:\"mvp, sprint-1\"\n    [diamond] feasibility \"Feasibility\\nReview\" step:2 type:decision owner:\"bob\" priority:high\n    [rounded] revise \"Revise Scope\" step:2 type:process owner:\"alice\" status:draft\n}\n\nswimlane \"Engineering\" {\n    [rect] sys_design \"System Design\" step:3 type:process owner:\"charlie\" tags:\"architecture\"\n    [rect] implement \"Implementation\" step:4 type:automated owner:\"dev-team\" priority:high\n    [hexagon] testing \"Run Tests\" step:5 type:automated owner:\"qa-team\" status:active tags:\"ci, blocking\"\n}\n\nswimlane \"Operations\" {\n    [parallelogram] staging \"Deploy To\\nStaging\" step:6 type:process owner:\"devops\"\n    [diamond] qa_check \"QA Approval?\" step:7 type:approval owner:\"qa-lead\" priority:critical\n    [stadium] release \"Release To Prod\" step:8 type:process status:active\n    [cylinder] update_db \"Update Database\" step:8 type:datastore owner:\"dba-team\"\n}\n\n[circle] start \"Start\" step:0 type:start\n[circle] done \"Done\" step:9 type:end\n\nstart -> gather_reqs : \"kick off\"\ngather_reqs -> feasibility\nfeasibility -> sys_design : \"approved\" [center] condition:\"feasible == true\"\nfeasibility --> revise : \"needs work\"\nrevise -> feasibility\nsys_design -> implement\nimplement ==> testing : \"critical path\" weight:10\ntesting -> staging\nstaging -> qa_check\nqa_check -> release : \"pass\"\nqa_check -.- implement : \"fail: rework\"\nrelease -> update_db\nupdate_db -> done\nimplement -> implement : \"iterate\"\n\ngroup \"Sprint 1\" {\n    gather_reqs\n    feasibility\n    revise\n}\n\nnote \"Critical bottleneck here\" [testing]\n",
+  "settings": {
+    "node_width": 140,
+    "node_height": 50,
+    "h_gap": 60,
+    "v_gap": 70,
+    "font_size": 11,
+    "container_padding": 20,
+    "swimlane_gap": 10,
+    "color_scheme": "Default"
+  }
+}
