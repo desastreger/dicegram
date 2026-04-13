@@ -1,0 +1,32 @@
+// Database Architecture
+// Demonstrates: cylinders, parallelograms, left-to-right layout, style overrides
+
+direction left-to-right
+
+swimlane "Frontend" {
+    [stadium] web_app "Web App" step:1 type:external
+    [stadium] mobile "Mobile App" step:1 type:external
+}
+
+swimlane "API Layer" {
+    [hexagon] api_gw "API Gateway" step:2 type:process priority:critical
+    [rect] auth "Auth Service" step:3 type:automated
+    [rect] biz_logic "Business Logic" step:3 type:process
+}
+
+swimlane "Data Layer" {
+    [cylinder] primary_db "Primary DB" step:4 type:datastore {fill: #e3f2fd, stroke: #1565c0}
+    [cylinder] cache "Redis Cache" step:4 type:datastore {fill: #fff3e0, stroke: #e65100}
+    [cylinder] search "Search Index" step:5 type:datastore {fill: #e8f5e9, stroke: #2e7d32}
+}
+
+web_app -> api_gw
+mobile -> api_gw
+api_gw -> auth : "authenticate"
+api_gw -> biz_logic : "route"
+auth --> primary_db : "verify credentials"
+biz_logic -> primary_db : "read/write"
+biz_logic -> cache : "hot data"
+primary_db -.- search : "sync"
+
+note "Rate-limited to 1000 req/s" [api_gw]

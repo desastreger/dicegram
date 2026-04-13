@@ -1,0 +1,18 @@
+// Simple Flowchart
+// A minimal example showing basic shapes and connections
+
+direction top-to-bottom
+
+[circle] start "Start" step:1 type:start
+[rect] input "Get User Input" step:2 type:process
+[diamond] validate "Valid?" step:3 type:decision
+[rect] process "Process Data" step:4 type:process
+[rect] error "Show Error" step:4 type:manual status:blocked
+[stadium] done "Finished" step:5 type:end
+
+start -> input
+input -> validate
+validate -> process : "yes"
+validate --> error : "no"
+error -> input : "retry"
+process -> done

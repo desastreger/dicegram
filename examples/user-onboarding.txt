@@ -1,0 +1,48 @@
+// User Onboarding Flow
+// Demonstrates: status attributes, priorities, boxes, notes
+
+direction top-to-bottom
+
+swimlane "User" {
+    [circle] start "Start" step:1 type:start
+    [rect] signup "Sign Up" step:2 type:manual owner:"user"
+    [rect] verify_email "Verify Email" step:3 type:manual owner:"user"
+    [rect] set_profile "Set Up Profile" step:4 type:manual owner:"user"
+}
+
+swimlane "System" {
+    [rect] send_email "Send Verification" step:3 type:automated owner:"email-svc" status:active
+    [diamond] check_verify "Verified?" step:4 type:decision priority:high
+    [rect] create_account "Create Account" step:5 type:automated owner:"auth-svc" status:complete
+    [rect] send_welcome "Send Welcome Email" step:6 type:automated owner:"email-svc"
+
+    box "Account Setup" {fill: #313244, stroke: #89b4fa} {
+        [rect] default_settings "Apply Defaults" step:5 type:automated
+        [rect] trial_setup "Start Free Trial" step:5 type:process priority:high
+    }
+}
+
+[circle] done "Done" step:7 type:end
+
+start -> signup
+signup -> send_email
+send_email -> verify_email
+verify_email -> check_verify
+check_verify -> create_account : "yes"
+check_verify --> signup : "no — resend"
+create_account -> default_settings
+create_account -> trial_setup
+default_settings -> set_profile
+trial_setup -> send_welcome
+set_profile -> done
+send_welcome -> done
+
+group "Critical Path" {
+    signup
+    send_email
+    verify_email
+    check_verify
+}
+
+note "30-day trial period" [trial_setup]
+note "GDPR compliant" [create_account]
