@@ -1414,20 +1414,16 @@ class DiagramScene(QGraphicsScene):
                 line = self.addLine(QLineF(gx1, gy, gx2, gy), grid_pen)
                 line.setZValue(-5)
 
-        # Step bands — direction-aware
+        # Step bands — direction-aware (labels only, no background fill)
         direction = settings.get("direction", "top-to-bottom")
         is_horizontal = direction in ("left-to-right", "right-to-left")
         show_steps = settings.get("show_step_numbers", True)
 
         for entry in layout.get("step_bands", []):
             step = entry[0]
-            band_color = colors["step_band_odd"] if step % 2 else colors["step_band_even"]
             if not is_horizontal:
                 # TB/BT: horizontal bands — (step, y0, y1, bx, bw)
                 _, y0, y1, bx, bw = entry
-                rect = self.addRect(QRectF(bx, y0, bw, y1 - y0),
-                                    QPen(Qt.NoPen), QBrush(hex_to_qcolor(band_color)))
-                rect.setZValue(-4)
                 if show_steps:
                     lbl = self.addText(str(step), QFont("Segoe UI", 9, QFont.Bold))
                     lbl.setDefaultTextColor(hex_to_qcolor(colors["phase_text"]))
@@ -1436,9 +1432,6 @@ class DiagramScene(QGraphicsScene):
             else:
                 # LR/RL: vertical bands — (step, x0, x1, by, bh)
                 _, x0, x1, by, bh = entry
-                rect = self.addRect(QRectF(x0, by, x1 - x0, bh),
-                                    QPen(Qt.NoPen), QBrush(hex_to_qcolor(band_color)))
-                rect.setZValue(-4)
                 if show_steps:
                     lbl = self.addText(str(step), QFont("Segoe UI", 9, QFont.Bold))
                     lbl.setDefaultTextColor(hex_to_qcolor(colors["phase_text"]))
@@ -2000,12 +1993,9 @@ class PDFExporter:
 
         sl_hdr = 36
 
-        # ── Step bands ──
+        # ── Step labels (no background fill) ──
         for entry in layout.get("step_bands", []):
-            step, y0, y1 = entry[0], entry[1], entry[2]
-            band_color = colors["step_band_odd"] if step % 2 else colors["step_band_even"]
-            set_fill(band_color)
-            pdf.rect(tx(mn_x), ty(y0), s(dw), s(y1 - y0), "F")
+            step, y0 = entry[0], entry[1]
             set_text_c(colors["phase_text"])
             pdf.set_font("Helvetica", "B", max(5, font_size * sc * 0.5))
             pdf.set_xy(tx(mn_x) + 1, ty(y0) + 0.5)
