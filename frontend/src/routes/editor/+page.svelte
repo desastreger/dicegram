@@ -17,6 +17,7 @@
 		type ParentTarget
 	} from '$lib/patch';
 	import { onMount } from 'svelte';
+	import { downloadSvg } from '$lib/export';
 	import { renderDsl, type RenderResult, type RenderNode } from '$lib/render';
 	import { getTheme, type Theme } from '$lib/themes';
 	import { TEMPLATES, DEFAULT_TEMPLATE_ID, type DicegramTemplate } from '$lib/templates';
@@ -52,8 +53,37 @@
 	let normalizeToast = $state<string | null>(null);
 	let normalizeToastTimer: ReturnType<typeof setTimeout> | null = null;
 
+	const demoMode = $derived(page.url.searchParams.get('demo') === '1');
+
 	$effect(() => {
-		if (!auth.loading && !auth.user) goto('/login');
+		if (demoMode) return;
+		if (!auth.loading && !auth.user) {
+			const here = page.url.pathname + page.url.search;
+			goto(`/login?next=${encodeURIComponent(here)}`);
+		}
+	});
+
+	const DEMO_STORAGE_KEY = 'dicegram:demo:source';
+	let demoHydrated = false;
+	$effect(() => {
+		if (!demoMode || demoHydrated) return;
+		demoHydrated = true;
+		try {
+			const stored = localStorage.getItem(DEMO_STORAGE_KEY);
+			if (stored && stored.length > 0) source = stored;
+			name = 'Demo dicegram';
+		} catch {
+			/* ignore */
+		}
+	});
+
+	$effect(() => {
+		if (!demoMode) return;
+		try {
+			localStorage.setItem(DEMO_STORAGE_KEY, source);
+		} catch {
+			/* ignore */
+		}
 	});
 
 	$effect(() => {
@@ -158,10 +188,58 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
+		const mod = e.ctrlKey || e.metaKey;
+		const key = e.key.toLowerCase();
 		// Ctrl/Cmd+S saves from anywhere in the editor.
-		if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 's') {
+		if (mod && !e.shiftKey && !e.altKey && key === 's') {
 			e.preventDefault();
 			save();
+			return;
+		}
+		// Ctrl/Cmd+Z / Ctrl+Shift+Z for global undo/redo outside CodeMirror.
+		if (mod && key === 'z') {
+			if (isEditableTarget(e.target)) return; // CodeMirror owns its history
+			e.preventDefault();
+			if (e.shiftKey) redo();
+			else undo();
+			return;
+		}
+		// Ctrl+N new dicegram
+		if (mod && !e.shiftKey && !e.altKey && key === 'n') {
+			e.preventDefault();
+			newDicegram();
+			return;
+		}
+		// Ctrl+O open list
+		if (mod && !e.shiftKey && !e.altKey && key === 'o') {
+			e.preventDefault();
+			openList();
+			return;
+		}
+		// Ctrl+E export SVG (default action)
+		if (mod && !e.shiftKey && !e.altKey && key === 'e') {
+			e.preventDefault();
+			quickExportSvg();
+			return;
+		}
+		// Ctrl+B toggle tree pane
+		if (mod && !e.shiftKey && !e.altKey && key === 'b') {
+			if (isEditableTarget(e.target)) return;
+			e.preventDefault();
+			treeOpen = !treeOpen;
+			return;
+		}
+		// Ctrl+. toggle inspector
+		if (mod && !e.shiftKey && !e.altKey && key === '.') {
+			e.preventDefault();
+			inspectorOpen = !inspectorOpen;
+			if (inspectorOpen) settingsOpen = false;
+			return;
+		}
+		// Ctrl+F focus filter input
+		if (mod && !e.shiftKey && !e.altKey && key === 'f') {
+			e.preventDefault();
+			focusFilterInput();
 			return;
 		}
 		if (isEditableTarget(e.target)) return;
@@ -192,7 +270,16 @@
 
 	onMount(() => {
 		window.addEventListener('keydown', handleKeydown);
-		return () => window.removeEventListener('keydown', handleKeydown);
+		const beforeUnload = (e: BeforeUnloadEvent) => {
+			if (!dirty) return;
+			e.preventDefault();
+			e.returnValue = '';
+		};
+		window.addEventListener('beforeunload', beforeUnload);
+		return () => {
+			window.removeEventListener('keydown', handleKeydown);
+			window.removeEventListener('beforeunload', beforeUnload);
+		};
 	});
 
 	// Load a dicegram referenced by ?id= on the URL.
@@ -243,6 +330,13 @@
 	}
 
 	async function save() {
+		if (demoMode) {
+			showSaveToast(
+				{ kind: 'error', message: 'Sign up to save — demo dicegrams live in your browser only.' },
+				5000
+			);
+			return;
+		}
 		if (!auth.user) return;
 		saving = true;
 		saveMsg = null;
@@ -266,6 +360,42 @@
 			showSaveToast({ kind: 'error', message: `Save failed: ${message}` }, 6000);
 		} finally {
 			saving = false;
+		}
+	}
+
+	// Silent debounced autosave for logged-in users with an existing dicegram.
+	// New (unsaved) dicegrams stay dirty until the user hits Ctrl+S — we avoid
+	// creating junk rows on every new-draft keystroke.
+	let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
+	let autosaveStatus = $state<'idle' | 'saving' | 'saved'>('idle');
+	let autosaveStatusTimer: ReturnType<typeof setTimeout> | null = null;
+
+	$effect(() => {
+		const _deps = source + '\u0000' + name;
+		void _deps;
+		if (demoMode) return;
+		if (!auth.user) return;
+		if (currentId == null) return;
+		if (!dirty) return;
+		clearTimeout(autosaveTimer);
+		autosaveTimer = setTimeout(runAutosave, 2000);
+	});
+
+	async function runAutosave() {
+		if (!auth.user || currentId == null || !dirty) return;
+		autosaveStatus = 'saving';
+		try {
+			const d = await api.update(currentId, { name, source });
+			savedSourceSnapshot = d.source;
+			autosaveStatus = 'saved';
+			if (autosaveStatusTimer) clearTimeout(autosaveStatusTimer);
+			autosaveStatusTimer = setTimeout(() => {
+				autosaveStatus = 'idle';
+			}, 1500);
+		} catch (err) {
+			autosaveStatus = 'idle';
+			const message = err instanceof ApiError ? err.message : 'autosave failed';
+			showSaveToast({ kind: 'error', message: `Autosave failed: ${message}` }, 5000);
 		}
 	}
 
@@ -305,12 +435,136 @@
 		document.title = `${dirty ? '• ' : ''}${base} — Dicegram`;
 	});
 
+	// Global undo/redo stack. Snapshots happen after 400ms of `source`
+	// stability so rapid typing in CodeMirror collapses into one step —
+	// CodeMirror's own Ctrl+Z still handles in-editor history live.
+	let undoStack = $state<string[]>([]);
+	let redoStack = $state<string[]>([]);
+	// svelte-ignore state_referenced_locally
+	let lastSnapshot = $state<string>(source);
+	let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+
+	$effect(() => {
+		const current = source;
+		if (current === lastSnapshot) return;
+		const previous = lastSnapshot;
+		if (snapshotTimer) clearTimeout(snapshotTimer);
+		snapshotTimer = setTimeout(() => {
+			lastSnapshot = source;
+			if (previous) {
+				undoStack = [...undoStack.slice(-49), previous];
+				redoStack = [];
+			}
+		}, 400);
+	});
+
+	function undo() {
+		if (undoStack.length === 0) return;
+		const next = undoStack[undoStack.length - 1];
+		undoStack = undoStack.slice(0, -1);
+		redoStack = [...redoStack.slice(-49), source];
+		lastSnapshot = next;
+		source = next;
+	}
+
+	function redo() {
+		if (redoStack.length === 0) return;
+		const next = redoStack[redoStack.length - 1];
+		redoStack = redoStack.slice(0, -1);
+		undoStack = [...undoStack.slice(-49), source];
+		lastSnapshot = next;
+		source = next;
+	}
+
+	let canvasFocusId = $state<string | null>(null);
+	let canvasFocusTrigger = $state(0);
+
 	function handleTreeSelect(id: string) {
 		handleNodeSelect(id);
+		canvasFocusId = id;
+		canvasFocusTrigger += 1;
+	}
+
+	let selectedEdgeId = $state<string | null>(null);
+	let selectedObjectKind = $state<'swimlane' | 'box' | 'group' | 'note' | null>(null);
+	let selectedObjectIndex = $state<number>(-1);
+	let labelFocusTrigger = $state(0);
+
+	function clearAuxSelection() {
+		selectedEdgeId = null;
+		selectedObjectKind = null;
+		selectedObjectIndex = -1;
+	}
+
+	function handleNodeDblClick(id: string) {
+		handleNodeSelect(id);
+		clearAuxSelection();
+		inspectorOpen = true;
+		settingsOpen = false;
+		labelFocusTrigger += 1;
+	}
+
+	function handleEdgeSelect(id: string | null) {
+		selectedEdgeId = id;
+		if (id) {
+			selectedNodeId = null;
+			selectedObjectKind = null;
+			selectedObjectIndex = -1;
+			inspectorOpen = true;
+			settingsOpen = false;
+		}
+	}
+
+	function handleObjectSelect(
+		kind: 'swimlane' | 'box' | 'group' | 'note' | null,
+		index: number
+	) {
+		selectedObjectKind = kind;
+		selectedObjectIndex = index;
+		if (kind) {
+			selectedNodeId = null;
+			selectedEdgeId = null;
+			inspectorOpen = true;
+			settingsOpen = false;
+		}
+	}
+
+	async function quickExportSvg() {
+		try {
+			await downloadSvg(name || 'dicegram', source);
+		} catch (err) {
+			showSaveToast(
+				{ kind: 'error', message: err instanceof Error ? err.message : 'export failed' },
+				5000
+			);
+		}
+	}
+
+	function focusFilterInput() {
+		const el = document.querySelector<HTMLInputElement>(
+			'input[placeholder^="Filter"]'
+		);
+		if (el) {
+			el.focus();
+			el.select();
+		}
 	}
 </script>
 
 <div class="flex h-[calc(100vh-var(--header-h))] flex-col" style={themeVars}>
+	{#if demoMode}
+		<div
+			class="flex items-center justify-center gap-3 border-b border-blue-800/60 bg-blue-950/50 px-3 py-1 text-[11px] text-blue-100"
+		>
+			<span>Demo mode — your changes stay in this browser only.</span>
+			<a
+				href="/signup"
+				class="rounded border border-blue-700 px-2 py-0.5 text-[11px] font-medium text-blue-50 hover:bg-blue-900"
+			>
+				Sign up to save
+			</a>
+		</div>
+	{/if}
 	<Toolbar
 		bind:source
 		bind:name
@@ -335,6 +589,7 @@
 		{rendering}
 		{saveMsg}
 		{saving}
+		{autosaveStatus}
 		onSave={save}
 		onOpen={openList}
 		onNew={newDicegram}
@@ -398,8 +653,13 @@
 				{theme}
 				{filter}
 				selectedId={selectedNodeId}
+				focusId={canvasFocusId}
+				focusTrigger={canvasFocusTrigger}
 				onNodeMove={writePosition}
 				onNodeSelect={handleNodeSelect}
+				onNodeDblClick={handleNodeDblClick}
+				onEdgeSelect={handleEdgeSelect}
+				onObjectSelect={handleObjectSelect}
 				onConnect={handleConnect}
 				onReparent={handleReparent}
 			/>
@@ -420,9 +680,15 @@
 	bind:source
 	bind:open={inspectorOpen}
 	selected={selectedNode}
+	{selectedEdgeId}
+	{selectedObjectKind}
+	{selectedObjectIndex}
 	{result}
+	{labelFocusTrigger}
 	onClose={() => (inspectorOpen = false)}
 	onSelectionChange={handleSelectionChange}
+	onEdgeSelectionChange={(id) => (selectedEdgeId = id)}
+	onObjectSelectionChange={handleObjectSelect}
 	onReparent={handleReparent}
 	onSiblingMove={handleSiblingMove}
 />

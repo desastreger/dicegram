@@ -15,24 +15,38 @@
   import Icon from '$lib/Icon.svelte';
   import Dropdown from '$lib/Dropdown.svelte';
   import ShapePreview from './ShapePreview.svelte';
+  import EdgePanel from './EdgePanel.svelte';
+  import ObjectPanel, { type ObjectKind } from './ObjectPanel.svelte';
   import type { RenderNode, RenderResult } from '$lib/render';
 
   let {
     source = $bindable(''),
     selected,
+    selectedEdgeId = null,
+    selectedObjectKind = null,
+    selectedObjectIndex = -1,
     result,
     open = $bindable(false),
+    labelFocusTrigger = 0,
     onClose,
     onSelectionChange,
+    onEdgeSelectionChange,
+    onObjectSelectionChange,
     onReparent,
     onSiblingMove,
   }: {
     source: string;
     selected: RenderNode | null;
+    selectedEdgeId?: string | null;
+    selectedObjectKind?: ObjectKind | null;
+    selectedObjectIndex?: number;
     result: RenderResult | null;
     open: boolean;
+    labelFocusTrigger?: number;
     onClose: () => void;
     onSelectionChange: (newId: string | null) => void;
+    onEdgeSelectionChange?: (id: string | null) => void;
+    onObjectSelectionChange?: (kind: ObjectKind | null, index: number) => void;
     onReparent?: (id: string, target: ParentTarget) => void;
     onSiblingMove?: (id: string, direction: -1 | 1) => void;
   } = $props();
@@ -102,6 +116,20 @@
   let opacityDraft = $state('');
   let strokeWidthDraft = $state('');
   let fontFamilyDraft = $state('');
+
+  let labelTextarea: HTMLTextAreaElement | null = $state(null);
+  let lastLabelFocusTrigger = -1;
+  $effect(() => {
+    if (labelFocusTrigger !== lastLabelFocusTrigger) {
+      lastLabelFocusTrigger = labelFocusTrigger;
+      if (labelFocusTrigger > 0) {
+        queueMicrotask(() => {
+          labelTextarea?.focus();
+          labelTextarea?.select();
+        });
+      }
+    }
+  });
 
   let lastId = $state<string | null>(null);
   $effect(() => {
@@ -291,6 +319,14 @@
     source = removeNodeStyle(source, selected.id, key);
   }
 
+  function commitHex(key: 'fill' | 'stroke' | 'text', value: string) {
+    const v = value.trim();
+    if (!v) return clearStyle(key);
+    const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.exec(v);
+    if (!m) return;
+    commitStyle(key, v.startsWith('#') ? v : `#${v}`);
+  }
+
   let confirmDelete = $state(false);
   let confirmDeleteTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -344,9 +380,24 @@
       </button>
     </header>
 
-    {#if !selected}
+    {#if selectedObjectKind}
+      <ObjectPanel
+        bind:source
+        kind={selectedObjectKind}
+        index={selectedObjectIndex}
+        {result}
+        onSelectionChange={(k, i) => onObjectSelectionChange?.(k, i)}
+      />
+    {:else if selectedEdgeId}
+      <EdgePanel
+        bind:source
+        {selectedEdgeId}
+        {result}
+        onSelectionChange={(id) => onEdgeSelectionChange?.(id)}
+      />
+    {:else if !selected}
       <div class="p-5 text-center text-[11px] text-neutral-500">
-        Select a node to edit its properties.
+        Select anything on the canvas to edit its properties.
       </div>
     {:else}
       <ShapePreview node={selected} />
@@ -400,6 +451,7 @@
         <div class="flex items-start gap-2">
           <label class="w-14 pt-1 text-[11px] text-neutral-400">Label</label>
           <textarea
+            bind:this={labelTextarea}
             rows="3"
             class="flex-1 resize-y rounded border border-neutral-800 bg-neutral-900 px-1.5 py-1 text-xs text-neutral-100"
             bind:value={labelDraft}
@@ -523,12 +575,20 @@
             value={currentFill}
             onchange={(e) => commitStyle('fill', (e.target as HTMLInputElement).value)}
           />
+          <input
+            type="text"
+            placeholder="auto"
+            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
+            value={selected.style?.fill ?? ''}
+            onchange={(e) => commitHex('fill', (e.target as HTMLInputElement).value)}
+          />
           <button
             type="button"
             class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100"
             onclick={() => clearStyle('fill')}
+            title="Revert to theme"
           >
-            Clear
+            Reset
           </button>
         </div>
         <div class="flex items-center gap-2">
@@ -539,12 +599,20 @@
             value={currentStroke}
             onchange={(e) => commitStyle('stroke', (e.target as HTMLInputElement).value)}
           />
+          <input
+            type="text"
+            placeholder="auto"
+            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
+            value={selected.style?.stroke ?? ''}
+            onchange={(e) => commitHex('stroke', (e.target as HTMLInputElement).value)}
+          />
           <button
             type="button"
             class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100"
             onclick={() => clearStyle('stroke')}
+            title="Revert to theme"
           >
-            Clear
+            Reset
           </button>
         </div>
         <div class="flex items-center gap-2">
@@ -555,12 +623,20 @@
             value={currentText}
             onchange={(e) => commitStyle('text', (e.target as HTMLInputElement).value)}
           />
+          <input
+            type="text"
+            placeholder="auto"
+            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
+            value={selected.style?.text ?? ''}
+            onchange={(e) => commitHex('text', (e.target as HTMLInputElement).value)}
+          />
           <button
             type="button"
             class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100"
             onclick={() => clearStyle('text')}
+            title="Revert to theme"
           >
-            Clear
+            Reset
           </button>
         </div>
       </div>

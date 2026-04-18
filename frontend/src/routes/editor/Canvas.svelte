@@ -16,6 +16,8 @@
 	import GroupOverlay from './GroupOverlay.svelte';
 	import NoteNode from './NoteNode.svelte';
 	import SmartEdge from './SmartEdge.svelte';
+	import CanvasFocus from './CanvasFocus.svelte';
+	import ViewportRegister from './ViewportRegister.svelte';
 	import type { RenderResult, RenderNode } from '$lib/render';
 	import type { Theme } from '$lib/themes';
 	import type { Rect } from '$lib/obstacle-routing';
@@ -27,8 +29,13 @@
 		theme,
 		selectedId,
 		filter = '',
+		focusId = null,
+		focusTrigger = 0,
 		onNodeMove,
 		onNodeSelect,
+		onNodeDblClick,
+		onEdgeSelect,
+		onObjectSelect,
 		onConnect,
 		onReparent
 	}: {
@@ -36,8 +43,16 @@
 		theme: Theme;
 		selectedId?: string | null;
 		filter?: string;
+		focusId?: string | null;
+		focusTrigger?: number;
 		onNodeMove?: (id: string, x: number, y: number) => void;
 		onNodeSelect?: (id: string | null) => void;
+		onNodeDblClick?: (id: string) => void;
+		onEdgeSelect?: (id: string | null) => void;
+		onObjectSelect?: (
+			kind: 'swimlane' | 'box' | 'group' | 'note' | null,
+			index: number
+		) => void;
 		onConnect?: (source: string, target: string) => void;
 		onReparent?: (id: string, target: ParentTarget) => void;
 	} = $props();
@@ -169,7 +184,7 @@
 			height: l.height,
 			data: { name: l.name },
 			draggable: false,
-			selectable: false,
+			selectable: true,
 			zIndex: -100,
 			deletable: false,
 			style: filtering && !liveLanes.has(l.name) ? dimStyle : undefined
@@ -185,7 +200,7 @@
 				height: b.height as number,
 				data: { label: b.label, fill: b.style.fill, stroke: b.style.stroke },
 				draggable: false,
-				selectable: false,
+				selectable: true,
 				zIndex: -50,
 				deletable: false,
 				style: filtering && !liveBoxes.has(b.label) ? dimStyle : undefined
@@ -201,7 +216,7 @@
 				height: g.height as number,
 				data: { name: g.name },
 				draggable: false,
-				selectable: false,
+				selectable: true,
 				zIndex: 50,
 				deletable: false
 			}));
@@ -214,7 +229,7 @@
 			height: n.height,
 			data: { text: n.text, target: n.target },
 			draggable: false,
-			selectable: false,
+			selectable: true,
 			zIndex: 10,
 			deletable: false
 		}));
@@ -408,16 +423,47 @@
 		}
 	}
 
+	const CONTAINER_KINDS = new Set(['lane', 'box', 'group', 'note']);
+	const OBJECT_ID_RE = /^__(lane|box|group|note)_(\d+)$/;
+
 	function handleNodeClick({ node }: { node: Node; event: MouseEvent | TouchEvent }) {
-		if (!node || node.type !== 'shape') {
+		if (!node) {
 			onNodeSelect?.(null);
+			onObjectSelect?.(null, -1);
 			return;
 		}
-		onNodeSelect?.(node.id);
+		if (node.type === 'shape') {
+			onNodeSelect?.(node.id);
+			onObjectSelect?.(null, -1);
+			return;
+		}
+		if (CONTAINER_KINDS.has(node.type as string)) {
+			const m = OBJECT_ID_RE.exec(node.id);
+			if (!m) return;
+			const rawKind = m[1] as 'lane' | 'box' | 'group' | 'note';
+			const kind = rawKind === 'lane' ? 'swimlane' : rawKind;
+			onNodeSelect?.(null);
+			onObjectSelect?.(kind, Number(m[2]));
+		}
+	}
+
+	function handleCanvasDblClick(e: MouseEvent) {
+		const t = e.target as HTMLElement | null;
+		const nodeEl = t?.closest('[data-id]');
+		if (!nodeEl) return;
+		const id = nodeEl.getAttribute('data-id');
+		if (!id || id.startsWith('__')) return;
+		onNodeDblClick?.(id);
+	}
+
+	function handleEdgeClick({ edge }: { edge: { id: string }; event: MouseEvent }) {
+		onEdgeSelect?.(edge.id);
 	}
 
 	function handlePaneClick() {
 		onNodeSelect?.(null);
+		onEdgeSelect?.(null);
+		onObjectSelect?.(null, -1);
 	}
 
 	function handleConnect(connection: {
@@ -432,11 +478,12 @@
 	}
 </script>
 
-<div class="h-full w-full" style:background-color={theme.canvas}>
+<div class="h-full w-full" style:background-color={theme.canvas} ondblclick={handleCanvasDblClick} role="presentation">
 	<SvelteFlow
 		bind:nodes
 		bind:edges
 		{nodeTypes}
+		{edgeTypes}
 		colorMode={theme.bg === '#ffffff' || theme.bg === '#fdf6e3' ? 'light' : 'dark'}
 		fitView
 		fitViewOptions={{ padding: 0.2 }}
@@ -446,11 +493,14 @@
 		proOptions={{ hideAttribution: true }}
 		onnodedragstop={handleNodeDragStop}
 		onnodeclick={handleNodeClick}
+		onedgeclick={handleEdgeClick}
 		onpaneclick={handlePaneClick}
 		onconnect={handleConnect}
 	>
 		<Background patternColor={theme.gridDot} />
 		<Controls />
 		<MiniMap pannable zoomable />
+		<CanvasFocus {focusId} trigger={focusTrigger} />
+		<ViewportRegister />
 	</SvelteFlow>
 </div>

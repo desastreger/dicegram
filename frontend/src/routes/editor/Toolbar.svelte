@@ -4,6 +4,9 @@
 	import { copyDsl, copyLlmPrompt, copySvg, downloadPng, downloadSvg } from '$lib/export';
 	import type { RenderResult } from '$lib/render';
 	import { TEMPLATES, type DicegramTemplate } from '$lib/templates';
+	import { dicegrams as dicegramsApi } from '$lib/dicegrams';
+	import { ApiError } from '$lib/api';
+	import { getViewportCenter } from '$lib/viewport-state';
 
 	let {
 		source = $bindable(''),
@@ -13,6 +16,7 @@
 		rendering,
 		saveMsg,
 		saving,
+		autosaveStatus = 'idle',
 		settingsOpen = $bindable(false),
 		inspectorOpen = $bindable(false),
 		treeOpen = $bindable(false),
@@ -29,6 +33,7 @@
 		rendering: boolean;
 		saveMsg: string | null;
 		saving: boolean;
+		autosaveStatus?: 'idle' | 'saving' | 'saved';
 		settingsOpen: boolean;
 		inspectorOpen: boolean;
 		treeOpen: boolean;
@@ -67,6 +72,74 @@
 		document.addEventListener('click', onDocClick);
 		return () => document.removeEventListener('click', onDocClick);
 	});
+
+	let shareOpen = $state(false);
+	let shareRoot: HTMLElement | undefined;
+	let shareSlug = $state<string | null>(null);
+	let shareBusy = $state(false);
+	let shareCopied = $state(false);
+	let shareError = $state<string | null>(null);
+
+	const shareUrl = $derived(
+		shareSlug ? `${window.location.origin}/d/${shareSlug}` : null
+	);
+
+	$effect(() => {
+		if (currentId == null) {
+			shareSlug = null;
+			shareError = null;
+		}
+	});
+
+	$effect(() => {
+		if (!shareOpen) return;
+		const onDocClick = (e: MouseEvent) => {
+			if (shareRoot && !shareRoot.contains(e.target as Node)) shareOpen = false;
+		};
+		document.addEventListener('click', onDocClick);
+		return () => document.removeEventListener('click', onDocClick);
+	});
+
+	async function openShare() {
+		if (currentId == null) return;
+		shareOpen = !shareOpen;
+		if (!shareOpen || shareSlug || shareBusy) return;
+		shareBusy = true;
+		shareError = null;
+		try {
+			const info = await dicegramsApi.share(currentId);
+			shareSlug = info.slug;
+		} catch (err) {
+			shareError = err instanceof ApiError ? err.message : 'could not create share link';
+		} finally {
+			shareBusy = false;
+		}
+	}
+
+	async function copyShare() {
+		if (!shareUrl) return;
+		try {
+			await navigator.clipboard.writeText(shareUrl);
+			shareCopied = true;
+			setTimeout(() => (shareCopied = false), 1500);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	async function revokeShare() {
+		if (currentId == null) return;
+		shareBusy = true;
+		shareError = null;
+		try {
+			await dicegramsApi.revoke(currentId);
+			shareSlug = null;
+		} catch (err) {
+			shareError = err instanceof ApiError ? err.message : 'could not revoke';
+		} finally {
+			shareBusy = false;
+		}
+	}
 
 	async function doExport(kind: 'svg' | 'png' | 'copy-svg' | 'copy-dsl' | 'copy-llm') {
 		exportOpen = false;
@@ -126,7 +199,8 @@
 	function pickShape(shape: string) {
 		insertOpen = false;
 		const name = nextNodeName();
-		source = addNode(source, { name, shape, step: nextStep() });
+		const position = getViewportCenter();
+		source = addNode(source, { name, shape, step: nextStep(), position });
 	}
 
 	function promptSwimlane() {
@@ -316,6 +390,61 @@
 		<Icon name="panel-right" size={13} />
 	</button>
 
+	<div class="relative" bind:this={shareRoot}>
+		<button
+			type="button"
+			onclick={openShare}
+			disabled={currentId == null}
+			aria-expanded={shareOpen}
+			title={currentId == null ? 'Save the dicegram first to share it' : 'Share'}
+			class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+		>
+			<Icon name="share" size={13} />
+			<span class="hidden md:inline">Share</span>
+			<Icon name="chevron-down" size={11} />
+		</button>
+		{#if shareOpen && currentId != null}
+			<div
+				class="absolute left-0 top-full z-20 mt-1 w-72 rounded border border-neutral-800 bg-neutral-900 p-2 shadow-lg"
+			>
+				{#if shareBusy && !shareSlug}
+					<p class="px-1 py-2 text-xs text-neutral-400">Creating link…</p>
+				{:else if shareError}
+					<p class="px-1 py-2 text-xs text-red-400">{shareError}</p>
+				{:else if shareUrl}
+					<p class="px-1 pb-1 text-[10px] uppercase tracking-wide text-neutral-500">
+						Public read-only link
+					</p>
+					<input
+						type="text"
+						readonly
+						value={shareUrl}
+						class="mb-2 w-full rounded border border-neutral-800 bg-neutral-950 px-2 py-1 font-mono text-[11px] text-neutral-200"
+						onclick={(e) => (e.target as HTMLInputElement).select()}
+					/>
+					<div class="flex gap-1">
+						<button
+							type="button"
+							onclick={copyShare}
+							class="flex flex-1 items-center justify-center gap-1 rounded border border-neutral-800 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
+						>
+							<Icon name={shareCopied ? 'check' : 'copy'} size={12} />
+							{shareCopied ? 'Copied' : 'Copy link'}
+						</button>
+						<button
+							type="button"
+							onclick={revokeShare}
+							disabled={shareBusy}
+							class="flex flex-1 items-center justify-center gap-1 rounded border border-red-900 px-2 py-1 text-xs text-red-300 hover:bg-red-950 disabled:opacity-50"
+						>
+							<Icon name="trash" size={12} /> Revoke
+						</button>
+					</div>
+				{/if}
+			</div>
+		{/if}
+	</div>
+
 	<div class="relative" bind:this={exportRoot}>
 		<button
 			type="button"
@@ -391,6 +520,12 @@
 			<span class="flex items-center gap-1 text-green-400">
 				<Icon name="check" size={12} />
 				{saveMsg}
+			</span>
+		{:else if autosaveStatus === 'saving'}
+			<span class="text-neutral-500">Saving…</span>
+		{:else if autosaveStatus === 'saved'}
+			<span class="flex items-center gap-1 text-neutral-400">
+				<Icon name="check" size={12} /> Saved
 			</span>
 		{/if}
 	</div>

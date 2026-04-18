@@ -10,6 +10,7 @@
 	let error = $state<string | null>(null);
 	let loading = $state(true);
 	let copied = $state(false);
+	let dslCopied = $state(false);
 
 	$effect(() => {
 		const s = slug;
@@ -51,6 +52,17 @@
 			await navigator.clipboard.writeText(location.href);
 			copied = true;
 			setTimeout(() => (copied = false), 1500);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	async function copyDsl() {
+		if (!data) return;
+		try {
+			await navigator.clipboard.writeText(data.source);
+			dslCopied = true;
+			setTimeout(() => (dslCopied = false), 1500);
 		} catch {
 			/* ignore */
 		}
@@ -110,6 +122,15 @@
 				>
 					<Icon name={copied ? 'check' : 'link'} size={13} />
 					{copied ? 'Copied' : 'Copy link'}
+				</button>
+				<button
+					type="button"
+					onclick={copyDsl}
+					title="Copy DSL source"
+					class="flex items-center gap-1 rounded border border-neutral-800 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
+				>
+					<Icon name={dslCopied ? 'check' : 'copy'} size={13} />
+					{dslCopied ? 'Copied' : 'Copy DSL'}
 				</button>
 				<button
 					type="button"

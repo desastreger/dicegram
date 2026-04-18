@@ -40,8 +40,28 @@
 
 	const midpoint = $derived.by(() => {
 		if (waypoints.length === 0) return { x: sourceX, y: sourceY };
-		const mid = waypoints[Math.floor(waypoints.length / 2)];
-		return mid;
+		if (waypoints.length === 1) return waypoints[0];
+		let total = 0;
+		const seg: number[] = [];
+		for (let i = 0; i < waypoints.length - 1; i++) {
+			const d =
+				Math.abs(waypoints[i + 1].x - waypoints[i].x) +
+				Math.abs(waypoints[i + 1].y - waypoints[i].y);
+			seg.push(d);
+			total += d;
+		}
+		let target = total / 2;
+		for (let i = 0; i < seg.length; i++) {
+			if (target <= seg[i]) {
+				const t = seg[i] === 0 ? 0 : target / seg[i];
+				return {
+					x: waypoints[i].x + (waypoints[i + 1].x - waypoints[i].x) * t,
+					y: waypoints[i].y + (waypoints[i + 1].y - waypoints[i].y) * t
+				};
+			}
+			target -= seg[i];
+		}
+		return waypoints[waypoints.length - 1];
 	});
 
 	const labelFill = $derived(data?.labelFill ?? '#e5e7eb');

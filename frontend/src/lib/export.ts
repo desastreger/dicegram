@@ -98,7 +98,7 @@ GRAMMAR:
 - // line comments
 - step:N controls vertical (or horizontal) ordering — same step = parallel placement.
 
-CURRENT DIAGRAM:
+CURRENT DICEGRAM:
 \`\`\`
 {SOURCE}
 \`\`\`

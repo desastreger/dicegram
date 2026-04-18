@@ -144,7 +144,28 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
     positions = layout["positions"]
 
     if not positions:
-        return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>'
+        if parsed.errors:
+            first = parsed.errors[0]
+            msg = escape(f"line {first.line}: {first.message}")
+            extra = (
+                f" (+{len(parsed.errors) - 1} more)" if len(parsed.errors) > 1 else ""
+            )
+            return (
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 140" '
+                f'width="520" height="140" style="background:{th["bg"]}; '
+                'font-family: -apple-system, sans-serif">'
+                f'<rect x="0" y="0" width="520" height="140" fill="{th["bg"]}" />'
+                '<rect x="16" y="16" width="488" height="108" rx="8" '
+                f'fill="{th["node_fill"]}" stroke="#b45309" stroke-width="1.5" />'
+                f'<text x="32" y="52" fill="#f59e0b" font-size="14" font-weight="600">'
+                'Dicegram could not be rendered</text>'
+                f'<text x="32" y="80" fill="{th["node_text"]}" font-size="12">'
+                f'{msg}{extra}</text>'
+                f'<text x="32" y="104" fill="#94a3b8" font-size="11">'
+                'Fix the DSL and re-share to update the preview.</text>'
+                '</svg>'
+            )
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>'
 
     pad = 20
     xs = [p["x"] for p in positions.values()]
@@ -241,15 +262,39 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
         dash = {"dashed": "6 4", "dotted_line": "2 4"}.get(edge.kind, "")
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
         marker = ' marker-end="url(#arrow)"' if edge.kind in {"solid", "dashed", "thick"} else ""
+        # Orthogonal L-shape: never a diagonal. Pick the elbow on the long leg
+        # so the connector reads as a single bend.
+        dx = tx - sx
+        dy = ty - sy
+        if dx == 0 or dy == 0:
+            path_d = f"M {sx:.1f} {sy:.1f} L {tx:.1f} {ty:.1f}"
+        elif abs(dy) >= abs(dx):
+            my = sy + dy / 2
+            path_d = (
+                f"M {sx:.1f} {sy:.1f} L {sx:.1f} {my:.1f} "
+                f"L {tx:.1f} {my:.1f} L {tx:.1f} {ty:.1f}"
+            )
+        else:
+            mx = sx + dx / 2
+            path_d = (
+                f"M {sx:.1f} {sy:.1f} L {mx:.1f} {sy:.1f} "
+                f"L {mx:.1f} {ty:.1f} L {tx:.1f} {ty:.1f}"
+            )
         parts.append(
-            f'<line x1="{sx:.1f}" y1="{sy:.1f}" x2="{tx:.1f}" y2="{ty:.1f}" '
+            f'<path d="{path_d}" fill="none" '
             f'stroke="{th["edge"]}" stroke-width="{sw}"{dash_attr}{marker} />'
         )
         if edge.label:
-            mx, my = (sx + tx) / 2, (sy + ty) / 2
+            # Position the label on the elbow segment's midpoint.
+            if dx == 0 or dy == 0:
+                mx_lbl, my_lbl = (sx + tx) / 2, (sy + ty) / 2
+            elif abs(dy) >= abs(dx):
+                mx_lbl, my_lbl = (sx + tx) / 2, sy + dy / 2
+            else:
+                mx_lbl, my_lbl = sx + dx / 2, (sy + ty) / 2
             parts.append(
-                f'<rect x="{mx-30:.1f}" y="{my-9:.1f}" width="60" height="14" rx="3" fill="{th["edge_label_bg"]}" />'
-                f'<text x="{mx:.1f}" y="{my+3:.1f}" text-anchor="middle" font-size="11" '
+                f'<rect x="{mx_lbl-30:.1f}" y="{my_lbl-9:.1f}" width="60" height="14" rx="3" fill="{th["edge_label_bg"]}" />'
+                f'<text x="{mx_lbl:.1f}" y="{my_lbl+3:.1f}" text-anchor="middle" font-size="11" '
                 f'fill="{th["edge_label"]}">{escape(edge.label)}</text>'
             )
 

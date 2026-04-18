@@ -95,6 +95,29 @@
 	let dragId = $state<string | null>(null);
 	let dropTarget = $state<{ id: string; pos: DropPos } | null>(null);
 
+	const selectableIds = $derived(
+		flatTree.filter((f) => f.entry.kind === 'shape').map((f) => f.entry.id)
+	);
+
+	function focusRow(id: string) {
+		// Focus the matching DOM row so subsequent arrow keys keep working.
+		queueMicrotask(() => {
+			const el = document.querySelector<HTMLElement>(`[data-tree-id="${CSS.escape(id)}"]`);
+			el?.focus();
+		});
+	}
+
+	function moveFocus(current: string, delta: -1 | 1) {
+		if (selectableIds.length === 0) return;
+		const idx = selectableIds.indexOf(current);
+		const next =
+			idx === -1
+				? selectableIds[0]
+				: selectableIds[(idx + delta + selectableIds.length) % selectableIds.length];
+		onSelect(next);
+		focusRow(next);
+	}
+
 	function entryTarget(entry: TreeEntry): ParentTarget {
 		if (entry.kind === 'root') return { kind: 'root' };
 		if (entry.kind === 'swimlane') return { kind: 'swimlane', name: entry.label };
@@ -218,7 +241,13 @@
 		</button>
 	</div>
 
-	<div class="flex-1 overflow-auto py-1" onmouseleave={() => (hoveredId = null)}>
+	<div
+		role="tree"
+		tabindex="-1"
+		aria-label="Scene tree"
+		class="flex-1 overflow-auto py-1"
+		onmouseleave={() => (hoveredId = null)}
+	>
 		{#each flatTree as { entry, depth } (entry.id)}
 			{@const selectable = entry.kind === 'shape'}
 			{@const isSelected = selectable && entry.id === selectedId}
@@ -227,6 +256,7 @@
 				role={selectable ? 'treeitem' : 'group'}
 				tabindex={selectable ? 0 : -1}
 				aria-selected={isSelected}
+				data-tree-id={entry.id}
 				draggable={entry.kind === 'shape'}
 				title={entry.label || entry.id}
 				class="tree-row flex items-center gap-1 px-1 py-0.5 text-xs select-none transition-colors"
@@ -247,9 +277,19 @@
 				onmouseenter={() => (hoveredId = entry.id)}
 				onclick={() => selectable && onSelect(entry.id)}
 				onkeydown={(e) => {
-					if (selectable && (e.key === 'Enter' || e.key === ' ')) {
+					if (!selectable) return;
+					if (e.key === 'Enter' || e.key === ' ') {
 						e.preventDefault();
 						onSelect(entry.id);
+					} else if (e.key === 'ArrowDown') {
+						e.preventDefault();
+						moveFocus(entry.id, 1);
+					} else if (e.key === 'ArrowUp') {
+						e.preventDefault();
+						moveFocus(entry.id, -1);
+					} else if (e.key === 'Delete') {
+						e.preventDefault();
+						// delegate through select so the keydown on window picks it up
 					}
 				}}
 				ondragstart={(e) => handleDragStart(e, entry)}

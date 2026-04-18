@@ -61,6 +61,16 @@ def compute_layout(parsed: Parsed) -> dict:
     direction = parsed.direction
     nodes = parsed.nodes
 
+    # Nodes marked type:end without an explicit step land alongside type:start
+    # at step 0. Shift them past the last explicit step so they render as the
+    # final row / column.
+    explicit_steps = [n.step for n in nodes if n.step_explicit]
+    if explicit_steps:
+        end_step = max(explicit_steps) + 1
+        for n in nodes:
+            if not n.step_explicit and n.attrs.get("type") == "end":
+                n.step = end_step
+
     lane_order: list[str] = [sl.name for sl in parsed.swimlanes]
     if not lane_order:
         lane_order = [""]

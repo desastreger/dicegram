@@ -125,4 +125,4 @@ export const TEMPLATES: DicegramTemplate[] = [
 	}
 ];
 
-export const DEFAULT_TEMPLATE_ID = 'meta';
+export const DEFAULT_TEMPLATE_ID = 'flowchart';

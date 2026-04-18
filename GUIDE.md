@@ -1,16 +1,47 @@
-# Diagram Editor — Complete Guide
+# Dicegram — Complete Guide
+
+> **Note.** The product is now **Dicegram**, a web app (SvelteKit + FastAPI).
+> The DSL grammar documented here is shared between the current web app and the
+> archived desktop PySide6 version (preserved on tag `v3.0-desktop-final` /
+> branch `archive/pyside-desktop`). Where the two diverge the web app is
+> authoritative — see [README.md](README.md) for web-app usage, dev runner,
+> keybindings, and feature list; see [CHANGELOG.md](CHANGELOG.md) for history.
+>
+> Sections below that mention specific UI ("Select mode", "Draw palette",
+> "`DiagramEditor.bat`", PyInstaller builds) are desktop-only and kept for
+> reference until the desktop app is removed.
 
 ## Overview
 
-Diagram Editor is a desktop application for creating diagrams by writing code. It follows a **bidirectional editing** model: you write code in the editor and see the diagram update live, but you can also drag nodes in the preview and the code updates automatically. Think of it as Mermaid meets Visio — the precision of code with the interactivity of a visual editor.
+Dicegram turns plain-text DSL into live architecture diagrams. You write code
+in the editor and see the diagram update; you can also drag shapes on the
+canvas and the DSL rewrites surgically to match. Code, canvas, inspector, and
+scene tree are four windows into the same source file — edits on one surface
+propagate to the others. Think of it as Mermaid meets Visio — the precision of
+code with the interactivity of a visual editor.
 
-**Stack:** Python 3.10+, PySide6 (Qt), fpdf2  
-**Architecture:** Single file (`diagram_app.py`, ~4000 lines)  
-**Platforms:** Windows (tested), macOS/Linux (PySide6 is cross-platform)
+**Web stack:** FastAPI + SQLModel + SQLite; SvelteKit 2 + Svelte 5 + Tailwind
+v4 + Svelte Flow + CodeMirror 6.  
+**Desktop stack (archived):** Python 3.10+, PySide6 (Qt), fpdf2 — single file
+`diagram_app.py`.
 
 ---
 
 ## Quick Start
+
+### Web app (current)
+
+Double-click `reset-dev.bat` at the repo root — it hard-resets any running
+dev servers, starts the FastAPI backend on `:8000` and the SvelteKit frontend
+on `:5173`, then opens http://localhost:5173 in your browser. First time
+through, run `start-dev.bat` once instead to create the Python venv and
+`npm install` the frontend deps. See [README.md](README.md) for a manual
+two-terminal setup and the full feature list.
+
+### Desktop app (archived)
+
+The sections below document the desktop version preserved on tag
+`v3.0-desktop-final` / branch `archive/pyside-desktop`:
 
 ### From Source
 ```bash

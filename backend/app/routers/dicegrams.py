@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from sqlmodel import Session, select
 
 from ..db import get_session
@@ -9,6 +9,12 @@ from ..deps import current_user
 from ..models import Dicegram, User
 
 router = APIRouter(prefix="/api/dicegrams", tags=["dicegrams"])
+
+
+def _as_utc_iso(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 class DicegramIn(BaseModel):
@@ -22,6 +28,10 @@ class DicegramOut(BaseModel):
     source: str
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def _ser_dt(self, v: datetime) -> str:
+        return _as_utc_iso(v)
 
 
 def _to_out(d: Dicegram) -> DicegramOut:

@@ -46,6 +46,7 @@ class Node:
     attrs: dict = field(default_factory=dict)
     style: dict = field(default_factory=dict)
     position: tuple[float, float] | None = None
+    step_explicit: bool = True
 
 
 @dataclass
@@ -162,6 +163,7 @@ def _parse_object(line: str, swimlane: str | None, box: str | None) -> Node | No
     name = m.group(2)
     label = m.group(3).replace("\\n", "\n")
     attrs, style, position = _split_attrs(m.group(4))
+    step_explicit = "step" in attrs
     step_raw = attrs.pop("step", "0")
     try:
         step = int(step_raw)
@@ -177,6 +179,7 @@ def _parse_object(line: str, swimlane: str | None, box: str | None) -> Node | No
         attrs=attrs,
         style=style,
         position=position,
+        step_explicit=step_explicit,
     )
 
 

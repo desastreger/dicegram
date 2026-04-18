@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { auth } from '$lib/auth.svelte';
 	import { dicegrams, type Dicegram } from '$lib/dicegrams';
 	import { api } from '$lib/api';
@@ -14,7 +15,10 @@
 	let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 	$effect(() => {
-		if (!auth.loading && !auth.user) goto('/login');
+		if (!auth.loading && !auth.user) {
+			const here = page.url.pathname + page.url.search;
+			goto(`/login?next=${encodeURIComponent(here)}`);
+		}
 	});
 
 	$effect(() => {

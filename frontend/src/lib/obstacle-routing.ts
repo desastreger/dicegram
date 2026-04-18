@@ -60,6 +60,21 @@ function segmentCrossesRect(a: Point, b: Point, r: Rect): boolean {
  * obstacles, using A* on a coarse grid. Returns world coords; empty array
  * means no improvement over a straight line.
  */
+function orthogonalL(start: Point, end: Point): Point[] {
+	// Always return an L-shape with elbow at midpoint. Degenerates to a
+	// straight line when already aligned. Vertical-first when dy dominates,
+	// else horizontal-first — keeps the elbow on the long leg.
+	const dx = end.x - start.x;
+	const dy = end.y - start.y;
+	if (dx === 0 || dy === 0) return [start, end];
+	if (Math.abs(dy) >= Math.abs(dx)) {
+		const my = start.y + dy / 2;
+		return [start, { x: start.x, y: my }, { x: end.x, y: my }, end];
+	}
+	const mx = start.x + dx / 2;
+	return [start, { x: mx, y: start.y }, { x: mx, y: end.y }, end];
+}
+
 export function routeAround(
 	start: Point,
 	end: Point,
@@ -67,7 +82,7 @@ export function routeAround(
 	cellSize = 20,
 	padding = 8
 ): Point[] {
-	if (obstacles.length === 0) return [start, end];
+	if (obstacles.length === 0) return orthogonalL(start, end);
 
 	// Bounding box of everything + margin.
 	const xs: number[] = [start.x, end.x];
@@ -115,16 +130,19 @@ export function routeAround(
 	blocked.delete(gridKey(s));
 	blocked.delete(gridKey(t));
 
-	// Direct straight shot first.
-	const straight: Point[] = [start, end];
-	let clear = true;
-	for (const o of obstacles) {
-		if (segmentCrossesRect(straight[0], straight[1], o)) {
-			clear = false;
-			break;
+	// No diagonals allowed — try an orthogonal L first. If none of its
+	// H/V segments cross any obstacle, take it.
+	const lShape = orthogonalL(start, end);
+	let lClear = true;
+	for (let i = 0; i < lShape.length - 1 && lClear; i++) {
+		for (const o of obstacles) {
+			if (segmentCrossesRect(lShape[i], lShape[i + 1], o)) {
+				lClear = false;
+				break;
+			}
 		}
 	}
-	if (clear) return straight;
+	if (lClear) return lShape;
 
 	// A* (Manhattan).
 	type Open = { c: Point; f: number; g: number };
@@ -176,32 +194,13 @@ export function routeAround(
 	return [start, end];
 }
 
-/** Render an orthogonal polyline as an SVG path with rounded corners. */
-export function polylineToPath(points: Point[], radius = 8): string {
+/** Render an orthogonal polyline as a pure-rectilinear SVG path. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function polylineToPath(points: Point[], _radius = 0): string {
 	if (points.length < 2) return '';
-	if (points.length === 2) {
-		return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+	const parts: string[] = [`M ${points[0].x} ${points[0].y}`];
+	for (let i = 1; i < points.length; i++) {
+		parts.push(`L ${points[i].x} ${points[i].y}`);
 	}
-	const out: string[] = [`M ${points[0].x} ${points[0].y}`];
-	for (let i = 1; i < points.length - 1; i++) {
-		const prev = points[i - 1];
-		const cur = points[i];
-		const next = points[i + 1];
-		const dx1 = cur.x - prev.x;
-		const dy1 = cur.y - prev.y;
-		const len1 = Math.abs(dx1) + Math.abs(dy1);
-		const dx2 = next.x - cur.x;
-		const dy2 = next.y - cur.y;
-		const len2 = Math.abs(dx2) + Math.abs(dy2);
-		const r = Math.min(radius, len1 / 2, len2 / 2);
-		const ax = cur.x - Math.sign(dx1) * r;
-		const ay = cur.y - Math.sign(dy1) * r;
-		const bx = cur.x + Math.sign(dx2) * r;
-		const by = cur.y + Math.sign(dy2) * r;
-		out.push(`L ${ax} ${ay}`);
-		out.push(`Q ${cur.x} ${cur.y} ${bx} ${by}`);
-	}
-	const last = points[points.length - 1];
-	out.push(`L ${last.x} ${last.y}`);
-	return out.join(' ');
+	return parts.join(' ');
 }

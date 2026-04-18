@@ -268,6 +268,7 @@ export function addNode(
 		step?: number;
 		swimlane?: string | null;
 		attrs?: Record<string, string>;
+		position?: { x: number; y: number } | null;
 	}
 ): string {
 	const label = opts.label ?? opts.name.charAt(0).toUpperCase() + opts.name.slice(1);
@@ -281,7 +282,9 @@ export function addNode(
 		label,
 		attrs,
 		style: {},
-		position: null
+		position: opts.position
+			? { x: Math.round(opts.position.x), y: Math.round(opts.position.y) }
+			: null
 	};
 	const newLine = serializeNodeLine(parts);
 
@@ -493,4 +496,294 @@ export function moveNodeBefore(source: string, moveId: string, anchorId: string)
 
 export function moveNodeAfter(source: string, moveId: string, anchorId: string): string {
 	return moveRelative(source, moveId, anchorId, true);
+}
+
+// --- edge editing ------------------------------------------------------------
+
+// Capture: 1=indent 2=src 3=sym 4=dst 5=optional ": \"label\"" tail
+const EDGE_LINE_RE =
+	/^(\s*)(\w+)\s+(->|-->|==>|---|-\.-)\s+(\w+)(\s*:\s*"((?:[^"\\]|\\.)*)")?\s*$/;
+
+export const EDGE_KIND_SYM: Record<string, string> = {
+	solid: '->',
+	dashed: '-->',
+	thick: '==>',
+	solid_line: '---',
+	dotted_line: '-.-'
+};
+export const EDGE_SYM_KIND: Record<string, string> = {
+	'->': 'solid',
+	'-->': 'dashed',
+	'==>': 'thick',
+	'---': 'solid_line',
+	'-.-': 'dotted_line'
+};
+
+function findEdgeLineIndexByOrdinal(source: string, ordinal: number): number {
+	const lines = source.split('\n');
+	let seen = 0;
+	for (let i = 0; i < lines.length; i++) {
+		if (EDGE_LINE_RE.test(lines[i])) {
+			if (seen === ordinal) return i;
+			seen += 1;
+		}
+	}
+	return -1;
+}
+
+function modifyEdgeLine(
+	source: string,
+	ordinal: number,
+	modify: (match: RegExpMatchArray) => string | null
+): string {
+	const idx = findEdgeLineIndexByOrdinal(source, ordinal);
+	if (idx < 0) return source;
+	const lines = source.split('\n');
+	const m = lines[idx].match(EDGE_LINE_RE);
+	if (!m) return source;
+	const out = modify(m);
+	if (out === null) {
+		lines.splice(idx, 1);
+	} else {
+		lines[idx] = out;
+	}
+	return lines.join('\n');
+}
+
+function rebuildEdgeLine(
+	indent: string,
+	src: string,
+	sym: string,
+	dst: string,
+	label: string | null
+): string {
+	let line = `${indent}${src} ${sym} ${dst}`;
+	if (label && label.length > 0) {
+		const escaped = label.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+		line += ` : "${escaped}"`;
+	}
+	return line;
+}
+
+export function setEdgeLabel(source: string, ordinal: number, label: string): string {
+	return modifyEdgeLine(source, ordinal, (m) =>
+		rebuildEdgeLine(m[1], m[2], m[3], m[4], label)
+	);
+}
+
+export function setEdgeKind(source: string, ordinal: number, kind: string): string {
+	const sym = EDGE_KIND_SYM[kind];
+	if (!sym) return source;
+	return modifyEdgeLine(source, ordinal, (m) =>
+		rebuildEdgeLine(m[1], m[2], sym, m[4], m[6] ?? null)
+	);
+}
+
+export function removeEdge(source: string, ordinal: number): string {
+	return modifyEdgeLine(source, ordinal, () => null);
+}
+
+// --- swimlane / box / group / note editing ----------------------------------
+
+const SWIMLANE_OPEN_RE = /^(\s*)swimlane\s+"([^"]+)"\s*\{\s*$/;
+// Captures: 1=indent 2=label 3=optional-style-block-contents (inside {})
+const BOX_OPEN_RE = /^(\s*)box\s+"([^"]+)"\s*(?:\{([^{}]*)\})?\s*\{\s*$/;
+const GROUP_LINE_RE = /^(\s*)group\s+"([^"]+)"\s*\{(.*)\}\s*$/;
+const NOTE_LINE_RE = /^(\s*)note\s+"((?:[^"\\]|\\.)*)"\s+\[(\w+)\]\s*$/;
+
+function findSwimlaneHeaderIndex(source: string, name: string): number {
+	const lines = source.split('\n');
+	for (let i = 0; i < lines.length; i++) {
+		const m = lines[i].match(SWIMLANE_OPEN_RE);
+		if (m && m[2] === name) return i;
+	}
+	return -1;
+}
+
+function findMatchingCloseAt(lines: string[], openIdx: number): number {
+	let depth = 1;
+	for (let i = openIdx + 1; i < lines.length; i++) {
+		const t = lines[i].trim();
+		if (t === '}') {
+			depth -= 1;
+			if (depth === 0) return i;
+		} else if (t.endsWith('{')) {
+			depth += 1;
+		}
+	}
+	return -1;
+}
+
+export function setSwimlaneName(source: string, oldName: string, newName: string): string {
+	const trimmed = newName.trim();
+	if (!trimmed || trimmed === oldName) return source;
+	const lines = source.split('\n');
+	const idx = findSwimlaneHeaderIndex(source, oldName);
+	if (idx < 0) return source;
+	const m = lines[idx].match(SWIMLANE_OPEN_RE);
+	if (!m) return source;
+	lines[idx] = `${m[1]}swimlane "${trimmed}" {`;
+	return lines.join('\n');
+}
+
+export function removeSwimlane(source: string, name: string): string {
+	const lines = source.split('\n');
+	const open = findSwimlaneHeaderIndex(source, name);
+	if (open < 0) return source;
+	const close = findMatchingCloseAt(lines, open);
+	if (close < 0) return source;
+	lines.splice(open, close - open + 1);
+	return lines.join('\n');
+}
+
+function findBoxHeaderIndex(source: string, label: string, swimlane: string | null): number {
+	const lines = source.split('\n');
+	if (swimlane === null) {
+		for (let i = 0; i < lines.length; i++) {
+			const m = lines[i].match(BOX_OPEN_RE);
+			if (m && m[2] === label) return i;
+		}
+		return -1;
+	}
+	const sl = findSwimlaneHeaderIndex(source, swimlane);
+	if (sl < 0) return -1;
+	const slClose = findMatchingCloseAt(lines, sl);
+	for (let i = sl + 1; i < (slClose < 0 ? lines.length : slClose); i++) {
+		const m = lines[i].match(BOX_OPEN_RE);
+		if (m && m[2] === label) return i;
+	}
+	return -1;
+}
+
+export function setBoxLabel(
+	source: string,
+	oldLabel: string,
+	newLabel: string,
+	swimlane: string | null
+): string {
+	const trimmed = newLabel.trim();
+	if (!trimmed || trimmed === oldLabel) return source;
+	const lines = source.split('\n');
+	const idx = findBoxHeaderIndex(source, oldLabel, swimlane);
+	if (idx < 0) return source;
+	const m = lines[idx].match(BOX_OPEN_RE);
+	if (!m) return source;
+	const styleBlock = m[3] ? ` {${m[3]}}` : '';
+	lines[idx] = `${m[1]}box "${trimmed}"${styleBlock} {`;
+	return lines.join('\n');
+}
+
+export function setBoxStyle(
+	source: string,
+	label: string,
+	swimlane: string | null,
+	key: 'fill' | 'stroke' | 'text',
+	value: string
+): string {
+	const lines = source.split('\n');
+	const idx = findBoxHeaderIndex(source, label, swimlane);
+	if (idx < 0) return source;
+	const m = lines[idx].match(BOX_OPEN_RE);
+	if (!m) return source;
+	const style: Record<string, string> = {};
+	if (m[3]) {
+		for (const pair of m[3].split(',')) {
+			const eq = pair.indexOf(':');
+			if (eq < 0) continue;
+			const k = pair.slice(0, eq).trim();
+			const v = pair.slice(eq + 1).trim();
+			if (k) style[k] = v;
+		}
+	}
+	if (value.trim() === '') delete style[key];
+	else style[key] = value;
+	const keys = Object.keys(style);
+	const styleBlock = keys.length > 0 ? ` {${keys.map((k) => `${k}: ${style[k]}`).join(', ')}}` : '';
+	lines[idx] = `${m[1]}box "${m[2]}"${styleBlock} {`;
+	return lines.join('\n');
+}
+
+export function removeBox(source: string, label: string, swimlane: string | null): string {
+	const lines = source.split('\n');
+	const open = findBoxHeaderIndex(source, label, swimlane);
+	if (open < 0) return source;
+	const close = findMatchingCloseAt(lines, open);
+	if (close < 0) return source;
+	lines.splice(open, close - open + 1);
+	return lines.join('\n');
+}
+
+function findGroupLineIndex(source: string, name: string): number {
+	const lines = source.split('\n');
+	for (let i = 0; i < lines.length; i++) {
+		const m = lines[i].match(GROUP_LINE_RE);
+		if (m && m[2] === name) return i;
+	}
+	return -1;
+}
+
+export function setGroupName(source: string, oldName: string, newName: string): string {
+	const trimmed = newName.trim();
+	if (!trimmed || trimmed === oldName) return source;
+	const lines = source.split('\n');
+	const idx = findGroupLineIndex(source, oldName);
+	if (idx < 0) return source;
+	const m = lines[idx].match(GROUP_LINE_RE);
+	if (!m) return source;
+	lines[idx] = `${m[1]}group "${trimmed}" {${m[3]}}`;
+	return lines.join('\n');
+}
+
+export function removeGroup(source: string, name: string): string {
+	const lines = source.split('\n');
+	const idx = findGroupLineIndex(source, name);
+	if (idx < 0) return source;
+	lines.splice(idx, 1);
+	return lines.join('\n');
+}
+
+function findNoteLineIndexByOrdinal(source: string, ordinal: number): number {
+	const lines = source.split('\n');
+	let seen = 0;
+	for (let i = 0; i < lines.length; i++) {
+		if (NOTE_LINE_RE.test(lines[i])) {
+			if (seen === ordinal) return i;
+			seen += 1;
+		}
+	}
+	return -1;
+}
+
+function escapeDslString(s: string): string {
+	return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+}
+
+export function setNoteText(source: string, ordinal: number, text: string): string {
+	const lines = source.split('\n');
+	const idx = findNoteLineIndexByOrdinal(source, ordinal);
+	if (idx < 0) return source;
+	const m = lines[idx].match(NOTE_LINE_RE);
+	if (!m) return source;
+	lines[idx] = `${m[1]}note "${escapeDslString(text)}" [${m[3]}]`;
+	return lines.join('\n');
+}
+
+export function setNoteTarget(source: string, ordinal: number, target: string): string {
+	const t = target.trim();
+	if (!/^\w+$/.test(t)) return source;
+	const lines = source.split('\n');
+	const idx = findNoteLineIndexByOrdinal(source, ordinal);
+	if (idx < 0) return source;
+	const m = lines[idx].match(NOTE_LINE_RE);
+	if (!m) return source;
+	lines[idx] = `${m[1]}note "${m[2]}" [${t}]`;
+	return lines.join('\n');
+}
+
+export function removeNote(source: string, ordinal: number): string {
+	const idx = findNoteLineIndexByOrdinal(source, ordinal);
+	if (idx < 0) return source;
+	const lines = source.split('\n');
+	lines.splice(idx, 1);
+	return lines.join('\n');
 }

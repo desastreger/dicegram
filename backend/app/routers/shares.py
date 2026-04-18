@@ -1,8 +1,8 @@
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from sqlmodel import Session, select
 
 from ..db import get_session
@@ -14,15 +14,29 @@ from ..models import Dicegram, Share, User
 router = APIRouter(tags=["shares"])
 
 
+def _as_utc_iso(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 class ShareOut(BaseModel):
     slug: str
     created_at: datetime
+
+    @field_serializer("created_at")
+    def _ser_dt(self, v: datetime) -> str:
+        return _as_utc_iso(v)
 
 
 class PublicDicegram(BaseModel):
     name: str
     source: str
     updated_at: datetime
+
+    @field_serializer("updated_at")
+    def _ser_dt(self, v: datetime) -> str:
+        return _as_utc_iso(v)
 
 
 def _new_slug(session: Session) -> str:

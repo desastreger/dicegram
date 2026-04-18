@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { ApiError } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
 
@@ -8,8 +9,14 @@
 	let error = $state<string | null>(null);
 	let submitting = $state(false);
 
+	function nextTarget(): string {
+		const raw = page.url.searchParams.get('next');
+		if (raw && raw.startsWith('/') && !raw.startsWith('//')) return raw;
+		return '/editor';
+	}
+
 	$effect(() => {
-		if (!auth.loading && auth.user) goto('/editor');
+		if (!auth.loading && auth.user) goto(nextTarget());
 	});
 
 	async function submit(e: Event) {
@@ -18,7 +25,7 @@
 		submitting = true;
 		try {
 			await auth.login(email, password);
-			await goto('/editor');
+			await goto(nextTarget());
 		} catch (err) {
 			error = err instanceof ApiError ? err.message : 'login failed';
 		} finally {
