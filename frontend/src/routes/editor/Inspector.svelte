@@ -157,7 +157,7 @@
     for (const lane of result.lanes) {
       opts.push({
         key: `s:${lane.name}`,
-        label: `Swimlane: ${lane.name}`,
+        label: `▦ ${lane.name}`,
         target: { kind: 'swimlane', name: lane.name }
       });
     }
@@ -165,7 +165,7 @@
       const prefix = box.swimlane ? `${box.swimlane} › ` : '';
       opts.push({
         key: `b:${box.swimlane ?? ''}::${box.label}`,
-        label: `Box: ${prefix}${box.label}`,
+        label: `▢ ${prefix}${box.label}`,
         target: { kind: 'box', label: box.label, swimlane: box.swimlane }
       });
     }
@@ -281,13 +281,23 @@
     source = removeNodeStyle(source, selected.id, key);
   }
 
+  let confirmDelete = $state(false);
+  let confirmDeleteTimer: ReturnType<typeof setTimeout> | null = null;
+
   function handleDelete() {
     if (!selected) return;
-    const ok = window.confirm(`Delete node "${selected.id}"?`);
-    if (!ok) return;
+    if (!confirmDelete) {
+      confirmDelete = true;
+      if (confirmDeleteTimer) clearTimeout(confirmDeleteTimer);
+      confirmDeleteTimer = setTimeout(() => {
+        confirmDelete = false;
+      }, 3000);
+      return;
+    }
+    if (confirmDeleteTimer) clearTimeout(confirmDeleteTimer);
+    confirmDelete = false;
     source = removeNode(source, selected.id);
     onSelectionChange(null);
-    onClose();
   }
 
   function onTextKey(e: KeyboardEvent, commit: () => void) {
@@ -301,7 +311,7 @@
 
 {#if open}
   <aside
-    class="fixed top-[var(--header-h)] right-0 bottom-0 z-40 w-[300px] overflow-y-auto border-l border-neutral-800 bg-neutral-950 text-xs text-neutral-100"
+    class="fixed top-[var(--header-h)] right-0 bottom-0 z-40 w-[340px] overflow-y-auto border-l border-neutral-800 bg-neutral-950 text-xs text-neutral-100"
   >
     <header
       class="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-800 bg-neutral-950 px-3 py-2"
@@ -650,7 +660,8 @@
         class="mt-4 mx-3 mb-4 flex w-[calc(100%-1.5rem)] items-center justify-center gap-1.5 rounded border border-red-900 bg-red-950 px-2 py-1.5 text-xs text-red-300 hover:bg-red-900"
         onclick={handleDelete}
       >
-        <Icon name="trash" size={13} /> Delete node
+        <Icon name="trash" size={13} />
+        {confirmDelete ? 'Click again to confirm' : 'Delete node'}
       </button>
     {/if}
   </aside>

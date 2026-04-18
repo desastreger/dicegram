@@ -7,7 +7,9 @@
 		addEdge,
 		findNodeLineIndex,
 		getSetting,
+		moveNodeAfter,
 		moveNodeAmongSiblings,
+		moveNodeBefore,
 		removeNode,
 		reparentNode,
 		setNodePosition,
@@ -25,33 +27,46 @@
 	import Icon from '$lib/Icon.svelte';
 
 	const DEFAULT_SOURCE = `direction top-to-bottom
+setting color_scheme gruvbox
 
-swimlane "Product" {
-	[circle] start "Start" step:0 type:start
-	[rounded] gather "Gather\\nRequirements" step:1 type:process owner:"alice" status:active
-	[diamond] approve "Approved?" step:2 type:decision priority:high
+// A meta-Dicegram: the loop we use to build Dicegram itself.
+
+swimlane "User" {
+	[circle] spark "Spark" step:0 type:start
+	[rounded] ask "Describe\\nthe feature" step:1 type:process owner:"you" status:active
+	[diamond] happy "Happy?" step:8 type:decision priority:high
 }
 
-swimlane "Engineering" {
-	box "Backend" {fill: rgba(56, 70, 95, 0.25)} {
-		[rect] design "System Design" step:3 type:process owner:"charlie"
-		[rect] build "Implementation" step:4 type:automated status:active
-		[hexagon] test "Run Tests" step:5 type:automated priority:critical
-		[cylinder] db "Results DB" step:5 type:datastore
+swimlane "Claude" {
+	box "Think" {fill: rgba(56, 70, 95, 0.25)} {
+		[rect] plan "Draft a plan" step:2 type:process
+		[rect] scope "Scope & trade-offs" step:3 type:process
 	}
-	[circle] done "Done" step:6 type:end
+	box "Make" {fill: rgba(40, 70, 56, 0.25)} {
+		[rect] edit "Edit code" step:4 type:automated status:active
+		[hexagon] check "Typecheck + run" step:5 type:automated priority:critical
+	}
 }
 
-start -> gather
-gather -> approve
-approve -> design : "yes"
-design -> build
-build ==> test : "critical"
-test -> done
-test --> db : "persist"
+swimlane "Repo" {
+	[cylinder] dsl "Canonical DSL" step:6 type:datastore
+	[rect] commit "Commit & push" step:7 type:automated
+	[circle] ship "Shipped" step:9 type:end
+}
 
-note "Tracks SLA: 48h" [gather]
-group "core path" { design build test }
+spark -> ask
+ask -> plan : "prompt"
+plan -> scope
+scope -> edit
+edit ==> check : "verify"
+check -> dsl : "writes"
+dsl -> commit
+commit -> happy : "review"
+happy -> ask : "redirect"
+happy -> ship : "yes"
+
+note "The DSL is the\\nsource of truth" [dsl]
+group "inner loop" { plan scope edit check }
 `;
 
 	let source = $state(DEFAULT_SOURCE);
@@ -159,6 +174,14 @@ group "core path" { design build test }
 
 	function handleSiblingMove(id: string, direction: -1 | 1) {
 		source = moveNodeAmongSiblings(source, id, direction);
+	}
+
+	function handleDropBefore(moveId: string, anchorId: string) {
+		source = moveNodeBefore(source, moveId, anchorId);
+	}
+
+	function handleDropAfter(moveId: string, anchorId: string) {
+		source = moveNodeAfter(source, moveId, anchorId);
 	}
 
 	function isEditableTarget(target: EventTarget | null): boolean {
@@ -289,37 +312,35 @@ group "core path" { design build test }
 				selectedId={selectedNodeId}
 				onSelect={handleTreeSelect}
 				onSiblingMove={handleSiblingMove}
+				onReparent={handleReparent}
+				onDropBefore={handleDropBefore}
+				onDropAfter={handleDropAfter}
 				onClose={() => (treeOpen = false)}
 			/>
 		{/if}
 		<section
-			class="flex flex-col border-r"
+			class="relative flex flex-col border-r"
 			style:background-color={theme.codeBg}
 			style:border-color={theme.panelBorder}
 		>
-			<div
-				class="flex items-center justify-between border-b px-4 py-2 text-[11px] uppercase tracking-wide"
-				style:border-color={theme.panelBorder}
-				style:color={theme.muted}
-			>
-				<span>DSL Source</span>
-				{#if result?.errors?.length}
-					<span class="text-red-400">
-						line {result.errors[0].line}:{result.errors[0].column}: {result.errors[0]
-							.message}
-					</span>
-				{/if}
-			</div>
 			<CodeEditor
 				bind:value={source}
 				{theme}
 				{revealLine}
 				onNodeClick={handleNodeSelect}
 			/>
+			{#if result?.errors?.length}
+				<div
+					class="pointer-events-none absolute bottom-2 left-2 right-2 rounded border border-red-900 bg-red-950/85 px-2 py-1 text-[11px] text-red-200 shadow"
+				>
+					line {result.errors[0].line}:{result.errors[0].column}:
+					{result.errors[0].message}
+				</div>
+			{/if}
 		</section>
 		<section
 			class="relative min-w-0 transition-[padding-right]"
-			style:padding-right={rightPaneOpen ? '300px' : '0'}
+			style:padding-right={rightPaneOpen ? '340px' : '0'}
 			style:background-color={theme.canvas}
 		>
 			<Canvas

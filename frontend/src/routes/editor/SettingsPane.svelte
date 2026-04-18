@@ -107,7 +107,7 @@
 
 {#if open}
 	<aside
-		class="fixed top-[var(--header-h)] right-0 bottom-0 z-40 w-[300px] overflow-y-auto border-l border-neutral-800 bg-neutral-950 text-xs"
+		class="fixed top-[var(--header-h)] right-0 bottom-0 z-40 w-[340px] overflow-y-auto border-l border-neutral-800 bg-neutral-950 text-xs"
 	>
 		<div
 			class="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-800 bg-neutral-950 px-3 py-2"

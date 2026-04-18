@@ -462,3 +462,29 @@ export function moveNodeAmongSiblings(source: string, id: string, direction: -1 
 	}
 	return source;
 }
+
+function moveRelative(source: string, moveId: string, anchorId: string, after: boolean): string {
+	if (moveId === anchorId) return source;
+	const lines = source.split('\n');
+	const moveIdx = findNodeLineIndex(source, moveId);
+	const anchorIdx = findNodeLineIndex(source, anchorId);
+	if (moveIdx < 0 || anchorIdx < 0 || moveIdx === anchorIdx) return source;
+
+	const moveParts = parseNodeLine(lines[moveIdx]);
+	if (!moveParts) return source;
+	const anchorIndent = lines[anchorIdx].match(/^\s*/)![0];
+	const reindented = serializeNodeLine({ ...moveParts, indent: anchorIndent });
+
+	lines.splice(moveIdx, 1);
+	const adjusted = anchorIdx > moveIdx ? anchorIdx - 1 : anchorIdx;
+	lines.splice(after ? adjusted + 1 : adjusted, 0, reindented);
+	return lines.join('\n');
+}
+
+export function moveNodeBefore(source: string, moveId: string, anchorId: string): string {
+	return moveRelative(source, moveId, anchorId, false);
+}
+
+export function moveNodeAfter(source: string, moveId: string, anchorId: string): string {
+	return moveRelative(source, moveId, anchorId, true);
+}

@@ -108,10 +108,14 @@
 	}
 
 	function promptSwimlane() {
-		const laneName = window.prompt('Swimlane name');
-		if (laneName && laneName.trim()) {
-			source = addSwimlane(source, laneName.trim());
+		const existing = new Set((result?.lanes ?? []).map((l) => l.name));
+		let n = 1;
+		let name = `Swimlane ${n}`;
+		while (existing.has(name)) {
+			n += 1;
+			name = `Swimlane ${n}`;
 		}
+		source = addSwimlane(source, name);
 	}
 
 	function pickDirection(dir: string) {

@@ -1,5 +1,5 @@
 @echo off
-REM Diagram Editor — local dev launcher
+REM Dicegram — local dev launcher
 REM Opens two terminal windows (backend + frontend) and the browser.
 
 cd /d "%~dp0"
@@ -24,10 +24,10 @@ if not exist "frontend\node_modules" (
 )
 
 echo [run] Starting backend on http://localhost:8000 ...
-start "Diagram API (backend :8000)" cmd /k "cd /d %~dp0backend && .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000"
+start "Dicegram API (backend :8000)" cmd /k "cd /d %~dp0backend && .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000"
 
 echo [run] Starting frontend on http://localhost:5173 ...
-start "Diagram UI (frontend :5173)" cmd /k "cd /d %~dp0frontend && npm run dev -- --port 5173"
+start "Dicegram UI (frontend :5173)" cmd /k "cd /d %~dp0frontend && npm run dev -- --port 5173"
 
 timeout /t 4 >nul
 start http://localhost:5173

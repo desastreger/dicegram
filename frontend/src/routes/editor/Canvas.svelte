@@ -15,8 +15,10 @@
 	import BoxNode from './BoxNode.svelte';
 	import GroupOverlay from './GroupOverlay.svelte';
 	import NoteNode from './NoteNode.svelte';
+	import SmartEdge from './SmartEdge.svelte';
 	import type { RenderResult, RenderNode } from '$lib/render';
 	import type { Theme } from '$lib/themes';
+	import type { Rect } from '$lib/obstacle-routing';
 
 	import type { ParentTarget } from '$lib/patch';
 
@@ -47,6 +49,10 @@
 		box: BoxNode,
 		group: GroupOverlay,
 		note: NoteNode
+	};
+
+	const edgeTypes = {
+		smart: SmartEdge
 	};
 
 	function edgeStyle(kind: string): { strokeDasharray?: string; strokeWidth: number } {
@@ -184,6 +190,21 @@
 
 		const nodeById = new Map(result.nodes.map((n) => [n.id, n]));
 
+		const shapeRects = new Map<string, Rect>(
+			result.nodes.map((n) => [n.id, { x: n.x, y: n.y, w: n.width, h: n.height }])
+		);
+		const boxRects: Array<Rect & { members: string[] }> = result.boxes
+			.filter(
+				(b) => b.x != null && b.y != null && b.width != null && b.height != null
+			)
+			.map((b) => ({
+				x: b.x as number,
+				y: b.y as number,
+				w: b.width as number,
+				h: b.height as number,
+				members: b.members
+			}));
+
 		const dataEdges: Edge[] = result.edges.map((e) => {
 			const s = nodeById.get(e.source);
 			const t = nodeById.get(e.target);
@@ -192,23 +213,29 @@
 			const { sourceHandle, targetHandle } = pickHandles(sx, sy, tx, ty);
 			const strokeOverride = e.attrs?.color;
 
+			const obstacles: Rect[] = [];
+			for (const [id, r] of shapeRects) {
+				if (id === e.source || id === e.target) continue;
+				obstacles.push({ x: r.x - 4, y: r.y - 4, w: r.w + 8, h: r.h + 8 });
+			}
+			for (const b of boxRects) {
+				if (b.members.includes(e.source) || b.members.includes(e.target)) continue;
+				obstacles.push({ x: b.x, y: b.y, w: b.w, h: b.h });
+			}
+
 			return {
 				id: e.id,
 				source: e.source,
 				target: e.target,
 				sourceHandle,
 				targetHandle,
-				type: 'smoothstep',
-				pathOptions: { borderRadius: 10, offset: 20 },
+				type: 'smart',
 				label: e.label || undefined,
 				style: styleFor(e.kind, strokeOverride),
 				markerEnd: hasArrow(e.kind)
 					? { type: MarkerType.ArrowClosed, color: strokeOverride || edgeColor }
 					: undefined,
-				labelStyle: `fill: ${theme.text}; font-size: 11px;`,
-				labelBgStyle: `fill: ${theme.panel};`,
-				labelBgPadding: [4, 2] as [number, number],
-				labelBgBorderRadius: 3
+				data: { obstacles, labelFill: theme.text, labelBg: theme.panel }
 			};
 		});
 

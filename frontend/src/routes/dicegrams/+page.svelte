@@ -81,19 +81,34 @@
 	}
 
 	async function duplicate(d: Dicegram) {
-		const suggested = `${d.name} (copy)`;
-		const name = window.prompt('Name for the duplicate', suggested);
-		if (!name) return;
+		const name = `${d.name} (copy)`;
 		try {
-			await dicegrams.create({ name: name.trim() || suggested, source: d.source });
+			const created = await dicegrams.create({ name, source: d.source });
 			await load();
+			startRename(created);
 		} catch (err) {
 			showToast(err instanceof Error ? err.message : 'duplicate failed');
 		}
 	}
 
+	let confirmDeleteId = $state<number | null>(null);
+	let confirmTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function armDelete(d: Dicegram) {
+		confirmDeleteId = d.id;
+		if (confirmTimer) clearTimeout(confirmTimer);
+		confirmTimer = setTimeout(() => {
+			confirmDeleteId = null;
+		}, 3000);
+	}
+
 	async function remove(d: Dicegram) {
-		if (!window.confirm(`Delete "${d.name}"? This cannot be undone.`)) return;
+		if (confirmDeleteId !== d.id) {
+			armDelete(d);
+			return;
+		}
+		if (confirmTimer) clearTimeout(confirmTimer);
+		confirmDeleteId = null;
 		try {
 			await dicegrams.remove(d.id);
 			await load();
@@ -242,10 +257,13 @@
 							<button
 								type="button"
 								onclick={() => remove(d)}
-								title="Delete"
-								class="rounded p-1 text-neutral-400 hover:bg-red-950 hover:text-red-400"
+								title={confirmDeleteId === d.id ? 'Click again to confirm' : 'Delete'}
+								class="flex items-center gap-1 rounded p-1 {confirmDeleteId === d.id
+									? 'bg-red-950 text-red-300'
+									: 'text-neutral-400 hover:bg-red-950 hover:text-red-400'}"
 							>
 								<Icon name="trash" size={13} />
+								{#if confirmDeleteId === d.id}<span class="text-[10px]">Confirm?</span>{/if}
 							</button>
 						</div>
 					</div>

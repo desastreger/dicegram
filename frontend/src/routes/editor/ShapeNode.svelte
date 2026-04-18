@@ -26,7 +26,7 @@
 	const defaultRadius: Record<string, string> = {
 		rect: '4px',
 		rounded: '14px',
-		circle: '9999px',
+		circle: '50% / 50%',
 		stadium: '9999px',
 		cylinder: '18px / 40%'
 	};
