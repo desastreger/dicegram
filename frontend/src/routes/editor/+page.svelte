@@ -1,0 +1,332 @@
+<script lang="ts">
+	import { goto } from '$app/navigation';
+	import { ApiError } from '$lib/api';
+	import { auth } from '$lib/auth.svelte';
+	import { dicegrams as api, type Dicegram } from '$lib/dicegrams';
+	import { addEdge, findNodeLineIndex, getSetting, removeNode, setNodePosition } from '$lib/patch';
+	import { onMount } from 'svelte';
+	import { renderDsl, type RenderResult, type RenderNode } from '$lib/render';
+	import { getTheme, type Theme } from '$lib/themes';
+	import Canvas from './Canvas.svelte';
+	import CodeEditor from './CodeEditor.svelte';
+	import Toolbar from './Toolbar.svelte';
+	import SettingsPane from './SettingsPane.svelte';
+	import Inspector from './Inspector.svelte';
+
+	const DEFAULT_SOURCE = `direction top-to-bottom
+
+swimlane "Product" {
+	[circle] start "Start" step:0 type:start
+	[rounded] gather "Gather\\nRequirements" step:1 type:process owner:"alice" status:active
+	[diamond] approve "Approved?" step:2 type:decision priority:high
+}
+
+swimlane "Engineering" {
+	box "Backend" {fill: rgba(56, 70, 95, 0.25)} {
+		[rect] design "System Design" step:3 type:process owner:"charlie"
+		[rect] build "Implementation" step:4 type:automated status:active
+		[hexagon] test "Run Tests" step:5 type:automated priority:critical
+		[cylinder] db "Results DB" step:5 type:datastore
+	}
+	[circle] done "Done" step:6 type:end
+}
+
+start -> gather
+gather -> approve
+approve -> design : "yes"
+design -> build
+build ==> test : "critical"
+test -> done
+test --> db : "persist"
+
+note "Tracks SLA: 48h" [gather]
+group "core path" { design build test }
+`;
+
+	let source = $state(DEFAULT_SOURCE);
+	let name = $state('Untitled dicegram');
+	let currentId = $state<number | null>(null);
+	let result = $state<RenderResult | null>(null);
+	let rendering = $state(false);
+	let renderError = $state<string | null>(null);
+	let saving = $state(false);
+	let saveMsg = $state<string | null>(null);
+	let myDicegrams = $state<Dicegram[]>([]);
+	let showOpen = $state(false);
+	let settingsOpen = $state(false);
+	let inspectorOpen = $state(false);
+	let selectedNodeId = $state<string | null>(null);
+	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+
+	$effect(() => {
+		if (!auth.loading && !auth.user) goto('/login');
+	});
+
+	$effect(() => {
+		const src = source;
+		clearTimeout(debounceTimer);
+		debounceTimer = setTimeout(async () => {
+			rendering = true;
+			try {
+				result = await renderDsl(src);
+				renderError = null;
+			} catch (err) {
+				renderError = err instanceof ApiError ? err.message : 'render failed';
+			} finally {
+				rendering = false;
+			}
+		}, 250);
+	});
+
+	const selectedNode = $derived<RenderNode | null>(
+		selectedNodeId && result
+			? (result.nodes.find((n) => n.id === selectedNodeId) ?? null)
+			: null
+	);
+
+	const theme = $derived<Theme>(getTheme(getSetting(source, 'color_scheme')));
+
+	const themeVars = $derived(
+		`--th-bg:${theme.bg};--th-panel:${theme.panel};--th-panel-border:${theme.panelBorder};` +
+			`--th-text:${theme.text};--th-muted:${theme.muted};--th-accent:${theme.accent};` +
+			`--th-canvas:${theme.canvas};--th-grid-dot:${theme.gridDot};` +
+			`--th-node-fill:${theme.nodeFill};--th-node-stroke:${theme.nodeStroke};--th-node-text:${theme.nodeText};` +
+			`--th-edge:${theme.edge};` +
+			`--th-code-bg:${theme.codeBg};--th-code-text:${theme.codeText};--th-code-gutter:${theme.codeGutter};--th-code-active:${theme.codeActiveLine};`
+	);
+
+	const revealLine = $derived(
+		selectedNodeId ? findNodeLineIndex(source, selectedNodeId) + 1 || null : null
+	);
+
+	function writePosition(id: string, x: number, y: number) {
+		source = setNodePosition(source, id, x, y);
+	}
+
+	function handleNodeSelect(id: string | null) {
+		selectedNodeId = id;
+		if (id) {
+			inspectorOpen = true;
+			settingsOpen = false;
+		}
+	}
+
+	function handleConnect(src: string, dst: string) {
+		source = addEdge(source, { src, dst, kind: 'solid' });
+	}
+
+	function isEditableTarget(target: EventTarget | null): boolean {
+		if (!(target instanceof HTMLElement)) return false;
+		const tag = target.tagName.toLowerCase();
+		if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+		if (target.isContentEditable) return true;
+		if (target.closest('.cm-editor')) return true;
+		return false;
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (isEditableTarget(e.target)) return;
+		if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId) {
+			e.preventDefault();
+			source = removeNode(source, selectedNodeId);
+			selectedNodeId = null;
+		}
+	}
+
+	onMount(() => {
+		window.addEventListener('keydown', handleKeydown);
+		return () => window.removeEventListener('keydown', handleKeydown);
+	});
+
+	function handleSelectionChange(newId: string | null) {
+		selectedNodeId = newId;
+	}
+
+	function toggleSettings() {
+		settingsOpen = !settingsOpen;
+		if (settingsOpen) inspectorOpen = false;
+	}
+
+	function toggleInspector() {
+		inspectorOpen = !inspectorOpen;
+		if (inspectorOpen) settingsOpen = false;
+	}
+
+	async function save() {
+		if (!auth.user) return;
+		saving = true;
+		saveMsg = null;
+		try {
+			if (currentId) {
+				const d = await api.update(currentId, { name, source });
+				currentId = d.id;
+			} else {
+				const d = await api.create({ name, source });
+				currentId = d.id;
+			}
+			saveMsg = 'saved';
+			setTimeout(() => (saveMsg = null), 1500);
+		} catch (err) {
+			saveMsg = err instanceof ApiError ? err.message : 'save failed';
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function openList() {
+		myDicegrams = await api.list();
+		showOpen = true;
+	}
+
+	async function load(d: Dicegram) {
+		currentId = d.id;
+		name = d.name;
+		source = d.source;
+		showOpen = false;
+		selectedNodeId = null;
+	}
+
+	function newDicegram() {
+		currentId = null;
+		name = 'Untitled dicegram';
+		source = DEFAULT_SOURCE;
+		selectedNodeId = null;
+	}
+
+	const rightPaneOpen = $derived(settingsOpen || inspectorOpen);
+</script>
+
+<div class="flex h-[calc(100vh-var(--header-h))] flex-col" style={themeVars}>
+	<Toolbar
+		bind:source
+		bind:name
+		bind:settingsOpen={
+			() => settingsOpen,
+			(v) => {
+				settingsOpen = v;
+				if (v) inspectorOpen = false;
+			}
+		}
+		bind:inspectorOpen={
+			() => inspectorOpen,
+			(v) => {
+				inspectorOpen = v;
+				if (v) settingsOpen = false;
+			}
+		}
+		{result}
+		{currentId}
+		{rendering}
+		{saveMsg}
+		{saving}
+		onSave={save}
+		onOpen={openList}
+		onNew={newDicegram}
+	/>
+
+	<div class="grid flex-1 grid-cols-[minmax(320px,2fr)_minmax(0,3fr)] overflow-hidden">
+		<section
+			class="flex flex-col border-r"
+			style:background-color={theme.codeBg}
+			style:border-color={theme.panelBorder}
+		>
+			<div
+				class="flex items-center justify-between border-b px-4 py-2 text-[11px] uppercase tracking-wide"
+				style:border-color={theme.panelBorder}
+				style:color={theme.muted}
+			>
+				<span>DSL Source</span>
+				{#if result?.errors?.length}
+					<span class="text-red-400">
+						line {result.errors[0].line}:{result.errors[0].column}: {result.errors[0]
+							.message}
+					</span>
+				{/if}
+			</div>
+			<CodeEditor
+				bind:value={source}
+				{theme}
+				{revealLine}
+				onNodeClick={handleNodeSelect}
+			/>
+		</section>
+		<section
+			class="relative min-w-0 transition-[padding-right]"
+			style:padding-right={rightPaneOpen ? '300px' : '0'}
+			style:background-color={theme.canvas}
+		>
+			<Canvas
+				{result}
+				{theme}
+				selectedId={selectedNodeId}
+				onNodeMove={writePosition}
+				onNodeSelect={handleNodeSelect}
+				onConnect={handleConnect}
+			/>
+			{#if renderError}
+				<div
+					class="pointer-events-none absolute left-4 top-4 rounded bg-red-900/80 px-3 py-2 text-sm text-red-100 shadow"
+				>
+					{renderError}
+				</div>
+			{/if}
+		</section>
+	</div>
+</div>
+
+<SettingsPane bind:source bind:open={settingsOpen} {result} onClose={() => (settingsOpen = false)} />
+
+<Inspector
+	bind:source
+	bind:open={inspectorOpen}
+	selected={selectedNode}
+	onClose={() => (inspectorOpen = false)}
+	onSelectionChange={handleSelectionChange}
+/>
+
+{#if showOpen}
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+		onclick={() => (showOpen = false)}
+		onkeydown={(e) => e.key === 'Escape' && (showOpen = false)}
+		role="button"
+		tabindex="-1"
+	>
+		<div
+			class="w-[480px] max-w-[90vw] rounded-lg border border-neutral-800 bg-neutral-950 p-4 shadow-xl"
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
+			role="dialog"
+			tabindex="-1"
+		>
+			<h2 class="mb-3 text-lg font-semibold text-neutral-100">Your dicegrams</h2>
+			{#if myDicegrams.length === 0}
+				<p class="text-sm text-neutral-400">No saved dicegrams yet.</p>
+			{:else}
+				<ul class="flex max-h-96 flex-col gap-1 overflow-auto">
+					{#each myDicegrams as d (d.id)}
+						<li>
+							<button
+								onclick={() => load(d)}
+								class="flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800"
+							>
+								<span class="truncate">{d.name}</span>
+								<span class="ml-3 text-xs text-neutral-500"
+									>{new Date(d.updated_at).toLocaleDateString()}</span
+								>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+			<div class="mt-4 flex justify-end">
+				<button
+					onclick={() => (showOpen = false)}
+					class="rounded border border-neutral-700 px-3 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
+				>
+					Close
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}

@@ -1,50 +1,48 @@
-# Diagram Editor
+# Dicegram
 
-Step-based code-to-diagram desktop application with bidirectional editing, rich attributes, and live preview.
+Web app for turning plain text into living architecture diagrams — "Dicegrams". Accounts, saved
+dicegrams, shareable URLs.
 
-## Quick Start
+The DSL is the canonical source of truth: every visual property of every object lives in the
+source file (like a Godot `.tscn`). The code editor, canvas and inspector are three windows
+into the same text — edits on one surface immediately propagate to the others.
+
+## Stack
+
+- **Backend:** FastAPI + SQLModel + SQLite (Postgres in prod)
+- **Frontend:** SvelteKit + Svelte 5 + TailwindCSS + TypeScript + Svelte Flow + CodeMirror 6
+- **Auth:** signed session cookies, Argon2 password hashing
+
+## Local development
+
+### Backend (port 8000)
 
 ```bash
-pip install pyside6 fpdf2
-python run.py
+cd backend
+python -m venv .venv
+.venv/Scripts/activate          # Windows (bash: source .venv/Scripts/activate)
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn app.main:app --reload --port 8000
 ```
 
-Or on Windows, double-click `DiagramEditor.bat`.
+### Frontend (port 5173)
 
-Or build a standalone executable with `python build_exe.py` and run `dist/DiagramEditor/DiagramEditor.exe` (no Python needed).
+```bash
+cd frontend
+npm run dev
+```
 
-## Documentation
+Vite proxies `/api/*` → `http://localhost:8000`, so frontend and backend share an origin in dev.
+Open http://localhost:5173.
 
-See **[GUIDE.md](GUIDE.md)** for the complete reference:
-- Full DSL syntax with all shapes, connections, attributes
-- Keyboard shortcuts
-- Interaction modes (Select, Pan, Connect)
-- Filter/search system
-- Export formats (PDF, SVG, PNG, clipboard)
-- Bidirectional editing behavior
-- Color schemes
-- Architecture notes
-- LLM prompt for AI-generated diagrams
+## Legacy desktop app
 
-## Requirements
+The original PySide6 desktop editor lives in `diagram_app.py` + `run.py`, preserved on tag
+`v3.0-desktop-final` and branch `archive/pyside-desktop`. See [GUIDE.md](GUIDE.md) for the DSL
+reference — still the source of truth for the grammar the web app implements.
 
-- Python 3.10+
-- PySide6 >= 6.6
-- fpdf2 >= 2.7
-
-## Features at a Glance
-
-- 8 shape types following Visio/BPMN conventions
-- 5 connection types with labels, hints, and attributes
-- Swimlanes, boxes, groups, notes
-- Step-based parallel placement (same step = same row)
-- Rich attributes: type, owner, status, tags, priority (with visual effects)
-- 7 color schemes
-- 4 layout directions (top-to-bottom, left-to-right, bottom-to-top, right-to-left)
-- Drag nodes to move (writes position to code)
-- Drag between ports to connect (writes connection to code)
-- Filter by any attribute
-- Auto-capitalize labels
-- Alignment grid with snap
-- PDF/SVG/PNG export
-- LLM prompt generator for AI diagram creation
+```bash
+pip install -r requirements.txt  # PySide6, fpdf2
+python run.py
+```
