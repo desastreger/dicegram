@@ -31,6 +31,7 @@
 		filter = '',
 		focusId = null,
 		focusTrigger = 0,
+		fitAllTrigger = 0,
 		onNodeMove,
 		onNodeSelect,
 		onNodeDblClick,
@@ -45,6 +46,7 @@
 		filter?: string;
 		focusId?: string | null;
 		focusTrigger?: number;
+		fitAllTrigger?: number;
 		onNodeMove?: (id: string, x: number, y: number) => void;
 		onNodeSelect?: (id: string | null) => void;
 		onNodeDblClick?: (id: string) => void;
@@ -500,7 +502,7 @@
 		<Background patternColor={theme.gridDot} />
 		<Controls />
 		<MiniMap pannable zoomable />
-		<CanvasFocus {focusId} trigger={focusTrigger} />
+		<CanvasFocus {focusId} trigger={focusTrigger} {fitAllTrigger} />
 		<ViewportRegister />
 	</SvelteFlow>
 </div>

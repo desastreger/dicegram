@@ -263,7 +263,13 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
         marker = ' marker-end="url(#arrow)"' if edge.kind in {"solid", "dashed", "thick"} else ""
         # Orthogonal L-shape: never a diagonal. Pick the elbow on the long leg
-        # so the connector reads as a single bend.
+        # so the connector reads as a single bend. Snap near-aligned endpoints
+        # together so sub-pixel drift doesn't produce a visible zigzag.
+        ALIGN_EPS = 4.0
+        if abs(tx - sx) < ALIGN_EPS:
+            tx = sx
+        if abs(ty - sy) < ALIGN_EPS:
+            ty = sy
         dx = tx - sx
         dy = ty - sy
         if dx == 0 or dy == 0:

@@ -216,10 +216,11 @@
 
 	function pickDirection(dir: string) {
 		if (dir === activeDirection) return;
-		const hadPins = /@\(\s*-?\d+/.test(source);
 		const prev = source;
 		source = setDirection(source, dir);
-		if (hadPins) onDirectionChange?.(prev);
+		// Always fire — listeners expect a full redraw signal on every
+		// direction flip, not just when pins were stripped.
+		onDirectionChange?.(prev);
 	}
 
 	function handleDocClick(e: MouseEvent) {

@@ -60,19 +60,28 @@ function segmentCrossesRect(a: Point, b: Point, r: Rect): boolean {
  * obstacles, using A* on a coarse grid. Returns world coords; empty array
  * means no improvement over a straight line.
  */
+const ALIGN_EPS = 4;
+
 function orthogonalL(start: Point, end: Point): Point[] {
 	// Always return an L-shape with elbow at midpoint. Degenerates to a
 	// straight line when already aligned. Vertical-first when dy dominates,
 	// else horizontal-first — keeps the elbow on the long leg.
-	const dx = end.x - start.x;
-	const dy = end.y - start.y;
-	if (dx === 0 || dy === 0) return [start, end];
+	// Sub-pixel drift (odd node widths, etc.) would otherwise produce tiny
+	// zigzags on visually-aligned shapes; snap endpoints to each other
+	// when they're within ALIGN_EPS.
+	let s = start;
+	let e = end;
+	if (Math.abs(e.x - s.x) < ALIGN_EPS) e = { x: s.x, y: e.y };
+	if (Math.abs(e.y - s.y) < ALIGN_EPS) e = { x: e.x, y: s.y };
+	const dx = e.x - s.x;
+	const dy = e.y - s.y;
+	if (dx === 0 || dy === 0) return [s, e];
 	if (Math.abs(dy) >= Math.abs(dx)) {
-		const my = start.y + dy / 2;
-		return [start, { x: start.x, y: my }, { x: end.x, y: my }, end];
+		const my = s.y + dy / 2;
+		return [s, { x: s.x, y: my }, { x: e.x, y: my }, e];
 	}
-	const mx = start.x + dx / 2;
-	return [start, { x: mx, y: start.y }, { x: mx, y: end.y }, end];
+	const mx = s.x + dx / 2;
+	return [s, { x: mx, y: s.y }, { x: mx, y: e.y }, e];
 }
 
 export function routeAround(

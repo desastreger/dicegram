@@ -478,6 +478,7 @@
 
 	let canvasFocusId = $state<string | null>(null);
 	let canvasFocusTrigger = $state(0);
+	let canvasFitAllTrigger = $state(0);
 
 	function handleTreeSelect(id: string) {
 		handleNodeSelect(id);
@@ -594,13 +595,19 @@
 		onOpen={openList}
 		onNew={newDicegram}
 		onDirectionChange={(prev) => {
+			const stripped = /@\(\s*-?\d+/.test(prev);
 			preNormalizeSource = prev;
-			normalizeToast = 'Direction changed — stripped pins';
+			normalizeToast = stripped
+				? 'Direction changed — stripped pins, redrawn'
+				: 'Direction changed — redrawn';
 			if (normalizeToastTimer) clearTimeout(normalizeToastTimer);
 			normalizeToastTimer = setTimeout(() => {
 				normalizeToast = null;
 				preNormalizeSource = null;
 			}, 5000);
+			// Full redraw: refit the viewport so xyflow doesn't sit on empty
+			// space left behind by the old orientation.
+			canvasFitAllTrigger += 1;
 		}}
 	/>
 
@@ -655,6 +662,7 @@
 				selectedId={selectedNodeId}
 				focusId={canvasFocusId}
 				focusTrigger={canvasFocusTrigger}
+				fitAllTrigger={canvasFitAllTrigger}
 				onNodeMove={writePosition}
 				onNodeSelect={handleNodeSelect}
 				onNodeDblClick={handleNodeDblClick}

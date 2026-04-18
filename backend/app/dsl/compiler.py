@@ -53,6 +53,9 @@ def normalize(source: str) -> NormalizeResult:
         duplicate is AFTER the original; the first wins).
     R5: when two pinned siblings land on the same grid cell, shift the
         second by one grid step along the minor axis.
+    R6: strip @(x,y) pins from nodes inside a swimlane. The lane layout
+        always centers children on the lane axis; letting pins fight that
+        produces dissonant, ragged views. Root-level pins stay.
     """
     notices: list[Notice] = []
     if source.startswith("\ufeff"):
@@ -177,6 +180,46 @@ def normalize(source: str) -> NormalizeResult:
             changed = True
         else:
             pin_cells[cell] = i
+
+    # R6: pinned nodes inside a swimlane lose their pins so the lane
+    #     auto-layout can place them on the lane axis.
+    depth = 0
+    kinds: list[str] = []  # stack of enclosing block kinds: "swimlane" or "box"
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("swimlane ") and stripped.endswith("{"):
+            kinds.append("swimlane")
+            depth += 1
+            continue
+        if stripped.startswith("box ") and stripped.endswith("{"):
+            kinds.append("box")
+            depth += 1
+            continue
+        if stripped == "}" and depth > 0:
+            kinds.pop()
+            depth -= 1
+            continue
+        # Inside any swimlane (directly or via a nested box)?
+        in_lane = any(k == "swimlane" for k in kinds)
+        if not in_lane:
+            continue
+        nm = NODE_LINE_RE.match(line)
+        if not nm:
+            continue
+        if not POSITION_RE.search(line):
+            continue
+        cleaned = POSITION_RE.sub("", line)
+        cleaned = re.sub(r"\s+$", "", cleaned)
+        if cleaned != line:
+            lines[i] = cleaned
+            notices.append(
+                Notice(
+                    "fix",
+                    f"dropped pin from '{nm.group(3)}' — swimlane auto-centers children",
+                    i + 1,
+                )
+            )
+            changed = True
 
     new_source = "\n".join(lines)
     return NormalizeResult(source=new_source, notices=notices, changed=changed)

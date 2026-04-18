@@ -213,6 +213,29 @@ def compute_layout(parsed: Parsed) -> dict:
                 }
             cursor += lane_breadth[lane] + cfg["swimlane_gap"]
 
+    # Grow each swimlane rect to contain all its children. A pinned @(x,y)
+    # position can push a node outside the step-derived bounds; the lane
+    # rectangle must always enclose every child of the swimlane.
+    lane_children: dict[str, list[str]] = {lane: [] for lane in lane_rects}
+    for n in nodes:
+        lane = n.swimlane or ""
+        if lane in lane_rects:
+            lane_children[lane].append(n.name)
+    lane_pad = cfg["container_padding"]
+    for lane, rect in lane_rects.items():
+        children = [positions[nm] for nm in lane_children.get(lane, []) if nm in positions]
+        if not children:
+            continue
+        cx0 = min(r["x"] for r in children) - lane_pad
+        cy0 = min(r["y"] for r in children) - lane_pad
+        cx1 = max(r["x"] + r["w"] for r in children) + lane_pad
+        cy1 = max(r["y"] + r["h"] for r in children) + lane_pad
+        x0 = min(rect["x"], cx0)
+        y0 = min(rect["y"], cy0)
+        x1 = max(rect["x"] + rect["w"], cx1)
+        y1 = max(rect["y"] + rect["h"], cy1)
+        lane_rects[lane] = {"x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0}
+
     def _bbox(names: list[str], pad: int) -> dict | None:
         rects = [positions[n] for n in names if n in positions]
         if not rects:

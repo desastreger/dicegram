@@ -74,7 +74,7 @@ export async function copySvg(source: string): Promise<void> {
 	await navigator.clipboard.writeText(svg);
 }
 
-const LLM_PROMPT_TEMPLATE = `You are an expert assistant for Dicegram, a step-based dicegram DSL.
+export const LLM_PROMPT_TEMPLATE = `You are an expert assistant for Dicegram, a step-based dicegram DSL.
 
 GRAMMAR:
 - direction <top-to-bottom|left-to-right|bottom-to-top|right-to-left>
