@@ -3,6 +3,7 @@
 	import { addNode, addSwimlane, getDirection, setDirection } from '$lib/patch';
 	import { copyDsl, copyLlmPrompt, copySvg, downloadPng, downloadSvg } from '$lib/export';
 	import type { RenderResult } from '$lib/render';
+	import { TEMPLATES, type DicegramTemplate } from '$lib/templates';
 
 	let {
 		source = $bindable(''),
@@ -15,6 +16,7 @@
 		settingsOpen = $bindable(false),
 		inspectorOpen = $bindable(false),
 		treeOpen = $bindable(false),
+		filter = $bindable(''),
 		onSave,
 		onOpen,
 		onNew
@@ -29,10 +31,28 @@
 		settingsOpen: boolean;
 		inspectorOpen: boolean;
 		treeOpen: boolean;
+		filter: string;
 		onSave: () => void;
 		onOpen: () => void;
-		onNew: () => void;
+		onNew: (template?: DicegramTemplate | null) => void;
 	} = $props();
+
+	let newOpen = $state(false);
+	let newRoot: HTMLDivElement | undefined = $state();
+
+	$effect(() => {
+		if (!newOpen) return;
+		const onDoc = (e: MouseEvent) => {
+			if (newRoot && !newRoot.contains(e.target as Node)) newOpen = false;
+		};
+		document.addEventListener('click', onDoc);
+		return () => document.removeEventListener('click', onDoc);
+	});
+
+	function pickNew(template: DicegramTemplate | null) {
+		newOpen = false;
+		onNew(template);
+	}
 
 	let exportOpen = $state(false);
 	let exportRoot: HTMLElement | undefined;
@@ -164,15 +184,35 @@
 			<Icon name="folder-open" size={13} />
 			<span class="hidden md:inline">Open</span>
 		</button>
-		<button
-			type="button"
-			onclick={onNew}
-			title="New dicegram"
-			class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800"
-		>
-			<Icon name="file-plus" size={13} />
-			<span class="hidden md:inline">New</span>
-		</button>
+		<div class="relative" bind:this={newRoot}>
+			<button
+				type="button"
+				onclick={() => (newOpen = !newOpen)}
+				aria-expanded={newOpen}
+				title="New dicegram"
+				class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800"
+			>
+				<Icon name="file-plus" size={13} />
+				<span class="hidden md:inline">New</span>
+				<Icon name="chevron-down" size={11} />
+			</button>
+			{#if newOpen}
+				<div
+					class="absolute left-0 top-full z-30 mt-1 w-64 overflow-hidden rounded border border-neutral-800 bg-neutral-900 shadow-lg"
+				>
+					{#each TEMPLATES as t (t.id)}
+						<button
+							type="button"
+							onclick={() => pickNew(t)}
+							class="block w-full px-3 py-1.5 text-left text-neutral-200 hover:bg-neutral-800"
+						>
+							<div class="text-xs font-medium">{t.name}</div>
+							<div class="mt-0.5 text-[10px] text-neutral-500">{t.description}</div>
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</div>
 	</div>
 
 	<span class="h-4 w-px bg-neutral-800"></span>
@@ -328,6 +368,13 @@
 	</div>
 
 	<div class="ml-auto flex items-center gap-2 text-[11px]">
+		<input
+			type="text"
+			bind:value={filter}
+			placeholder="filter: owner:a #tag"
+			title="Filter nodes. Syntax: owner:name, type:process, status:x, priority:x, tag:x, free text"
+			class="h-6 w-44 rounded border border-neutral-800 bg-neutral-900 px-2 text-[11px] text-neutral-100 placeholder:text-neutral-500 focus:border-blue-600 focus:outline-none"
+		/>
 		{#if rendering}
 			<span class="text-neutral-400">rendering…</span>
 		{:else if errorCount > 0}

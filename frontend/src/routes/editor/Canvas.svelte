@@ -26,6 +26,7 @@
 		result,
 		theme,
 		selectedId,
+		filter = '',
 		onNodeMove,
 		onNodeSelect,
 		onConnect,
@@ -34,11 +35,52 @@
 		result: RenderResult | null;
 		theme: Theme;
 		selectedId?: string | null;
+		filter?: string;
 		onNodeMove?: (id: string, x: number, y: number) => void;
 		onNodeSelect?: (id: string | null) => void;
 		onConnect?: (source: string, target: string) => void;
 		onReparent?: (id: string, target: ParentTarget) => void;
 	} = $props();
+
+	function tokenMatches(n: RenderNode, t: string): boolean {
+		const kv = /^(\w+):(.+)$/.exec(t);
+		if (kv) {
+			const key = kv[1].toLowerCase();
+			const val = kv[2].toLowerCase();
+			if (key === 'owner') return (n.attrs.owner ?? '').toLowerCase() === val;
+			if (key === 'type') return (n.attrs.type ?? '').toLowerCase() === val;
+			if (key === 'status') return (n.attrs.status ?? '').toLowerCase() === val;
+			if (key === 'priority') return (n.attrs.priority ?? '').toLowerCase() === val;
+			if (key === 'shape') return n.shape === val;
+			if (key === 'tag' || key === 'tags') {
+				const tags = (n.attrs.tags ?? '')
+					.toLowerCase()
+					.split(',')
+					.map((s) => s.trim());
+				return tags.includes(val);
+			}
+			if (key === 'lane' || key === 'swimlane') {
+				return (n.swimlane ?? '').toLowerCase() === val;
+			}
+			if (key === 'box') return (n.box ?? '').toLowerCase() === val;
+		}
+		if (t.startsWith('#')) {
+			const tag = t.slice(1).toLowerCase();
+			const tags = (n.attrs.tags ?? '')
+				.toLowerCase()
+				.split(',')
+				.map((s) => s.trim());
+			return tags.includes(tag);
+		}
+		const needle = t.toLowerCase();
+		return n.id.toLowerCase().includes(needle) || n.label.toLowerCase().includes(needle);
+	}
+
+	function matchNode(n: RenderNode, query: string): boolean {
+		const trimmed = query.trim();
+		if (!trimmed) return true;
+		return trimmed.split(/\s+/).every((tok) => tokenMatches(n, tok));
+	}
 
 	let nodes = $state.raw<Node[]>([]);
 	let edges = $state.raw<Edge[]>([]);
@@ -155,29 +197,33 @@
 			deletable: false
 		}));
 
-		const shapeNodes: Node[] = result.nodes.map((n) => ({
-			id: n.id,
-			type: 'shape',
-			position: { x: n.x, y: n.y },
-			width: n.width,
-			height: n.height,
-			selected: n.id === selectedId,
-			data: {
-				shape: n.shape,
-				label: n.label,
-				fill: n.style.fill,
-				stroke: n.style.stroke,
-				text: n.style.text,
-				rx: n.style.rx,
-				font_size: n.style.font_size,
-				font_family: n.style.font_family,
-				opacity: n.style.opacity,
-				stroke_width: n.style.stroke_width,
-				attrs: n.attrs
-			},
-			draggable: true,
-			selectable: true
-		}));
+		const shapeNodes: Node[] = result.nodes.map((n) => {
+			const matched = matchNode(n, filter);
+			return {
+				id: n.id,
+				type: 'shape',
+				position: { x: n.x, y: n.y },
+				width: n.width,
+				height: n.height,
+				selected: n.id === selectedId,
+				data: {
+					shape: n.shape,
+					label: n.label,
+					fill: n.style.fill,
+					stroke: n.style.stroke,
+					text: n.style.text,
+					rx: n.style.rx,
+					font_size: n.style.font_size,
+					font_family: n.style.font_family,
+					opacity: n.style.opacity,
+					stroke_width: n.style.stroke_width,
+					attrs: n.attrs,
+					dimmed: !matched
+				},
+				draggable: true,
+				selectable: true
+			};
+		});
 
 		nodes = [...laneNodes, ...boxNodes, ...shapeNodes, ...noteNodes, ...groupNodes];
 

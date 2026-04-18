@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as patch from '$lib/patch';
 	import Icon from '$lib/Icon.svelte';
+	import Dropdown from '$lib/Dropdown.svelte';
 	import { THEMES, THEME_IDS, DEFAULT_THEME_ID } from '$lib/themes';
 	import type { RenderResult } from '$lib/render';
 
@@ -127,15 +128,11 @@
 
 		<div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Theme</div>
 		<div class="px-3">
-			<select
-				class="h-7 w-full rounded border border-neutral-800 bg-neutral-900 px-2 text-xs text-neutral-100"
+			<Dropdown
 				value={themeId}
-				onchange={(e) => setTheme((e.currentTarget as HTMLSelectElement).value)}
-			>
-				{#each THEME_IDS as id (id)}
-					<option value={id}>{THEMES[id].label}</option>
-				{/each}
-			</select>
+				options={THEME_IDS.map((id) => ({ value: id, label: THEMES[id].label }))}
+				onchange={setTheme}
+			/>
 		</div>
 
 		<div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Direction</div>

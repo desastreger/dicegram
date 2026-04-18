@@ -18,6 +18,8 @@
 	import { onMount } from 'svelte';
 	import { renderDsl, type RenderResult, type RenderNode } from '$lib/render';
 	import { getTheme, type Theme } from '$lib/themes';
+	import { TEMPLATES, DEFAULT_TEMPLATE_ID, type DicegramTemplate } from '$lib/templates';
+	import { buildTreeFallback } from '$lib/tree-fallback';
 	import Canvas from './Canvas.svelte';
 	import CodeEditor from './CodeEditor.svelte';
 	import Toolbar from './Toolbar.svelte';
@@ -26,50 +28,10 @@
 	import TreePanel from './TreePanel.svelte';
 	import Icon from '$lib/Icon.svelte';
 
-	const DEFAULT_SOURCE = `direction top-to-bottom
-setting color_scheme gruvbox
+	const DEFAULT_TEMPLATE =
+		TEMPLATES.find((t) => t.id === DEFAULT_TEMPLATE_ID) ?? TEMPLATES[0];
 
-// A meta-Dicegram: the loop we use to build Dicegram itself.
-
-swimlane "User" {
-	[circle] spark "Spark" step:0 type:start
-	[rounded] ask "Describe\\nthe feature" step:1 type:process owner:"you" status:active
-	[diamond] happy "Happy?" step:8 type:decision priority:high
-}
-
-swimlane "Claude" {
-	box "Think" {fill: rgba(56, 70, 95, 0.25)} {
-		[rect] plan "Draft a plan" step:2 type:process
-		[rect] scope "Scope & trade-offs" step:3 type:process
-	}
-	box "Make" {fill: rgba(40, 70, 56, 0.25)} {
-		[rect] edit "Edit code" step:4 type:automated status:active
-		[hexagon] check "Typecheck + run" step:5 type:automated priority:critical
-	}
-}
-
-swimlane "Repo" {
-	[cylinder] dsl "Canonical DSL" step:6 type:datastore
-	[rect] commit "Commit & push" step:7 type:automated
-	[circle] ship "Shipped" step:9 type:end
-}
-
-spark -> ask
-ask -> plan : "prompt"
-plan -> scope
-scope -> edit
-edit ==> check : "verify"
-check -> dsl : "writes"
-dsl -> commit
-commit -> happy : "review"
-happy -> ask : "redirect"
-happy -> ship : "yes"
-
-note "The DSL is the\\nsource of truth" [dsl]
-group "inner loop" { plan scope edit check }
-`;
-
-	let source = $state(DEFAULT_SOURCE);
+	let source = $state(DEFAULT_TEMPLATE.source);
 	let name = $state('Untitled dicegram');
 	let currentId = $state<number | null>(null);
 	let result = $state<RenderResult | null>(null);
@@ -82,6 +44,7 @@ group "inner loop" { plan scope edit check }
 	let settingsOpen = $state(false);
 	let inspectorOpen = $state(false);
 	let treeOpen = $state(false);
+	let filter = $state('');
 	let selectedNodeId = $state<string | null>(null);
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 	let preNormalizeSource = $state<string | null>(null);
@@ -221,6 +184,16 @@ group "inner loop" { plan scope edit check }
 		if (inspectorOpen) settingsOpen = false;
 	}
 
+	let saveToast = $state<{ kind: 'ok' | 'error'; message: string } | null>(null);
+	let saveToastTimer: ReturnType<typeof setTimeout> | null = null;
+	function showSaveToast(t: { kind: 'ok' | 'error'; message: string }, ms = 3500) {
+		saveToast = t;
+		if (saveToastTimer) clearTimeout(saveToastTimer);
+		saveToastTimer = setTimeout(() => {
+			saveToast = null;
+		}, ms);
+	}
+
 	async function save() {
 		if (!auth.user) return;
 		saving = true;
@@ -229,14 +202,18 @@ group "inner loop" { plan scope edit check }
 			if (currentId) {
 				const d = await api.update(currentId, { name, source });
 				currentId = d.id;
+				showSaveToast({ kind: 'ok', message: `Saved "${d.name}"` });
 			} else {
 				const d = await api.create({ name, source });
 				currentId = d.id;
+				showSaveToast({ kind: 'ok', message: `Created "${d.name}"` });
 			}
 			saveMsg = 'saved';
-			setTimeout(() => (saveMsg = null), 1500);
+			setTimeout(() => (saveMsg = null), 2500);
 		} catch (err) {
-			saveMsg = err instanceof ApiError ? err.message : 'save failed';
+			const message = err instanceof ApiError ? err.message : 'save failed';
+			saveMsg = message;
+			showSaveToast({ kind: 'error', message: `Save failed: ${message}` }, 6000);
 		} finally {
 			saving = false;
 		}
@@ -255,10 +232,11 @@ group "inner loop" { plan scope edit check }
 		selectedNodeId = null;
 	}
 
-	function newDicegram() {
+	function newDicegram(template: DicegramTemplate | null = null) {
 		currentId = null;
-		name = 'Untitled dicegram';
-		source = DEFAULT_SOURCE;
+		const pick = template ?? TEMPLATES.find((t) => t.id === 'empty') ?? TEMPLATES[0];
+		name = template && template.id !== 'empty' ? `${template.name}` : 'Untitled dicegram';
+		source = pick.source;
 		selectedNodeId = null;
 	}
 
@@ -289,6 +267,7 @@ group "inner loop" { plan scope edit check }
 			}
 		}
 		bind:treeOpen
+		bind:filter
 		{result}
 		{currentId}
 		{rendering}
@@ -346,6 +325,7 @@ group "inner loop" { plan scope edit check }
 			<Canvas
 				{result}
 				{theme}
+				{filter}
 				selectedId={selectedNodeId}
 				onNodeMove={writePosition}
 				onNodeSelect={handleNodeSelect}
@@ -389,6 +369,27 @@ group "inner loop" { plan scope edit check }
 				class="rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800"
 			>
 				Undo
+			</button>
+		{/if}
+	</div>
+{/if}
+
+{#if saveToast}
+	<div
+		class="fixed bottom-14 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-md border px-3 py-1.5 text-xs shadow-lg {saveToast.kind ===
+		'error'
+			? 'border-red-900 bg-red-950/95 text-red-100'
+			: 'border-green-900 bg-green-950/95 text-green-100'}"
+	>
+		<Icon name={saveToast.kind === 'error' ? 'x' : 'check'} size={13} />
+		<span>{saveToast.message}</span>
+		{#if saveToast.kind === 'ok'}
+			<button
+				type="button"
+				onclick={() => goto('/dicegrams')}
+				class="rounded border border-green-800 px-2 py-0.5 text-[11px] text-green-200 hover:bg-green-900"
+			>
+				View in Dicegrams
 			</button>
 		{/if}
 	</div>

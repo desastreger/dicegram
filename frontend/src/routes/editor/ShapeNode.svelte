@@ -13,6 +13,7 @@
 		opacity?: string;
 		stroke_width?: string;
 		attrs?: Record<string, string>;
+		dimmed?: boolean;
 	};
 
 	let { data, width, height }: { data: ShapeData; width?: number; height?: number } = $props();
@@ -82,13 +83,14 @@
 		data.font_size != null && data.font_size !== '' ? `${Number(data.font_size)}px` : '13px'
 	);
 	const fontFamily = $derived(data.font_family ?? 'inherit');
-	const opacity = $derived(
+	const rawOpacity = $derived(
 		data.opacity != null && data.opacity !== ''
 			? Number(data.opacity)
 			: status === 'draft'
 				? 0.7
 				: 1
 	);
+	const opacity = $derived(data.dimmed ? rawOpacity * 0.2 : rawOpacity);
 	const textDecoration = $derived(status === 'deprecated' ? 'line-through' : 'none');
 	const borderStyle = $derived(status === 'draft' ? 'dashed' : 'solid');
 	const clip = $derived(clipPaths[data.shape] ?? 'none');

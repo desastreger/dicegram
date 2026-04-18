@@ -13,6 +13,7 @@
     type ParentTarget,
   } from '$lib/patch';
   import Icon from '$lib/Icon.svelte';
+  import Dropdown from '$lib/Dropdown.svelte';
   import ShapePreview from './ShapePreview.svelte';
   import type { RenderNode, RenderResult } from '$lib/render';
 
@@ -157,15 +158,15 @@
     for (const lane of result.lanes) {
       opts.push({
         key: `s:${lane.name}`,
-        label: `▦ ${lane.name}`,
+        label: `Lane: ${lane.name}`,
         target: { kind: 'swimlane', name: lane.name }
       });
     }
     for (const box of result.boxes) {
-      const prefix = box.swimlane ? `${box.swimlane} › ` : '';
+      const prefix = box.swimlane ? `${box.swimlane} > ` : '';
       opts.push({
         key: `b:${box.swimlane ?? ''}::${box.label}`,
-        label: `▢ ${prefix}${box.label}`,
+        label: `Box: ${prefix}${box.label}`,
         target: { kind: 'box', label: box.label, swimlane: box.swimlane }
       });
     }
@@ -179,13 +180,26 @@
     return 'root';
   });
 
-  function commitParent(e: Event) {
+  function commitParent(key: string) {
     if (!selected || !onReparent) return;
-    const key = (e.target as HTMLSelectElement).value;
     const match = containerOptions.find((o) => o.key === key);
     if (!match) return;
     onReparent(selected.id, match.target);
   }
+
+  const dropdownParentOptions = $derived(
+    containerOptions.map((o) => ({ value: o.key, label: o.label }))
+  );
+  const shapeOptions = SHAPES.map((s) => ({ value: s, label: s }));
+  const typeOptions = [{ value: '', label: '(none)' }, ...TYPES.map((t) => ({ value: t, label: t }))];
+  const statusOptions = [
+    { value: '', label: '(none)' },
+    ...STATUSES.map((s) => ({ value: s, label: s }))
+  ];
+  const priorityOptions = [
+    { value: '', label: '(none)' },
+    ...PRIORITIES.map((p) => ({ value: p, label: p }))
+  ];
 
   function commitName() {
     if (!selected) return;
@@ -201,9 +215,8 @@
     source = setNodeLabel(source, selected.id, labelDraft);
   }
 
-  function commitShape(e: Event) {
+  function commitShape(v: string) {
     if (!selected) return;
-    const v = (e.target as HTMLSelectElement).value;
     source = setNodeShape(source, selected.id, v);
   }
 
@@ -265,10 +278,7 @@
   }
 
   function commitSelectAttr(key: string) {
-    return (e: Event) => {
-      const v = (e.target as HTMLSelectElement).value;
-      commitAttr(key, v);
-    };
+    return (v: string) => commitAttr(key, v);
   }
 
   function commitStyle(key: 'fill' | 'stroke' | 'text', value: string) {
@@ -362,15 +372,11 @@
         </div>
       </div>
       <div class="px-3">
-        <select
-          class="h-6 w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+        <Dropdown
           value={currentParentKey}
+          options={dropdownParentOptions}
           onchange={commitParent}
-        >
-          {#each containerOptions as opt (opt.key)}
-            <option value={opt.key}>{opt.label}</option>
-          {/each}
-        </select>
+        />
       </div>
 
       <div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Identity</div>
@@ -387,15 +393,9 @@
         </div>
         <div class="flex items-center gap-2">
           <label class="w-14 text-[11px] text-neutral-400">Shape</label>
-          <select
-            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
-            value={currentShape}
-            onchange={commitShape}
-          >
-            {#each SHAPES as s}
-              <option value={s}>{s}</option>
-            {/each}
-          </select>
+          <div class="flex-1">
+            <Dropdown value={currentShape} options={shapeOptions} onchange={commitShape} />
+          </div>
         </div>
         <div class="flex items-start gap-2">
           <label class="w-14 pt-1 text-[11px] text-neutral-400">Label</label>
@@ -474,16 +474,9 @@
       <div class="space-y-1 px-3">
         <div class="flex items-center gap-2">
           <label class="w-14 text-[11px] text-neutral-400">Type</label>
-          <select
-            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
-            value={currentType}
-            onchange={commitSelectAttr('type')}
-          >
-            <option value="">(none)</option>
-            {#each TYPES as t}
-              <option value={t}>{t}</option>
-            {/each}
-          </select>
+          <div class="flex-1">
+            <Dropdown value={currentType} options={typeOptions} onchange={commitSelectAttr('type')} />
+          </div>
         </div>
         <div class="flex items-center gap-2">
           <label class="w-14 text-[11px] text-neutral-400">Owner</label>
@@ -497,29 +490,15 @@
         </div>
         <div class="flex items-center gap-2">
           <label class="w-14 text-[11px] text-neutral-400">Status</label>
-          <select
-            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
-            value={currentStatus}
-            onchange={commitSelectAttr('status')}
-          >
-            <option value="">(none)</option>
-            {#each STATUSES as s}
-              <option value={s}>{s}</option>
-            {/each}
-          </select>
+          <div class="flex-1">
+            <Dropdown value={currentStatus} options={statusOptions} onchange={commitSelectAttr('status')} />
+          </div>
         </div>
         <div class="flex items-center gap-2">
           <label class="w-14 text-[11px] text-neutral-400">Priority</label>
-          <select
-            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
-            value={currentPriority}
-            onchange={commitSelectAttr('priority')}
-          >
-            <option value="">(none)</option>
-            {#each PRIORITIES as p}
-              <option value={p}>{p}</option>
-            {/each}
-          </select>
+          <div class="flex-1">
+            <Dropdown value={currentPriority} options={priorityOptions} onchange={commitSelectAttr('priority')} />
+          </div>
         </div>
         <div class="flex items-center gap-2">
           <label class="w-14 text-[11px] text-neutral-400">Tags</label>

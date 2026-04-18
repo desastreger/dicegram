@@ -3,7 +3,7 @@
 
 	let { node }: { node: RenderNode } = $props();
 
-	const padding = 4;
+	const padding = 6;
 	const width = $derived(Math.max(40, node.width));
 	const height = $derived(Math.max(30, node.height));
 	const vbW = $derived(width + padding * 2);
@@ -19,6 +19,9 @@
 	const status = $derived(node.attrs?.status ?? '');
 	const priority = $derived(node.attrs?.priority ?? '');
 
+	// Use the same theme variable cascade as ShapeNode so preview and canvas
+	// render with identical colours. Type-specific fills still take priority
+	// over the theme default — mirrors the backend SVG exporter.
 	const fill = $derived(
 		node.style?.fill ??
 			(typeAttr === 'start'
@@ -29,7 +32,7 @@
 						? '#3a2f0b'
 						: typeAttr === 'datastore'
 							? '#0c3a5c'
-							: '#1f2937')
+							: 'var(--th-node-fill)')
 	);
 	const stroke = $derived(
 		node.style?.stroke ??
@@ -41,7 +44,7 @@
 						? '#ef4444'
 						: status === 'complete'
 							? '#10b981'
-							: '#64748b')
+							: 'var(--th-node-stroke)')
 	);
 	const strokeWidth = $derived(
 		node.style?.stroke_width && Number.isFinite(Number(node.style.stroke_width))
@@ -53,12 +56,15 @@
 					: 1.5
 	);
 	const textColor = $derived(
-		node.style?.text ?? (status === 'deprecated' ? '#71717a' : '#e5e7eb')
+		node.style?.text ?? (status === 'deprecated' ? '#71717a' : 'var(--th-node-text)')
 	);
 	const fontSize = $derived(
 		node.style?.font_size && Number.isFinite(Number(node.style.font_size))
 			? Number(node.style.font_size)
 			: 13
+	);
+	const fontFamily = $derived(
+		node.style?.font_family ?? '-apple-system, Segoe UI, sans-serif'
 	);
 	const opacity = $derived(
 		node.style?.opacity && Number.isFinite(Number(node.style.opacity))
@@ -137,7 +143,7 @@
 				text-anchor="middle"
 				fill={textColor}
 				font-size={fontSize}
-				font-family="-apple-system, Segoe UI, sans-serif"
+				font-family={fontFamily}
 				text-decoration={status === 'deprecated' ? 'line-through' : undefined}>{line}</text
 			>
 		{/each}
@@ -151,8 +157,8 @@
 		justify-content: center;
 		max-height: calc((100vh - var(--header-h, 40px)) * 0.3);
 		padding: 10px 14px;
-		border-bottom: 1px solid #262626;
-		background: #0a0a0a;
+		border-bottom: 1px solid var(--th-panel-border, #262626);
+		background: var(--th-canvas, #0a0a0a);
 	}
 	.preview-wrap svg {
 		max-width: 100%;

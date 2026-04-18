@@ -3,6 +3,7 @@
 	import type { ParentTarget } from '$lib/patch';
 	import type { RenderResult, TreeEntry } from '$lib/render';
 	import type { Theme } from '$lib/themes';
+	import { buildTreeFallback } from '$lib/tree-fallback';
 
 	let {
 		result,
@@ -26,7 +27,11 @@
 		onClose: () => void;
 	} = $props();
 
-	const tree = $derived(result?.tree ?? []);
+	const tree = $derived.by<TreeEntry[]>(() => {
+		if (!result) return [];
+		if (result.tree && result.tree.length > 0) return result.tree;
+		return buildTreeFallback(result);
+	});
 	const byId = $derived(new Map(tree.map((t) => [t.id, t])));
 
 	type RenderedEntry = { entry: TreeEntry; depth: number };

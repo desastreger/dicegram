@@ -9,7 +9,9 @@
 		indentWithTab
 	} from '@codemirror/commands';
 	import { foldGutter, foldKeymap, foldService } from '@codemirror/language';
+	import { completionKeymap } from '@codemirror/autocomplete';
 	import { dslSyntaxExtension } from '$lib/dsl-syntax';
+	import { dslAutocomplete } from '$lib/dsl-autocomplete';
 	import type { Theme } from '$lib/themes';
 
 	let {
@@ -157,14 +159,26 @@
 					dslFolds,
 					highlightActiveLine(),
 					history(),
-					keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, indentWithTab]),
+					keymap.of([
+						...defaultKeymap,
+						...historyKeymap,
+						...foldKeymap,
+						...completionKeymap,
+						indentWithTab
+					]),
 					themeCompartment.of(buildTheme(theme)),
 					dslSyntaxExtension((id) => onNodeClick?.(id)),
+					dslAutocomplete(),
 					EditorView.updateListener.of((u) => {
 						if (u.docChanged) {
 							syncing = true;
 							value = u.state.doc.toString();
 							syncing = false;
+						}
+						if (u.selectionSet && !u.docChanged && onNodeClick) {
+							const line = u.state.doc.lineAt(u.state.selection.main.head);
+							const m = /^\s*\[(\w+)\]\s+(\w+)\s+"/.exec(line.text);
+							if (m) onNodeClick(m[2]);
 						}
 					})
 				]
