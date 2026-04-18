@@ -29,9 +29,14 @@
 		{ key: 'snap_grid', label: 'Snap grid', def: 10 }
 	];
 
-	const TOGGLE_KEYS: Array<{ key: string; label: string }> = [
+	const TOGGLE_KEYS: Array<{ key: string; label: string; hint?: string }> = [
 		{ key: 'auto_capitalize', label: 'Auto-capitalize labels' },
-		{ key: 'show_step_bands', label: 'Show step bands' }
+		{ key: 'show_step_bands', label: 'Show step bands' },
+		{
+			key: 'free_placement',
+			label: 'Free placement mode',
+			hint: 'Off (default): compiler forces canonical shapes and lane alignment. On: keep exactly what you typed.'
+		}
 	];
 
 	const DIRECTIONS: Array<{ id: string; icon: string; label: string }> = [
@@ -172,7 +177,10 @@
 		<div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Options</div>
 		<div class="space-y-1 px-3">
 			{#each TOGGLE_KEYS as t (t.key)}
-				<label class="flex cursor-pointer items-center justify-between gap-2">
+				<label
+					class="flex cursor-pointer items-center justify-between gap-2"
+					title={t.hint}
+				>
 					<span class="text-[11px] text-neutral-300">{t.label}</span>
 					<input
 						type="checkbox"
@@ -181,6 +189,9 @@
 						onchange={(e) => setToggle(t.key, (e.currentTarget as HTMLInputElement).checked)}
 					/>
 				</label>
+				{#if t.hint}
+					<p class="pl-0 text-[10px] leading-snug text-neutral-500">{t.hint}</p>
+				{/if}
 			{/each}
 		</div>
 

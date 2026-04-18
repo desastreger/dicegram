@@ -139,13 +139,17 @@ def compute_layout(parsed: Parsed) -> dict:
             x_cursor = cx - cell_w / 2
             for cn, w in zip(cell, widths):
                 _, h = sizes[cn.name]
-                if cn.position:
+                pinned = cn.position is not None
+                if pinned:
                     x, y = cn.position[0], cn.position[1]
                 else:
                     x, y = x_cursor, cy - h / 2
                 positions[cn.name] = {
-                    "x": _snap(x, snap),
-                    "y": _snap(y, snap),
+                    # Snap pinned positions to the grid; never snap auto-placed
+                    # ones — snapping drifts center-x per node width, which
+                    # breaks vertical alignment between shapes on the same lane.
+                    "x": _snap(x, snap) if pinned else x,
+                    "y": _snap(y, snap) if pinned else y,
                     "w": w,
                     "h": h,
                 }
@@ -190,13 +194,15 @@ def compute_layout(parsed: Parsed) -> dict:
             y_cursor = cy - cell_h / 2
             for cn, h in zip(cell, heights):
                 w, _ = sizes[cn.name]
-                if cn.position:
+                pinned = cn.position is not None
+                if pinned:
                     x, y = cn.position[0], cn.position[1]
                 else:
                     x, y = cx - w / 2, y_cursor
                 positions[cn.name] = {
-                    "x": _snap(x, snap),
-                    "y": _snap(y, snap),
+                    # Only snap pinned positions — see the TB branch for the why.
+                    "x": _snap(x, snap) if pinned else x,
+                    "y": _snap(y, snap) if pinned else y,
                     "w": w,
                     "h": h,
                 }

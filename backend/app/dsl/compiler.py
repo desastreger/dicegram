@@ -9,6 +9,9 @@ POSITION_RE = re.compile(r"@\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)"
 NODE_LINE_RE = re.compile(r'^(\s*)\[(\w+)\]\s+(\w+)\s+"((?:[^"\\]|\\.)*)"(.*)$')
 EDGE_LINE_RE = re.compile(r"^(\s*)(\w+)\s*(==>|-->|-\.-|---|->)\s*(\w+)(.*)$")
 SNAP_SETTING_RE = re.compile(r"^\s*setting\s+snap_grid\s+(\d+)", re.MULTILINE)
+FREE_PLACEMENT_RE = re.compile(
+    r"^\s*setting\s+free_placement\s+(on|off|true|false|1|0)", re.MULTILINE
+)
 
 
 @dataclass
@@ -29,6 +32,13 @@ def _snap(value: float, grid: int) -> int:
     if grid <= 0:
         return int(value)
     return int(round(value / grid) * grid)
+
+
+def _free_placement(source: str) -> bool:
+    m = FREE_PLACEMENT_RE.search(source)
+    if not m:
+        return False
+    return m.group(1).lower() in ("on", "true", "1")
 
 
 def _snap_grid(source: str) -> int:
@@ -56,12 +66,18 @@ def normalize(source: str) -> NormalizeResult:
     R6: strip @(x,y) pins from nodes inside a swimlane. The lane layout
         always centers children on the lane axis; letting pins fight that
         produces dissonant, ragged views. Root-level pins stay.
+    R7: force the canonical shape for each semantic type. Visio convention:
+        decision→diamond, start/end→circle, datastore→cylinder,
+        input/output→parallelogram, approval→hexagon, manual→rounded.
+        If the author wrote an inconsistent shape the compiler rewrites it
+        so visuals always match meaning.
     """
     notices: list[Notice] = []
     if source.startswith("\ufeff"):
         source = source.lstrip("\ufeff")
 
     grid = _snap_grid(source)
+    free_placement = _free_placement(source)
     lines = source.split("\n")
     changed = False
 
@@ -180,6 +196,50 @@ def normalize(source: str) -> NormalizeResult:
             changed = True
         else:
             pin_cells[cell] = i
+
+    # R7: force canonical shape per type attribute. Visio convention — a
+    #     reader seeing a diamond expects a decision; a circle expects a
+    #     terminator. Keep author intent visible regardless of [shape].
+    #     `setting free_placement on` opts out (for users who want full
+    #     manual control over shapes and pins).
+    if free_placement:
+        new_source = "\n".join(lines)
+        return NormalizeResult(source=new_source, notices=notices, changed=changed)
+
+    TYPE_TO_SHAPE = {
+        "start": "circle",
+        "end": "circle",
+        "decision": "diamond",
+        "datastore": "cylinder",
+        "input": "parallelogram",
+        "output": "parallelogram",
+        "approval": "hexagon",
+        "manual": "rounded",
+    }
+    TYPE_ATTR_RE = re.compile(r"(?:^|\s)type:([A-Za-z_]+)")
+    for i, line in enumerate(lines):
+        m = NODE_LINE_RE.match(line)
+        if not m:
+            continue
+        indent, shape, name, label, rest = m.groups()
+        if shape not in SHAPE_KEYWORDS:
+            continue
+        tm = TYPE_ATTR_RE.search(rest)
+        if not tm:
+            continue
+        semantic = tm.group(1).lower()
+        required = TYPE_TO_SHAPE.get(semantic)
+        if not required or shape == required:
+            continue
+        lines[i] = f'{indent}[{required}] {name} "{label}"{rest}'
+        notices.append(
+            Notice(
+                "fix",
+                f"'{name}' shape {shape} → {required} to match type:{semantic}",
+                i + 1,
+            )
+        )
+        changed = True
 
     # R6: pinned nodes inside a swimlane lose their pins so the lane
     #     auto-layout can place them on the lane axis.
