@@ -209,9 +209,15 @@ export function removeNode(source: string, id: string): string {
 export function setDirection(source: string, dir: string): string {
 	const lines = source.split('\n');
 	const idx = lines.findIndex((l) => /^\s*direction\s+\S+\s*$/.test(l));
+	const current = idx >= 0 ? lines[idx].trim().split(/\s+/)[1] : 'top-to-bottom';
+	if (current === dir) return source;
 	if (idx >= 0) lines[idx] = `direction ${dir}`;
 	else lines.unshift(`direction ${dir}`, '');
-	return lines.join('\n');
+	// Pins are absolute coordinates placed for the old orientation; swapping
+	// direction makes them nonsensical, so strip them and let auto-layout
+	// reflow everything in the new direction.
+	const POS_RE = /\s*@\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/g;
+	return lines.map((l) => l.replace(POS_RE, '')).join('\n');
 }
 
 export function setSetting(source: string, key: string, value: string | number): string {

@@ -84,12 +84,29 @@ function collectDeclared(src: string): string[] {
 	return [...set];
 }
 
+function inString(text: string): boolean {
+	// Count un-escaped quotes in `text`; odd count = we're inside a string.
+	let count = 0;
+	for (let i = 0; i < text.length; i++) {
+		const c = text[i];
+		if (c === '\\' && i + 1 < text.length) {
+			i++;
+			continue;
+		}
+		if (c === '"') count++;
+	}
+	return count % 2 === 1;
+}
+
 function dslCompletion(ctx: CompletionContext): CompletionResult | null {
 	const before = ctx.matchBefore(/[\w-]*/);
 	if (!before || (before.from === before.to && !ctx.explicit)) return null;
 
 	const line = ctx.state.doc.lineAt(ctx.pos);
 	const textBefore = line.text.slice(0, ctx.pos - line.from);
+
+	// Never suggest inside a quoted string (label text) or a line comment.
+	if (inString(textBefore) || textBefore.includes('//')) return null;
 
 	// attribute-value completion: `type:pro|` or `status:ac|`
 	const attrMatch = /(\w+):([\w-]*)$/.exec(textBefore);

@@ -259,4 +259,14 @@
 	:global(.svelte-flow__node.selected .handle) {
 		opacity: 1;
 	}
+
+	:global(.svelte-flow__node.selected) .shape .bg {
+		outline: 2px solid var(--th-accent, #3b82f6);
+		outline-offset: 2px;
+	}
+	:global(.svelte-flow__node.selected) .shape.clipped .bg {
+		outline: none;
+		filter: drop-shadow(0 0 0 var(--th-accent, #3b82f6))
+			drop-shadow(0 0 2px var(--th-accent, #3b82f6));
+	}
 </style>

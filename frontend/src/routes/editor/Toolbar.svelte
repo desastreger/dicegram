@@ -19,7 +19,8 @@
 		filter = $bindable(''),
 		onSave,
 		onOpen,
-		onNew
+		onNew,
+		onDirectionChange
 	}: {
 		source: string;
 		name: string;
@@ -35,6 +36,7 @@
 		onSave: () => void;
 		onOpen: () => void;
 		onNew: (template?: DicegramTemplate | null) => void;
+		onDirectionChange?: (prevSource: string) => void;
 	} = $props();
 
 	let newOpen = $state(false);
@@ -140,7 +142,10 @@
 
 	function pickDirection(dir: string) {
 		if (dir === activeDirection) return;
+		const hadPins = /@\(\s*-?\d+/.test(source);
+		const prev = source;
 		source = setDirection(source, dir);
+		if (hadPins) onDirectionChange?.(prev);
 	}
 
 	function handleDocClick(e: MouseEvent) {
@@ -371,9 +376,9 @@
 		<input
 			type="text"
 			bind:value={filter}
-			placeholder="filter: owner:a #tag"
-			title="Filter nodes. Syntax: owner:name, type:process, status:x, priority:x, tag:x, free text"
-			class="h-6 w-44 rounded border border-neutral-800 bg-neutral-900 px-2 text-[11px] text-neutral-100 placeholder:text-neutral-500 focus:border-blue-600 focus:outline-none"
+			placeholder="Filter  (owner:alice #tag …)"
+			title={`Filter nodes (substring match). Supported keys:\n  owner: type: status: priority: shape: lane: box: tag:\n  #tag   free text matches id and label`}
+			class="h-6 w-56 rounded border border-neutral-800 bg-neutral-900 px-2 text-[11px] text-neutral-100 placeholder:text-neutral-500 focus:border-blue-600 focus:outline-none"
 		/>
 		{#if rendering}
 			<span class="text-neutral-400">rendering…</span>

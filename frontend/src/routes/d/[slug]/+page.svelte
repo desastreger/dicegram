@@ -75,6 +75,20 @@
 			<p class="mt-2 text-neutral-400">
 				The owner may have revoked the link, or the URL is wrong.
 			</p>
+			<div class="mt-3 flex gap-2">
+				<a
+					href="/"
+					class="rounded border border-neutral-700 px-3 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
+				>
+					Go to Dicegram home
+				</a>
+				<a
+					href="/signup"
+					class="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500"
+				>
+					Create your own
+				</a>
+			</div>
 		</div>
 	{:else if data}
 		<div class="mb-3 flex flex-wrap items-center justify-between gap-2">

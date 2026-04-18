@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { ApiError } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
 	import { dicegrams as api, type Dicegram } from '$lib/dicegrams';
@@ -157,17 +158,64 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (isEditableTarget(e.target)) return;
-		if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId) {
+		// Ctrl/Cmd+S saves from anywhere in the editor.
+		if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 's') {
 			e.preventDefault();
-			source = removeNode(source, selectedNodeId);
+			save();
+			return;
+		}
+		if (isEditableTarget(e.target)) return;
+		// Delete removes the selected shape when focus is on the canvas or
+		// body. We avoid Backspace because Windows uses it for "navigate back"
+		// in some contexts.
+		if (e.key === 'Delete' && selectedNodeId) {
+			const onCanvas = (e.target as HTMLElement | null)?.closest('.svelte-flow');
+			if (!onCanvas && document.activeElement && document.activeElement !== document.body)
+				return;
+			e.preventDefault();
+			const id = selectedNodeId;
+			stashUndo(`Deleted "${id}"`);
+			source = removeNode(source, id);
 			selectedNodeId = null;
 		}
+	}
+
+	function stashUndo(message: string) {
+		preNormalizeSource = source;
+		normalizeToast = message;
+		if (normalizeToastTimer) clearTimeout(normalizeToastTimer);
+		normalizeToastTimer = setTimeout(() => {
+			normalizeToast = null;
+			preNormalizeSource = null;
+		}, 5000);
 	}
 
 	onMount(() => {
 		window.addEventListener('keydown', handleKeydown);
 		return () => window.removeEventListener('keydown', handleKeydown);
+	});
+
+	// Load a dicegram referenced by ?id= on the URL.
+	let lastLoadedId: number | null = null;
+	$effect(() => {
+		const raw = page.url.searchParams.get('id');
+		if (!raw || !auth.user) return;
+		const id = Number(raw);
+		if (!Number.isFinite(id) || id === lastLoadedId) return;
+		lastLoadedId = id;
+		api
+			.get(id)
+			.then((d) => {
+				currentId = d.id;
+				name = d.name;
+				source = d.source;
+				savedSourceSnapshot = d.source;
+				selectedNodeId = null;
+			})
+			.catch((err) => {
+				const m = err instanceof ApiError ? err.message : 'could not load dicegram';
+				showSaveToast({ kind: 'error', message: m }, 5000);
+			});
 	});
 
 	function handleSelectionChange(newId: string | null) {
@@ -202,10 +250,12 @@
 			if (currentId) {
 				const d = await api.update(currentId, { name, source });
 				currentId = d.id;
+				savedSourceSnapshot = d.source;
 				showSaveToast({ kind: 'ok', message: `Saved "${d.name}"` });
 			} else {
 				const d = await api.create({ name, source });
 				currentId = d.id;
+				savedSourceSnapshot = d.source;
 				showSaveToast({ kind: 'ok', message: `Created "${d.name}"` });
 			}
 			saveMsg = 'saved';
@@ -225,23 +275,35 @@
 	}
 
 	async function load(d: Dicegram) {
+		if (dirty) stashUndo(`Opened "${d.name}" — unsaved changes stashed`);
 		currentId = d.id;
 		name = d.name;
 		source = d.source;
+		savedSourceSnapshot = d.source;
 		showOpen = false;
 		selectedNodeId = null;
 	}
 
 	function newDicegram(template: DicegramTemplate | null = null) {
+		if (dirty) stashUndo('Started new dicegram — unsaved changes stashed');
 		currentId = null;
 		const pick = template ?? TEMPLATES.find((t) => t.id === 'empty') ?? TEMPLATES[0];
 		name = template && template.id !== 'empty' ? `${template.name}` : 'Untitled dicegram';
 		source = pick.source;
+		savedSourceSnapshot = '';
 		selectedNodeId = null;
 	}
 
 	const rightPaneOpen = $derived(settingsOpen || inspectorOpen);
 	const leftTreeOpen = $derived(treeOpen);
+
+	let savedSourceSnapshot = $state<string>('');
+	const dirty = $derived(currentId != null && source !== savedSourceSnapshot);
+
+	$effect(() => {
+		const base = name || 'Untitled';
+		document.title = `${dirty ? '• ' : ''}${base} — Dicegram`;
+	});
 
 	function handleTreeSelect(id: string) {
 		handleNodeSelect(id);
@@ -276,6 +338,15 @@
 		onSave={save}
 		onOpen={openList}
 		onNew={newDicegram}
+		onDirectionChange={(prev) => {
+			preNormalizeSource = prev;
+			normalizeToast = 'Direction changed — stripped pins';
+			if (normalizeToastTimer) clearTimeout(normalizeToastTimer);
+			normalizeToastTimer = setTimeout(() => {
+				normalizeToast = null;
+				preNormalizeSource = null;
+			}, 5000);
+		}}
 	/>
 
 	<div

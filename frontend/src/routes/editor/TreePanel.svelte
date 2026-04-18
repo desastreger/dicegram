@@ -224,12 +224,14 @@
 			{@const isSelected = selectable && entry.id === selectedId}
 			{@const dropHere = dropTarget?.id === entry.id}
 			<div
-				role="treeitem"
+				role={selectable ? 'treeitem' : 'group'}
+				tabindex={selectable ? 0 : -1}
 				aria-selected={isSelected}
 				draggable={entry.kind === 'shape'}
-				class="group relative flex items-center gap-1 px-1 py-0.5 text-xs transition-colors"
+				title={entry.label || entry.id}
+				class="tree-row flex items-center gap-1 px-1 py-0.5 text-xs select-none transition-colors"
 				class:dragging={dragId === entry.id}
-				class:drop-into={dropHere && dropTarget?.pos === 'into'}
+				class:shape={selectable}
 				style:padding-left="{4 + depth * 12}px"
 				style:background-color={isSelected
 					? theme.codeActiveLine
@@ -243,7 +245,13 @@
 						? `inset 0 -2px 0 0 ${theme.accent}`
 						: 'none'}
 				onmouseenter={() => (hoveredId = entry.id)}
-				onmouseleave={() => handleDragLeave(entry)}
+				onclick={() => selectable && onSelect(entry.id)}
+				onkeydown={(e) => {
+					if (selectable && (e.key === 'Enter' || e.key === ' ')) {
+						e.preventDefault();
+						onSelect(entry.id);
+					}
+				}}
 				ondragstart={(e) => handleDragStart(e, entry)}
 				ondragover={(e) => handleDragOver(e, entry)}
 				ondragleave={() => handleDragLeave(entry)}
@@ -251,20 +259,12 @@
 				ondragend={handleDragEnd}
 			>
 				<Icon name={iconFor(entry)} size={12} />
-				<button
-					type="button"
-					class="flex-1 truncate text-left"
-					title={entry.label || entry.id}
-					disabled={!selectable}
-					onclick={() => selectable && onSelect(entry.id)}
-					style:cursor={selectable ? 'pointer' : 'default'}
-				>
-					{entry.label || entry.id}
-				</button>
+				<span class="flex-1 truncate">{entry.label || entry.id}</span>
 				{#if selectable && hoveredId === entry.id && dragId == null}
 					<button
 						type="button"
 						title="Move up"
+						draggable="false"
 						onclick={(e) => {
 							e.stopPropagation();
 							onSiblingMove(entry.id, -1);
@@ -276,6 +276,7 @@
 					<button
 						type="button"
 						title="Move down"
+						draggable="false"
 						onclick={(e) => {
 							e.stopPropagation();
 							onSiblingMove(entry.id, 1);
@@ -291,7 +292,23 @@
 </aside>
 
 <style>
-	.dragging {
-		opacity: 0.5;
+	.tree-row {
+		cursor: default;
+	}
+	.tree-row.shape {
+		cursor: grab;
+	}
+	.tree-row.shape:active {
+		cursor: grabbing;
+	}
+	.tree-row.dragging {
+		opacity: 0.4;
+	}
+	.tree-row:hover {
+		background-color: color-mix(in srgb, var(--th-panel-border, #404040) 25%, transparent);
+	}
+	.tree-row:focus-visible {
+		outline: 2px solid var(--th-accent, #3b82f6);
+		outline-offset: -2px;
 	}
 </style>

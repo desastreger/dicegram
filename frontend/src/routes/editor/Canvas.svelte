@@ -47,22 +47,23 @@
 		if (kv) {
 			const key = kv[1].toLowerCase();
 			const val = kv[2].toLowerCase();
-			if (key === 'owner') return (n.attrs.owner ?? '').toLowerCase() === val;
-			if (key === 'type') return (n.attrs.type ?? '').toLowerCase() === val;
-			if (key === 'status') return (n.attrs.status ?? '').toLowerCase() === val;
-			if (key === 'priority') return (n.attrs.priority ?? '').toLowerCase() === val;
-			if (key === 'shape') return n.shape === val;
+			const contains = (hay: string) => hay.toLowerCase().includes(val);
+			if (key === 'owner') return contains(n.attrs.owner ?? '');
+			if (key === 'type') return contains(n.attrs.type ?? '');
+			if (key === 'status') return contains(n.attrs.status ?? '');
+			if (key === 'priority') return contains(n.attrs.priority ?? '');
+			if (key === 'shape') return contains(n.shape);
 			if (key === 'tag' || key === 'tags') {
 				const tags = (n.attrs.tags ?? '')
 					.toLowerCase()
 					.split(',')
 					.map((s) => s.trim());
-				return tags.includes(val);
+				return tags.some((tag) => tag.includes(val));
 			}
 			if (key === 'lane' || key === 'swimlane') {
-				return (n.swimlane ?? '').toLowerCase() === val;
+				return contains(n.swimlane ?? '');
 			}
-			if (key === 'box') return (n.box ?? '').toLowerCase() === val;
+			if (key === 'box') return contains(n.box ?? '');
 		}
 		if (t.startsWith('#')) {
 			const tag = t.slice(1).toLowerCase();
@@ -70,7 +71,7 @@
 				.toLowerCase()
 				.split(',')
 				.map((s) => s.trim());
-			return tags.includes(tag);
+			return tags.some((x) => x.includes(tag));
 		}
 		const needle = t.toLowerCase();
 		return n.id.toLowerCase().includes(needle) || n.label.toLowerCase().includes(needle);
@@ -121,7 +122,11 @@
 		return { cx: n.x + n.width / 2, cy: n.y + n.height / 2 };
 	}
 
-	function pickHandles(sx: number, sy: number, tx: number, ty: number) {
+	function pickHandles(sx: number, sy: number, tx: number, ty: number, selfLoop = false) {
+		if (selfLoop) {
+			// Bow from right back to top so the loop visibly curls around the node.
+			return { sourceHandle: 'r', targetHandle: 't' };
+		}
 		const dx = tx - sx;
 		const dy = ty - sy;
 		if (Math.abs(dx) > Math.abs(dy)) {
@@ -141,6 +146,21 @@
 			return;
 		}
 
+		const dimmedIds = new Set<string>();
+		for (const n of result.nodes) {
+			if (!matchNode(n, filter)) dimmedIds.add(n.id);
+		}
+		const filtering = filter.trim().length > 0;
+		const liveLanes = new Set<string>();
+		const liveBoxes = new Set<string>();
+		for (const n of result.nodes) {
+			if (dimmedIds.has(n.id)) continue;
+			if (n.swimlane) liveLanes.add(n.swimlane);
+			if (n.box) liveBoxes.add(n.box);
+		}
+
+		const dimStyle = 'opacity: 0.25;';
+
 		const laneNodes: Node[] = result.lanes.map((l, i) => ({
 			id: `__lane_${i}`,
 			type: 'lane',
@@ -151,7 +171,8 @@
 			draggable: false,
 			selectable: false,
 			zIndex: -100,
-			deletable: false
+			deletable: false,
+			style: filtering && !liveLanes.has(l.name) ? dimStyle : undefined
 		}));
 
 		const boxNodes: Node[] = result.boxes
@@ -166,7 +187,8 @@
 				draggable: false,
 				selectable: false,
 				zIndex: -50,
-				deletable: false
+				deletable: false,
+				style: filtering && !liveBoxes.has(b.label) ? dimStyle : undefined
 			}));
 
 		const groupNodes: Node[] = result.groups
@@ -198,7 +220,7 @@
 		}));
 
 		const shapeNodes: Node[] = result.nodes.map((n) => {
-			const matched = matchNode(n, filter);
+			const matched = !dimmedIds.has(n.id);
 			return {
 				id: n.id,
 				type: 'shape',
@@ -256,8 +278,15 @@
 			const t = nodeById.get(e.target);
 			const { cx: sx, cy: sy } = centerOf(s);
 			const { cx: tx, cy: ty } = centerOf(t);
-			const { sourceHandle, targetHandle } = pickHandles(sx, sy, tx, ty);
+			const { sourceHandle, targetHandle } = pickHandles(
+				sx,
+				sy,
+				tx,
+				ty,
+				e.source === e.target
+			);
 			const strokeOverride = e.attrs?.color;
+			const edgeDimmed = dimmedIds.has(e.source) || dimmedIds.has(e.target);
 
 			const obstacles: Rect[] = [];
 			for (const [id, r] of shapeRects) {
@@ -269,6 +298,7 @@
 				obstacles.push({ x: b.x, y: b.y, w: b.w, h: b.h });
 			}
 
+			const baseStyle = styleFor(e.kind, strokeOverride);
 			return {
 				id: e.id,
 				source: e.source,
@@ -277,7 +307,7 @@
 				targetHandle,
 				type: 'smart',
 				label: e.label || undefined,
-				style: styleFor(e.kind, strokeOverride),
+				style: edgeDimmed ? `${baseStyle} opacity: 0.2;` : baseStyle,
 				markerEnd: hasArrow(e.kind)
 					? { type: MarkerType.ArrowClosed, color: strokeOverride || edgeColor }
 					: undefined,

@@ -192,11 +192,6 @@
 			>
 				Reset to defaults
 			</button>
-			{#if result}
-				<div class="mt-2 text-[10px] text-neutral-600">
-					Backend direction: {result.direction}
-				</div>
-			{/if}
 		</div>
 	</aside>
 {/if}
