@@ -18,13 +18,16 @@
 	import type { RenderResult, RenderNode } from '$lib/render';
 	import type { Theme } from '$lib/themes';
 
+	import type { ParentTarget } from '$lib/patch';
+
 	let {
 		result,
 		theme,
 		selectedId,
 		onNodeMove,
 		onNodeSelect,
-		onConnect
+		onConnect,
+		onReparent
 	}: {
 		result: RenderResult | null;
 		theme: Theme;
@@ -32,6 +35,7 @@
 		onNodeMove?: (id: string, x: number, y: number) => void;
 		onNodeSelect?: (id: string | null) => void;
 		onConnect?: (source: string, target: string) => void;
+		onReparent?: (id: string, target: ParentTarget) => void;
 	} = $props();
 
 	let nodes = $state.raw<Node[]>([]);
@@ -223,6 +227,65 @@
 		edges = [...dataEdges, ...noteEdges];
 	});
 
+	function containerAt(px: number, py: number): ParentTarget {
+		if (!result) return { kind: 'root' };
+		let best: ParentTarget = { kind: 'root' };
+		let bestArea = Infinity;
+		for (const b of result.boxes) {
+			if (
+				b.x == null ||
+				b.y == null ||
+				b.width == null ||
+				b.height == null
+			)
+				continue;
+			if (
+				px >= b.x &&
+				px <= b.x + b.width &&
+				py >= b.y &&
+				py <= b.y + b.height
+			) {
+				const area = b.width * b.height;
+				if (area < bestArea) {
+					best = { kind: 'box', label: b.label, swimlane: b.swimlane };
+					bestArea = area;
+				}
+			}
+		}
+		if (bestArea !== Infinity) return best;
+		for (const l of result.lanes) {
+			if (
+				px >= l.x &&
+				px <= l.x + l.width &&
+				py >= l.y &&
+				py <= l.y + l.height
+			) {
+				const area = l.width * l.height;
+				if (area < bestArea) {
+					best = { kind: 'swimlane', name: l.name };
+					bestArea = area;
+				}
+			}
+		}
+		return best;
+	}
+
+	function sameTarget(a: ParentTarget, b: ParentTarget): boolean {
+		if (a.kind !== b.kind) return false;
+		if (a.kind === 'swimlane' && b.kind === 'swimlane') return a.name === b.name;
+		if (a.kind === 'box' && b.kind === 'box')
+			return a.label === b.label && a.swimlane === b.swimlane;
+		return true;
+	}
+
+	function currentParent(id: string): ParentTarget {
+		const n = result?.nodes.find((x) => x.id === id);
+		if (!n) return { kind: 'root' };
+		if (n.box) return { kind: 'box', label: n.box, swimlane: n.swimlane };
+		if (n.swimlane) return { kind: 'swimlane', name: n.swimlane };
+		return { kind: 'root' };
+	}
+
 	function handleNodeDragStop({
 		targetNode
 	}: {
@@ -231,7 +294,15 @@
 		event: MouseEvent | TouchEvent;
 	}) {
 		if (!targetNode || targetNode.type !== 'shape') return;
-		onNodeMove?.(targetNode.id, targetNode.position.x, targetNode.position.y);
+		const { x, y } = targetNode.position;
+		onNodeMove?.(targetNode.id, x, y);
+		const w = (targetNode.width as number | undefined) ?? 0;
+		const h = (targetNode.height as number | undefined) ?? 0;
+		const dropped = containerAt(x + w / 2, y + h / 2);
+		const current = currentParent(targetNode.id);
+		if (!sameTarget(dropped, current) && onReparent) {
+			onReparent(targetNode.id, dropped);
+		}
 	}
 
 	function handleNodeClick({ node }: { node: Node; event: MouseEvent | TouchEvent }) {

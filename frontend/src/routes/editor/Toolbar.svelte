@@ -14,6 +14,7 @@
 		saving,
 		settingsOpen = $bindable(false),
 		inspectorOpen = $bindable(false),
+		treeOpen = $bindable(false),
 		onSave,
 		onOpen,
 		onNew
@@ -27,6 +28,7 @@
 		saving: boolean;
 		settingsOpen: boolean;
 		inspectorOpen: boolean;
+		treeOpen: boolean;
 		onSave: () => void;
 		onOpen: () => void;
 		onNew: () => void;
@@ -231,6 +233,17 @@
 
 	<span class="h-4 w-px bg-neutral-800"></span>
 
+	<button
+		type="button"
+		onclick={() => (treeOpen = !treeOpen)}
+		aria-pressed={treeOpen}
+		title="Scene tree"
+		class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800 {treeOpen
+			? 'bg-neutral-800'
+			: ''}"
+	>
+		<Icon name="tree" size={13} />
+	</button>
 	<button
 		type="button"
 		onclick={() => (settingsOpen = !settingsOpen)}

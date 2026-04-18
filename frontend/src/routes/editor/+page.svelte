@@ -3,7 +3,16 @@
 	import { ApiError } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
 	import { dicegrams as api, type Dicegram } from '$lib/dicegrams';
-	import { addEdge, findNodeLineIndex, getSetting, removeNode, setNodePosition } from '$lib/patch';
+	import {
+		addEdge,
+		findNodeLineIndex,
+		getSetting,
+		moveNodeAmongSiblings,
+		removeNode,
+		reparentNode,
+		setNodePosition,
+		type ParentTarget
+	} from '$lib/patch';
 	import { onMount } from 'svelte';
 	import { renderDsl, type RenderResult, type RenderNode } from '$lib/render';
 	import { getTheme, type Theme } from '$lib/themes';
@@ -12,6 +21,8 @@
 	import Toolbar from './Toolbar.svelte';
 	import SettingsPane from './SettingsPane.svelte';
 	import Inspector from './Inspector.svelte';
+	import TreePanel from './TreePanel.svelte';
+	import Icon from '$lib/Icon.svelte';
 
 	const DEFAULT_SOURCE = `direction top-to-bottom
 
@@ -55,8 +66,12 @@ group "core path" { design build test }
 	let showOpen = $state(false);
 	let settingsOpen = $state(false);
 	let inspectorOpen = $state(false);
+	let treeOpen = $state(false);
 	let selectedNodeId = $state<string | null>(null);
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+	let preNormalizeSource = $state<string | null>(null);
+	let normalizeToast = $state<string | null>(null);
+	let normalizeToastTimer: ReturnType<typeof setTimeout> | null = null;
 
 	$effect(() => {
 		if (!auth.loading && !auth.user) goto('/login');
@@ -68,8 +83,23 @@ group "core path" { design build test }
 		debounceTimer = setTimeout(async () => {
 			rendering = true;
 			try {
-				result = await renderDsl(src);
+				const res = await renderDsl(src);
+				result = res;
 				renderError = null;
+				if (res.source_changed && res.normalized_source !== src) {
+					preNormalizeSource = src;
+					const count = res.notices.length;
+					normalizeToast =
+						count === 1
+							? `1 auto-fix applied: ${res.notices[0].message}`
+							: `${count} auto-fixes applied`;
+					if (normalizeToastTimer) clearTimeout(normalizeToastTimer);
+					normalizeToastTimer = setTimeout(() => {
+						normalizeToast = null;
+						preNormalizeSource = null;
+					}, 6000);
+					source = res.normalized_source;
+				}
 			} catch (err) {
 				renderError = err instanceof ApiError ? err.message : 'render failed';
 			} finally {
@@ -77,6 +107,14 @@ group "core path" { design build test }
 			}
 		}, 250);
 	});
+
+	function undoNormalize() {
+		if (!preNormalizeSource) return;
+		source = preNormalizeSource;
+		preNormalizeSource = null;
+		normalizeToast = null;
+		if (normalizeToastTimer) clearTimeout(normalizeToastTimer);
+	}
 
 	const selectedNode = $derived<RenderNode | null>(
 		selectedNodeId && result
@@ -113,6 +151,14 @@ group "core path" { design build test }
 
 	function handleConnect(src: string, dst: string) {
 		source = addEdge(source, { src, dst, kind: 'solid' });
+	}
+
+	function handleReparent(id: string, target: ParentTarget) {
+		source = reparentNode(source, id, target);
+	}
+
+	function handleSiblingMove(id: string, direction: -1 | 1) {
+		source = moveNodeAmongSiblings(source, id, direction);
 	}
 
 	function isEditableTarget(target: EventTarget | null): boolean {
@@ -194,6 +240,11 @@ group "core path" { design build test }
 	}
 
 	const rightPaneOpen = $derived(settingsOpen || inspectorOpen);
+	const leftTreeOpen = $derived(treeOpen);
+
+	function handleTreeSelect(id: string) {
+		handleNodeSelect(id);
+	}
 </script>
 
 <div class="flex h-[calc(100vh-var(--header-h))] flex-col" style={themeVars}>
@@ -214,6 +265,7 @@ group "core path" { design build test }
 				if (v) settingsOpen = false;
 			}
 		}
+		bind:treeOpen
 		{result}
 		{currentId}
 		{rendering}
@@ -224,7 +276,22 @@ group "core path" { design build test }
 		onNew={newDicegram}
 	/>
 
-	<div class="grid flex-1 grid-cols-[minmax(320px,2fr)_minmax(0,3fr)] overflow-hidden">
+	<div
+		class="grid flex-1 overflow-hidden"
+		style:grid-template-columns={leftTreeOpen
+			? '220px minmax(320px,2fr) minmax(0,3fr)'
+			: 'minmax(320px,2fr) minmax(0,3fr)'}
+	>
+		{#if leftTreeOpen}
+			<TreePanel
+				{result}
+				{theme}
+				selectedId={selectedNodeId}
+				onSelect={handleTreeSelect}
+				onSiblingMove={handleSiblingMove}
+				onClose={() => (treeOpen = false)}
+			/>
+		{/if}
 		<section
 			class="flex flex-col border-r"
 			style:background-color={theme.codeBg}
@@ -262,6 +329,7 @@ group "core path" { design build test }
 				onNodeMove={writePosition}
 				onNodeSelect={handleNodeSelect}
 				onConnect={handleConnect}
+				onReparent={handleReparent}
 			/>
 			{#if renderError}
 				<div
@@ -280,9 +348,30 @@ group "core path" { design build test }
 	bind:source
 	bind:open={inspectorOpen}
 	selected={selectedNode}
+	{result}
 	onClose={() => (inspectorOpen = false)}
 	onSelectionChange={handleSelectionChange}
+	onReparent={handleReparent}
+	onSiblingMove={handleSiblingMove}
 />
+
+{#if normalizeToast}
+	<div
+		class="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-md border border-neutral-700 bg-neutral-900/95 px-3 py-1.5 text-xs text-neutral-100 shadow-lg"
+	>
+		<Icon name="sparkles" size={13} />
+		<span>{normalizeToast}</span>
+		{#if preNormalizeSource}
+			<button
+				type="button"
+				onclick={undoNormalize}
+				class="rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800"
+			>
+				Undo
+			</button>
+		{/if}
+	</div>
+{/if}
 
 {#if showOpen}
 	<div

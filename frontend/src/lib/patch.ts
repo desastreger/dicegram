@@ -338,3 +338,127 @@ export function addSwimlane(source: string, name: string): string {
 	const block = `\nswimlane "${name}" {\n}\n`;
 	return source.trimEnd() + block;
 }
+
+export type ParentTarget =
+	| { kind: 'root' }
+	| { kind: 'swimlane'; name: string }
+	| { kind: 'box'; label: string; swimlane: string | null };
+
+function findBlockOpen(
+	lines: string[],
+	kind: 'swimlane' | 'box',
+	name: string,
+	range?: { start: number; end: number }
+): number | null {
+	const from = range?.start ?? 0;
+	const to = range?.end ?? lines.length;
+	const re =
+		kind === 'swimlane'
+			? new RegExp(`^\\s*swimlane\\s+"${escapeRegex(name)}"\\s*\\{\\s*$`)
+			: new RegExp(
+					`^\\s*box\\s+"${escapeRegex(name)}"\\s*(?:\\{[^{}]*\\})?\\s*\\{\\s*$`
+				);
+	for (let i = from; i < to; i++) {
+		if (re.test(lines[i])) return i;
+	}
+	return null;
+}
+
+function findMatchingClose(lines: string[], openLine: number): number | null {
+	let depth = 1;
+	for (let i = openLine + 1; i < lines.length; i++) {
+		const t = lines[i].trim();
+		if (t === '}') {
+			depth--;
+			if (depth === 0) return i;
+		} else if (/\{\s*$/.test(t)) {
+			depth++;
+		}
+	}
+	return null;
+}
+
+function extractNodeLine(lines: string[], id: string): { line: string; index: number } | null {
+	for (let i = 0; i < lines.length; i++) {
+		const parts = parseNodeLine(lines[i]);
+		if (parts && parts.name === id) return { line: lines[i], index: i };
+	}
+	return null;
+}
+
+function indentFor(target: ParentTarget): string {
+	if (target.kind === 'root') return '';
+	if (target.kind === 'swimlane') return '\t';
+	return '\t\t';
+}
+
+function reindent(line: string, newIndent: string): string {
+	const parts = parseNodeLine(line);
+	if (!parts) return newIndent + line.trimStart();
+	return serializeNodeLine({ ...parts, indent: newIndent });
+}
+
+export function reparentNode(source: string, id: string, target: ParentTarget): string {
+	const lines = source.split('\n');
+	const found = extractNodeLine(lines, id);
+	if (!found) return source;
+
+	lines.splice(found.index, 1);
+
+	if (target.kind === 'root') {
+		const reindented = reindent(found.line, indentFor(target));
+		return (lines.join('\n').trimEnd() + '\n' + reindented + '\n').replace(/\n{3,}/g, '\n\n');
+	}
+
+	if (target.kind === 'swimlane') {
+		const openIdx = findBlockOpen(lines, 'swimlane', target.name);
+		if (openIdx == null) return source;
+		const closeIdx = findMatchingClose(lines, openIdx);
+		if (closeIdx == null) return source;
+		const reindented = reindent(found.line, indentFor(target));
+		lines.splice(closeIdx, 0, reindented);
+		return lines.join('\n');
+	}
+
+	// box target: must find the swimlane first (if any) to scope the search
+	let searchRange: { start: number; end: number } | undefined;
+	if (target.swimlane) {
+		const swOpen = findBlockOpen(lines, 'swimlane', target.swimlane);
+		if (swOpen == null) return source;
+		const swClose = findMatchingClose(lines, swOpen);
+		if (swClose == null) return source;
+		searchRange = { start: swOpen + 1, end: swClose };
+	}
+	const boxOpen = findBlockOpen(lines, 'box', target.label, searchRange);
+	if (boxOpen == null) return source;
+	const boxClose = findMatchingClose(lines, boxOpen);
+	if (boxClose == null) return source;
+	const reindented = reindent(found.line, indentFor(target));
+	lines.splice(boxClose, 0, reindented);
+	return lines.join('\n');
+}
+
+export function moveNodeAmongSiblings(source: string, id: string, direction: -1 | 1): string {
+	const lines = source.split('\n');
+	const found = extractNodeLine(lines, id);
+	if (!found) return source;
+
+	let i = found.index + direction;
+	while (i >= 0 && i < lines.length) {
+		const parts = parseNodeLine(lines[i]);
+		if (parts) {
+			const mineIndent = found.line.match(/^\s*/)![0];
+			const theirIndent = lines[i].match(/^\s*/)![0];
+			if (mineIndent === theirIndent) {
+				const [a, b] = [lines[found.index], lines[i]];
+				lines[i] = a;
+				lines[found.index] = b;
+				return lines.join('\n');
+			}
+			break;
+		}
+		if (lines[i].trim() === '}' || /\{\s*$/.test(lines[i].trim())) break;
+		i += direction;
+	}
+	return source;
+}

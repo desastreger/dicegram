@@ -10,22 +10,30 @@
     setNodePosition,
     clearNodePosition,
     removeNode,
+    type ParentTarget,
   } from '$lib/patch';
   import Icon from '$lib/Icon.svelte';
-  import type { RenderNode } from '$lib/render';
+  import ShapePreview from './ShapePreview.svelte';
+  import type { RenderNode, RenderResult } from '$lib/render';
 
   let {
     source = $bindable(''),
     selected,
+    result,
     open = $bindable(false),
     onClose,
     onSelectionChange,
+    onReparent,
+    onSiblingMove,
   }: {
     source: string;
     selected: RenderNode | null;
+    result: RenderResult | null;
     open: boolean;
     onClose: () => void;
     onSelectionChange: (newId: string | null) => void;
+    onReparent?: (id: string, target: ParentTarget) => void;
+    onSiblingMove?: (id: string, direction: -1 | 1) => void;
   } = $props();
 
   const SHAPES = [
@@ -135,6 +143,48 @@
     } else {
       source = setNodeStyle(source, selected.id, 'font_family', v);
     }
+  }
+
+  type ContainerOption = {
+    key: string;
+    label: string;
+    target: ParentTarget;
+  };
+
+  const containerOptions = $derived.by<ContainerOption[]>(() => {
+    const opts: ContainerOption[] = [{ key: 'root', label: '(root)', target: { kind: 'root' } }];
+    if (!result) return opts;
+    for (const lane of result.lanes) {
+      opts.push({
+        key: `s:${lane.name}`,
+        label: `Swimlane: ${lane.name}`,
+        target: { kind: 'swimlane', name: lane.name }
+      });
+    }
+    for (const box of result.boxes) {
+      const prefix = box.swimlane ? `${box.swimlane} › ` : '';
+      opts.push({
+        key: `b:${box.swimlane ?? ''}::${box.label}`,
+        label: `Box: ${prefix}${box.label}`,
+        target: { kind: 'box', label: box.label, swimlane: box.swimlane }
+      });
+    }
+    return opts;
+  });
+
+  const currentParentKey = $derived.by<string>(() => {
+    if (!selected) return 'root';
+    if (selected.box) return `b:${selected.swimlane ?? ''}::${selected.box}`;
+    if (selected.swimlane) return `s:${selected.swimlane}`;
+    return 'root';
+  });
+
+  function commitParent(e: Event) {
+    if (!selected || !onReparent) return;
+    const key = (e.target as HTMLSelectElement).value;
+    const match = containerOptions.find((o) => o.key === key);
+    if (!match) return;
+    onReparent(selected.id, match.target);
   }
 
   function commitName() {
@@ -279,6 +329,40 @@
         Select a node to edit its properties.
       </div>
     {:else}
+      <ShapePreview node={selected} />
+      <div class="mt-3 mb-1 flex items-center justify-between px-3 text-[10px] uppercase tracking-wide text-neutral-500">
+        <span>Hierarchy</span>
+        <div class="flex items-center gap-0.5">
+          <button
+            type="button"
+            title="Move up among siblings"
+            class="rounded border border-neutral-800 p-0.5 text-neutral-400 hover:text-neutral-100"
+            onclick={() => selected && onSiblingMove?.(selected.id, -1)}
+          >
+            <Icon name="move-up" size={11} />
+          </button>
+          <button
+            type="button"
+            title="Move down among siblings"
+            class="rounded border border-neutral-800 p-0.5 text-neutral-400 hover:text-neutral-100"
+            onclick={() => selected && onSiblingMove?.(selected.id, 1)}
+          >
+            <Icon name="move-down" size={11} />
+          </button>
+        </div>
+      </div>
+      <div class="px-3">
+        <select
+          class="h-6 w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+          value={currentParentKey}
+          onchange={commitParent}
+        >
+          {#each containerOptions as opt (opt.key)}
+            <option value={opt.key}>{opt.label}</option>
+          {/each}
+        </select>
+      </div>
+
       <div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Identity</div>
       <div class="space-y-1 px-3">
         <div class="flex items-center gap-2">

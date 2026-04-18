@@ -134,5 +134,36 @@
 	{:else if name === 'tag'}
 		<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
 		<line x1="7" y1="7" x2="7.01" y2="7" />
+	{:else if name === 'tree'}
+		<circle cx="12" cy="4" r="2" />
+		<circle cx="5" cy="18" r="2" />
+		<circle cx="19" cy="18" r="2" />
+		<path d="M12 6v6" />
+		<path d="M5 16v-2h14v2" />
+	{:else if name === 'chevron-right'}
+		<polyline points="9 18 15 12 9 6" />
+	{:else if name === 'move-up'}
+		<polyline points="8 12 12 8 16 12" />
+		<line x1="12" y1="8" x2="12" y2="20" />
+	{:else if name === 'move-down'}
+		<polyline points="8 12 12 16 16 12" />
+		<line x1="12" y1="4" x2="12" y2="16" />
+	{:else if name === 'shape-rect'}
+		<rect x="3" y="7" width="18" height="10" />
+	{:else if name === 'shape-rounded'}
+		<rect x="3" y="7" width="18" height="10" rx="3" />
+	{:else if name === 'shape-diamond'}
+		<polygon points="12 3 21 12 12 21 3 12" />
+	{:else if name === 'shape-circle'}
+		<circle cx="12" cy="12" r="8" />
+	{:else if name === 'shape-parallelogram'}
+		<polygon points="7 6 21 6 17 18 3 18" />
+	{:else if name === 'shape-hexagon'}
+		<polygon points="6 6 18 6 22 12 18 18 6 18 2 12" />
+	{:else if name === 'shape-cylinder'}
+		<ellipse cx="12" cy="6" rx="8" ry="2.5" />
+		<path d="M4 6v12a8 2.5 0 0 0 16 0V6" />
+	{:else if name === 'shape-stadium'}
+		<rect x="2" y="7" width="20" height="10" rx="5" />
 	{/if}
 </svg>
