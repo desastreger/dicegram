@@ -208,8 +208,8 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
         f'style="background:{th["bg"]}; font-family: -apple-system, sans-serif">'
     )
     parts.append(
-        f'<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" '
-        f'markerWidth="8" markerHeight="8" orient="auto-start-reverse">'
+        f'<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" '
+        f'markerWidth="10" markerHeight="10" orient="auto-start-reverse" markerUnits="userSpaceOnUse">'
         f'<path d="M 0 0 L 10 5 L 0 10 z" fill="{th["edge"]}" /></marker></defs>'
     )
 
@@ -249,22 +249,44 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
         font_family = n.style.get("font_family") or "-apple-system, Segoe UI, sans-serif"
         parts.append(_text_lines(n.label, cx, cy, text_color, font_size, font_family))
 
+    horizontal_dir = layout["direction"] in ("left-to-right", "right-to-left")
     for i, edge in enumerate(parsed.edges):
         sp = positions.get(edge.source)
         tp = positions.get(edge.target)
         if not sp or not tp:
             continue
-        sx = sp["x"] + sp["w"] / 2
-        sy = sp["y"] + sp["h"] / 2
-        tx = tp["x"] + tp["w"] / 2
-        ty = tp["y"] + tp["h"] / 2
+        # Match the chart's primary flow axis when picking which side to
+        # exit and enter — Visio convention. Backward edges flip to the
+        # reverse-flow handles so the arrow still lands at the target's
+        # natural entry side.
+        scx = sp["x"] + sp["w"] / 2
+        scy = sp["y"] + sp["h"] / 2
+        tcx = tp["x"] + tp["w"] / 2
+        tcy = tp["y"] + tp["h"] / 2
+        ddx = tcx - scx
+        ddy = tcy - scy
+        if horizontal_dir:
+            if ddx >= 0:
+                sx, sy = sp["x"] + sp["w"], scy
+                tx, ty = tp["x"], tcy
+            else:
+                sx, sy = sp["x"], scy
+                tx, ty = tp["x"] + tp["w"], tcy
+        else:
+            if ddy >= 0:
+                sx, sy = scx, sp["y"] + sp["h"]
+                tx, ty = tcx, tp["y"]
+            else:
+                sx, sy = scx, sp["y"]
+                tx, ty = tcx, tp["y"] + tp["h"]
         sw = {"thick": 3, "dashed": 1.5, "solid_line": 1.5, "dotted_line": 1.5, "solid": 1.5}.get(edge.kind, 1.5)
         dash = {"dashed": "6 4", "dotted_line": "2 4"}.get(edge.kind, "")
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
         marker = ' marker-end="url(#arrow)"' if edge.kind in {"solid", "dashed", "thick"} else ""
-        # Orthogonal L-shape: never a diagonal. Pick the elbow on the long leg
-        # so the connector reads as a single bend. Snap near-aligned endpoints
-        # together so sub-pixel drift doesn't produce a visible zigzag.
+        # Orthogonal L-shape: first and last segment perpendicular to the
+        # handle side (so the arrow head's tangent matches the flow axis).
+        # Snap near-aligned endpoints together so sub-pixel drift doesn't
+        # produce a visible zigzag.
         ALIGN_EPS = 4.0
         if abs(tx - sx) < ALIGN_EPS:
             tx = sx
@@ -274,27 +296,33 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
         dy = ty - sy
         if dx == 0 or dy == 0:
             path_d = f"M {sx:.1f} {sy:.1f} L {tx:.1f} {ty:.1f}"
-        elif abs(dy) >= abs(dx):
-            my = sy + dy / 2
-            path_d = (
-                f"M {sx:.1f} {sy:.1f} L {sx:.1f} {my:.1f} "
-                f"L {tx:.1f} {my:.1f} L {tx:.1f} {ty:.1f}"
-            )
-        else:
+        elif horizontal_dir:
+            # r→l (or reverse): first AND last segment horizontal; vertical
+            # middle hop. Last L stroke is horizontal → arrow points
+            # horizontally into the target's left/right side.
             mx = sx + dx / 2
             path_d = (
                 f"M {sx:.1f} {sy:.1f} L {mx:.1f} {sy:.1f} "
                 f"L {mx:.1f} {ty:.1f} L {tx:.1f} {ty:.1f}"
+            )
+        else:
+            # b→t (or reverse): first AND last segment vertical; horizontal
+            # middle hop. Last L stroke is vertical → arrow points down
+            # (or up for BT direction) into the target's top/bottom side.
+            my = sy + dy / 2
+            path_d = (
+                f"M {sx:.1f} {sy:.1f} L {sx:.1f} {my:.1f} "
+                f"L {tx:.1f} {my:.1f} L {tx:.1f} {ty:.1f}"
             )
         parts.append(
             f'<path d="{path_d}" fill="none" '
             f'stroke="{th["edge"]}" stroke-width="{sw}"{dash_attr}{marker} />'
         )
         if edge.label:
-            # Position the label on the elbow segment's midpoint.
+            # Label sits on the middle (perpendicular) segment's midpoint.
             if dx == 0 or dy == 0:
                 mx_lbl, my_lbl = (sx + tx) / 2, (sy + ty) / 2
-            elif abs(dy) >= abs(dx):
+            elif not horizontal_dir:
                 mx_lbl, my_lbl = (sx + tx) / 2, sy + dy / 2
             else:
                 mx_lbl, my_lbl = sx + dx / 2, (sy + ty) / 2

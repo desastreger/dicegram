@@ -139,19 +139,32 @@
 		return { cx: n.x + n.width / 2, cy: n.y + n.height / 2 };
 	}
 
-	function pickHandles(sx: number, sy: number, tx: number, ty: number, selfLoop = false) {
+	function pickHandles(
+		sx: number,
+		sy: number,
+		tx: number,
+		ty: number,
+		direction: string,
+		selfLoop = false
+	) {
 		if (selfLoop) {
 			// Bow from right back to top so the loop visibly curls around the node.
 			return { sourceHandle: 'r', targetHandle: 't' };
 		}
+		const horizontal = direction === 'left-to-right' || direction === 'right-to-left';
 		const dx = tx - sx;
 		const dy = ty - sy;
-		if (Math.abs(dx) > Math.abs(dy)) {
-			return dx > 0
+		// Bias handle choice to the chart's primary flow axis so the arrow
+		// tip always points in the flow direction (Visio convention). A
+		// backward edge (target upstream) uses the reverse-flow handles so
+		// the arrow still reads correctly at the target shape's natural
+		// entry side.
+		if (horizontal) {
+			return dx >= 0
 				? { sourceHandle: 'r', targetHandle: 'l' }
 				: { sourceHandle: 'l', targetHandle: 'r' };
 		}
-		return dy > 0
+		return dy >= 0
 			? { sourceHandle: 'b', targetHandle: 't' }
 			: { sourceHandle: 't', targetHandle: 'b' };
 	}
@@ -300,6 +313,7 @@
 				sy,
 				tx,
 				ty,
+				result.direction,
 				e.source === e.target
 			);
 			const strokeOverride = e.attrs?.color;
@@ -328,7 +342,16 @@
 				markerEnd: hasArrow(e.kind)
 					? { type: MarkerType.ArrowClosed, color: strokeOverride || edgeColor }
 					: undefined,
-				data: { obstacles, labelFill: theme.text, labelBg: theme.panel }
+				data: {
+					obstacles,
+					labelFill: theme.text,
+					labelBg: theme.panel,
+					axis:
+						result.direction === 'left-to-right' ||
+						result.direction === 'right-to-left'
+							? 'horizontal'
+							: 'vertical'
+				}
 			};
 		});
 

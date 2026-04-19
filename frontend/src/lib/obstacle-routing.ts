@@ -62,13 +62,12 @@ function segmentCrossesRect(a: Point, b: Point, r: Rect): boolean {
  */
 const ALIGN_EPS = 4;
 
-function orthogonalL(start: Point, end: Point): Point[] {
-	// Always return an L-shape with elbow at midpoint. Degenerates to a
-	// straight line when already aligned. Vertical-first when dy dominates,
-	// else horizontal-first — keeps the elbow on the long leg.
-	// Sub-pixel drift (odd node widths, etc.) would otherwise produce tiny
-	// zigzags on visually-aligned shapes; snap endpoints to each other
-	// when they're within ALIGN_EPS.
+type FlowAxis = 'vertical' | 'horizontal' | 'auto';
+
+function orthogonalL(start: Point, end: Point, axis: FlowAxis = 'auto'): Point[] {
+	// When `axis` is given, the L's first AND last segment run along that
+	// axis so the arrow tip at `end` points in the flow direction. `auto`
+	// falls back to picking the elbow on the long leg.
 	let s = start;
 	let e = end;
 	if (Math.abs(e.x - s.x) < ALIGN_EPS) e = { x: s.x, y: e.y };
@@ -76,7 +75,9 @@ function orthogonalL(start: Point, end: Point): Point[] {
 	const dx = e.x - s.x;
 	const dy = e.y - s.y;
 	if (dx === 0 || dy === 0) return [s, e];
-	if (Math.abs(dy) >= Math.abs(dx)) {
+	const useVertical =
+		axis === 'vertical' || (axis === 'auto' && Math.abs(dy) >= Math.abs(dx));
+	if (useVertical) {
 		const my = s.y + dy / 2;
 		return [s, { x: s.x, y: my }, { x: e.x, y: my }, e];
 	}
@@ -89,9 +90,10 @@ export function routeAround(
 	end: Point,
 	obstacles: Rect[],
 	cellSize = 20,
-	padding = 8
+	padding = 8,
+	axis: FlowAxis = 'auto'
 ): Point[] {
-	if (obstacles.length === 0) return orthogonalL(start, end);
+	if (obstacles.length === 0) return orthogonalL(start, end, axis);
 
 	// Bounding box of everything + margin.
 	const xs: number[] = [start.x, end.x];
@@ -141,7 +143,7 @@ export function routeAround(
 
 	// No diagonals allowed — try an orthogonal L first. If none of its
 	// H/V segments cross any obstacle, take it.
-	const lShape = orthogonalL(start, end);
+	const lShape = orthogonalL(start, end, axis);
 	let lClear = true;
 	for (let i = 0; i < lShape.length - 1 && lClear; i++) {
 		for (const o of obstacles) {

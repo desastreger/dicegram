@@ -11,7 +11,12 @@
 		markerEnd?: string;
 		style?: string;
 		label?: string;
-		data?: { obstacles?: Rect[]; labelFill?: string; labelBg?: string };
+		data?: {
+			obstacles?: Rect[];
+			labelFill?: string;
+			labelBg?: string;
+			axis?: 'vertical' | 'horizontal' | 'auto';
+		};
 	};
 
 	let {
@@ -27,12 +32,16 @@
 	}: Props = $props();
 
 	const obstacles = $derived(data?.obstacles ?? []);
+	const axis = $derived(data?.axis ?? 'auto');
 
 	const waypoints = $derived(
 		routeAround(
 			{ x: sourceX, y: sourceY },
 			{ x: targetX, y: targetY },
-			obstacles
+			obstacles,
+			20,
+			8,
+			axis
 		)
 	);
 
