@@ -23,10 +23,8 @@
 		positionFor?: () => Position;
 	} = $props();
 
-	// Semantic groups — each renders as its own cluster so the shape menu
-	// reads as "here are the flow-control primitives, here are the work
-	// shapes, here are the data shapes" instead of an undifferentiated
-	// strip of eight icons.
+	// — Row 1: containers / structural wrappers that frame nodes.
+	// — Row 2: shapes (nodes), grouped by semantic cluster.
 	const SHAPE_GROUPS: { key: string; shapes: { id: string; icon: string; title: string }[] }[] = [
 		{
 			key: 'flow',
@@ -53,6 +51,28 @@
 		}
 	];
 
+	// — Row 3: connectors. Each button inserts an edge between the last
+	// two shapes with a specific (kind, end-decoration) pairing. Glyphs
+	// use Unicode so no extra SVG work — they're the visual shorthand
+	// authors already recognise from Mermaid / draw.io.
+	type Kind = 'solid' | 'dashed' | 'thick' | 'solid_line' | 'dotted_line';
+	const CONNECTORS: {
+		key: string;
+		glyph: string;
+		title: string;
+		kind: Kind;
+		end?: string;
+	}[] = [
+		{ key: 'solid', glyph: '→', title: 'Solid arrow — sequence', kind: 'solid' },
+		{ key: 'dashed', glyph: '⇢', title: 'Dashed arrow — message / conditional', kind: 'dashed' },
+		{ key: 'thick', glyph: '⇒', title: 'Thick arrow — critical path', kind: 'thick' },
+		{ key: 'line', glyph: '—', title: 'Line — association, no arrow', kind: 'solid_line' },
+		{ key: 'dotted', glyph: '⋯', title: 'Dotted line — dependency, no arrow', kind: 'dotted_line' },
+		{ key: 'circle', glyph: '●→', title: 'Circle tip — bulb / aggregation', kind: 'solid', end: 'circle' },
+		{ key: 'diamond', glyph: '◆→', title: 'Diamond tip — composition-lite', kind: 'solid', end: 'diamond' },
+		{ key: 'tee', glyph: '⊤', title: 'Tee tip — stop / must-not', kind: 'solid_line', end: 'tee' }
+	];
+
 	function insertShape(shape: string) {
 		const name = nextNodeName(source);
 		const label = name.charAt(0).toUpperCase() + name.slice(1);
@@ -64,27 +84,32 @@
 		});
 	}
 
-	function insertEdge() {
-		// Connect the last two shapes — the most common follow-up to adding a shape.
+	function lastTwoNodeIds(): [string, string] | null {
 		const ids: string[] = [];
 		const re = /^\s*\[\w+\]\s+(\w+)\s+"/gm;
 		for (const m of source.matchAll(re)) ids.push(m[1]);
-		if (ids.length < 2) return;
-		source = addEdge(source, { src: ids[ids.length - 2], dst: ids[ids.length - 1] });
+		if (ids.length < 2) return null;
+		return [ids[ids.length - 2], ids[ids.length - 1]];
+	}
+
+	function insertConnector(c: (typeof CONNECTORS)[number]) {
+		const pair = lastTwoNodeIds();
+		if (!pair) return;
+		const [src, dst] = pair;
+		const attrs: Record<string, string> = {};
+		if (c.end) attrs.end = c.end;
+		source = addEdge(source, { src, dst, kind: c.kind, attrs });
 	}
 
 	function insertSwimlane() {
 		source = addSwimlane(source, nextLabel(source, 'swimlane', 'Swimlane'));
 	}
-
 	function insertBox() {
 		source = addBox(source, { label: nextLabel(source, 'box', 'Box') });
 	}
-
 	function insertGroup() {
 		source = addGroup(source, nextLabel(source, 'group', 'Group'));
 	}
-
 	function insertNote() {
 		const re = /^\s*\[\w+\]\s+(\w+)\s+"/gm;
 		const ids: string[] = [];
@@ -95,8 +120,46 @@
 </script>
 
 <div class="border-b border-neutral-800 bg-neutral-950 px-2 py-1">
-	<!-- Row 1: shape primitives, grouped by semantic cluster. -->
-	<div class="flex flex-wrap items-center gap-0.5" aria-label="Insert shape">
+	<!-- Row 1 — CONTAINERS: frame or annotate groups of nodes. -->
+	<div class="flex flex-wrap items-center gap-0.5" aria-label="Insert container">
+		<span class="mr-1 w-16 text-[9px] uppercase tracking-wider text-neutral-600">Containers</span>
+		<button
+			type="button"
+			onclick={insertSwimlane}
+			title="Insert swimlane"
+			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
+		>
+			+ Lane
+		</button>
+		<button
+			type="button"
+			onclick={insertBox}
+			title="Insert box inside the nearest swimlane"
+			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
+		>
+			+ Box
+		</button>
+		<button
+			type="button"
+			onclick={insertGroup}
+			title="Insert group overlay"
+			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
+		>
+			+ Group
+		</button>
+		<button
+			type="button"
+			onclick={insertNote}
+			title="Insert sticky note attached to the last shape"
+			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
+		>
+			+ Note
+		</button>
+	</div>
+
+	<!-- Row 2 — NODES (shapes), grouped by semantic cluster. -->
+	<div class="mt-0.5 flex flex-wrap items-center gap-0.5" aria-label="Insert shape">
+		<span class="mr-1 w-16 text-[9px] uppercase tracking-wider text-neutral-600">Nodes</span>
 		{#each SHAPE_GROUPS as group, gi (group.key)}
 			{#if gi > 0}
 				<span class="mx-1 h-4 w-px bg-neutral-800" aria-hidden="true"></span>
@@ -115,54 +178,22 @@
 		{/each}
 	</div>
 
-	<!-- Row 2: connectors + containers — the meta stuff that wraps or connects shapes. -->
-	<div class="mt-0.5 flex flex-wrap items-center gap-0.5" aria-label="Insert connector or container">
-		<button
-			type="button"
-			onclick={insertEdge}
-			title="Connect the last two shapes"
-			aria-label="Insert connection between the last two shapes"
-			class="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
-		>
-			<Icon name="arrow-right" size={14} />
-			<span>Connect</span>
-		</button>
-		<span class="mx-1 h-4 w-px bg-neutral-800" aria-hidden="true"></span>
-		<button
-			type="button"
-			onclick={insertSwimlane}
-			title="Insert swimlane"
-			aria-label="Insert swimlane"
-			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
-		>
-			+ Lane
-		</button>
-		<button
-			type="button"
-			onclick={insertBox}
-			title="Insert box inside the nearest swimlane"
-			aria-label="Insert box"
-			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
-		>
-			+ Box
-		</button>
-		<button
-			type="button"
-			onclick={insertGroup}
-			title="Insert group overlay"
-			aria-label="Insert group"
-			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
-		>
-			+ Group
-		</button>
-		<button
-			type="button"
-			onclick={insertNote}
-			title="Insert sticky note attached to the last shape"
-			aria-label="Insert note"
-			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
-		>
-			+ Note
-		</button>
+	<!-- Row 3 — CONNECTORS: link the last two shapes with a specific line + tip combo. -->
+	<div class="mt-0.5 flex flex-wrap items-center gap-0.5" aria-label="Insert connector">
+		<span class="mr-1 w-16 text-[9px] uppercase tracking-wider text-neutral-600">Connectors</span>
+		{#each CONNECTORS as c, ci (c.key)}
+			{#if ci === 5}
+				<span class="mx-1 h-4 w-px bg-neutral-800" aria-hidden="true"></span>
+			{/if}
+			<button
+				type="button"
+				onclick={() => insertConnector(c)}
+				title={c.title}
+				aria-label={c.title}
+				class="min-w-[28px] rounded px-1.5 py-1 text-center font-mono text-[12px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
+			>
+				{c.glyph}
+			</button>
+		{/each}
 	</div>
 </div>

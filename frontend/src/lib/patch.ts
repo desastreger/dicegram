@@ -329,6 +329,7 @@ export function addEdge(
 		dst: string;
 		kind?: 'solid' | 'dashed' | 'thick' | 'solid_line' | 'dotted_line';
 		label?: string;
+		attrs?: Record<string, string>;
 	}
 ): string {
 	const sym = {
@@ -339,7 +340,17 @@ export function addEdge(
 		dotted_line: '-.-'
 	}[opts.kind ?? 'solid'];
 	let line = `${opts.src} ${sym} ${opts.dst}`;
-	if (opts.label) line += ` : "${opts.label}"`;
+	const tail: string[] = [];
+	if (opts.label) {
+		const esc = opts.label.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+		tail.push(`"${esc}"`);
+	}
+	for (const [k, v] of Object.entries(opts.attrs ?? {})) {
+		if (v == null || v === '') continue;
+		const needsQuote = /\s|,/.test(v);
+		tail.push(`${k}:${needsQuote ? `"${v}"` : v}`);
+	}
+	if (tail.length) line += ` : ${tail.join(' ')}`;
 	return source.trimEnd() + '\n' + line + '\n';
 }
 
