@@ -20,6 +20,7 @@
 	import { downloadSvg } from '$lib/export';
 	import { renderDsl, type RenderResult, type RenderNode } from '$lib/render';
 	import { getTheme, type Theme } from '$lib/themes';
+	import { theme as appTheme } from '$lib/theme.svelte';
 	import { TEMPLATES, DEFAULT_TEMPLATE_ID, type DicegramTemplate } from '$lib/templates';
 	import { buildTreeFallback } from '$lib/tree-fallback';
 	import Canvas from './Canvas.svelte';
@@ -168,7 +169,15 @@
 			: null
 	);
 
-	const theme = $derived<Theme>(getTheme(getSetting(source, 'color_scheme')));
+	// An explicit `setting color_scheme <id>` in the DSL wins; otherwise the
+	// editor canvas follows the app-wide light/dark toggle in the top nav.
+	const theme = $derived<Theme>(
+		(() => {
+			const explicit = getSetting(source, 'color_scheme');
+			if (explicit) return getTheme(explicit);
+			return getTheme(appTheme.current === 'light' ? 'light' : 'default-dark');
+		})()
+	);
 
 	const lineStyle = $derived<'orthogonal' | 'curved' | 'straight'>(
 		(() => {

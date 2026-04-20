@@ -7,17 +7,23 @@
 	// Preview viewport bounds. Node is rendered at its natural pixel size and
 	// uniformly transform-scaled to fit — so border widths, clip paths, font
 	// sizes, and corner radii all scale together and the preview looks
-	// identical to the canvas render of the same node.
-	const MAX_W = 260;
-	const MAX_H = 140;
-	const MIN_W = 40;
-	const MIN_H = 30;
+	// identical to the canvas render of the same node. The outer frame is a
+	// fixed-size container so the preview never changes the inspector's
+	// layout when the user swaps between a small circle and a huge swimlane
+	// box.
+	const FRAME_W = 240;
+	const FRAME_H = 120;
+	// Pad inside so owner/tag pills (which hang off the shape by ~8px) don't
+	// bump the edges of the frame.
+	const PAD = 14;
+	const MIN_NAT = 40;
+	const MAX_NAT = 1200;
 
-	const natW = $derived(Math.max(MIN_W, node.width));
-	const natH = $derived(Math.max(MIN_H, node.height));
-	const scale = $derived(Math.min(MAX_W / natW, MAX_H / natH));
-	const boxW = $derived(natW * scale);
-	const boxH = $derived(natH * scale);
+	const natW = $derived(Math.min(MAX_NAT, Math.max(MIN_NAT, node.width)));
+	const natH = $derived(Math.min(MAX_NAT, Math.max(MIN_NAT, node.height)));
+	const scale = $derived(
+		Math.min((FRAME_W - PAD * 2) / natW, (FRAME_H - PAD * 2) / natH)
+	);
 
 	// — Same derivations as ShapeNode.svelte so preview matches the canvas.
 	const clipPaths: Record<string, string> = {
@@ -111,12 +117,12 @@
 </script>
 
 <div class="preview-wrap">
-	<div class="preview-frame" style:width="{boxW}px" style:height="{boxH}px">
+	<div class="preview-frame" style:width="{FRAME_W}px" style:height="{FRAME_H}px">
 		<div
 			class="preview-inner"
 			style:width="{natW}px"
 			style:height="{natH}px"
-			style:transform="scale({scale})"
+			style:transform="translate(-50%, -50%) scale({scale})"
 		>
 			<div
 				class="shape"
@@ -154,25 +160,30 @@
 </div>
 
 <style>
-	/* Layout for the preview pane itself. */
+	/* Layout for the preview pane itself — fixed height so the inspector
+	   never reflows when the user selects a big shape. */
 	.preview-wrap {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		max-height: calc((100vh - var(--header-h, 40px)) * 0.3);
-		padding: 18px 14px;
+		padding: 12px;
 		border-bottom: 1px solid var(--th-panel-border, #262626);
 		background: var(--th-canvas, #0a0a0a);
 	}
 	.preview-frame {
 		position: relative;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		overflow: visible;
+		flex-shrink: 0;
+		/* Clip anything that still manages to escape so the frame's bounding
+		   box is stable. Owner/tag pills stick out by ~7-8px and we padded
+		   for them, but a pathological style combination could still exceed. */
+		overflow: hidden;
+		border-radius: 4px;
 	}
 	.preview-inner {
-		transform-origin: top left;
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform-origin: center center;
 	}
 
 	/* Shape visuals — kept in lockstep with ShapeNode.svelte. */

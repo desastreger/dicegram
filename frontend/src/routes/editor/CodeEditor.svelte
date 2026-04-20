@@ -192,9 +192,20 @@
 		const incoming = value;
 		if (syncing || !view) return;
 		const current = view.state.doc.toString();
-		if (incoming !== current) {
-			view.dispatch({ changes: { from: 0, to: current.length, insert: incoming } });
-		}
+		if (incoming === current) return;
+		// Preserve cursor / selection across outside-driven rewrites (e.g. the
+		// normalize-source round-trip fires a new `value` a second after the
+		// user stops typing). Without this, the cursor snaps back to 0 and
+		// typing feels punitive. Clamp to the new length in case normalize
+		// shortened the document.
+		const sel = view.state.selection.main;
+		const newLen = incoming.length;
+		const anchor = Math.min(sel.anchor, newLen);
+		const head = Math.min(sel.head, newLen);
+		view.dispatch({
+			changes: { from: 0, to: current.length, insert: incoming },
+			selection: { anchor, head }
+		});
 	});
 
 	$effect(() => {
