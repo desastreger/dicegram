@@ -76,3 +76,59 @@
 <main class="text-neutral-100">
 	{@render children()}
 </main>
+
+{#if auth.user && !auth.user.email_verified}
+	<div
+		class="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-3"
+	>
+		<div
+			class="pointer-events-auto rounded-md border border-amber-800/60 bg-amber-950/80 px-3 py-2 text-xs text-amber-100 shadow-lg backdrop-blur"
+		>
+			Please verify your email —
+			<button
+				type="button"
+				onclick={async () => {
+					try {
+						await (await import('$lib/api')).api.post('/auth/request-verify');
+						alert('Verification email re-sent.');
+					} catch {
+						alert('Could not resend the email — check SMTP settings or the server logs.');
+					}
+				}}
+				class="ml-1 underline hover:text-white"
+			>
+				resend link
+			</button>
+		</div>
+	</div>
+{/if}
+
+<footer
+	class="mt-12 border-t border-neutral-900 bg-neutral-950/50 px-4 py-4 text-[11px] text-neutral-500"
+>
+	<div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 sm:flex-row">
+		<p>
+			Built and maintained by
+			<a
+				href="https://desastregerstudio.com"
+				class="text-neutral-300 hover:text-white"
+				rel="noreferrer"
+			>Nacho De Saeger</a>
+			·
+			Copyright © Nacho De Saeger ·
+			Licensed under
+			<a
+				href="https://www.gnu.org/licenses/agpl-3.0.en.html"
+				class="text-neutral-300 hover:text-white"
+				rel="noreferrer"
+			>AGPL-3.0</a>
+			· Commercial licences available on request.
+		</p>
+		<a
+			href="mailto:dicegram_feedback@desastregerstudio.com?subject=Dicegram%20feedback"
+			class="rounded border border-neutral-800 px-2 py-1 text-neutral-300 hover:bg-neutral-900 hover:text-white"
+		>
+			Send feedback
+		</a>
+	</div>
+</footer>

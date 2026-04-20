@@ -65,8 +65,9 @@
 		>
 			{submitting ? 'Signing in…' : 'Log in'}
 		</button>
-		<p class="text-center text-sm text-neutral-400">
-			New here? <a href="/signup" class="text-blue-400 hover:underline">Create an account</a>
-		</p>
+		<div class="flex items-center justify-between text-sm text-neutral-400">
+			<a href="/forgot-password" class="text-blue-400 hover:underline">Forgot password?</a>
+			<a href="/signup" class="text-blue-400 hover:underline">Create an account</a>
+		</div>
 	</form>
 </section>

@@ -1,7 +1,7 @@
 import { ApiError, api } from './api';
 import { palette } from './palette.svelte';
 
-export type User = { id: number; email: string };
+export type User = { id: number; email: string; email_verified?: boolean };
 
 function createAuth() {
 	let user = $state<User | null>(null);
