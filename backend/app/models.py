@@ -13,6 +13,10 @@ class User(SQLModel, table=True):
     email: str = Field(index=True, unique=True)
     password_hash: str
     created_at: datetime = Field(default_factory=utcnow)
+    # Set the first time the user confirms their email via the verification
+    # link. Until then, email_verified_at is None and we surface a banner
+    # in the frontend; no feature is gated on verification yet.
+    email_verified_at: datetime | None = Field(default=None)
     # Currently applied per-user branding palette (see app/palette.py).
     # Stored as JSON; only keys in ALLOWED_KEYS survive a PUT. Empty-string
     # values mean "inherit the shipped default".

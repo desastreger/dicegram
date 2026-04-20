@@ -1,9 +1,21 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlmodel import Session, select
 
+from ..config import settings
 from ..db import get_session
 from ..deps import current_user
+from ..email import (
+    PURPOSE_RESET,
+    PURPOSE_VERIFY,
+    build_reset_email,
+    build_verify_email,
+    make_token,
+    read_token,
+    send_email,
+)
 from ..models import User
 from ..palette import ALLOWED_KEYS, DEFAULT_PALETTE, merge_palette
 from ..rate_limit import limiter
@@ -20,6 +32,7 @@ class Credentials(BaseModel):
 class UserPublic(BaseModel):
     id: int
     email: EmailStr
+    email_verified: bool = False
 
 
 class PaletteOut(BaseModel):
@@ -46,6 +59,37 @@ class PresetSaveIn(BaseModel):
     overrides: dict[str, str] | None = None
 
 
+class EmailOnly(BaseModel):
+    email: EmailStr
+
+
+class ResetIn(BaseModel):
+    token: str = Field(min_length=1, max_length=1024)
+    password: str = Field(min_length=8, max_length=128)
+
+
+def _user_public(user: User) -> UserPublic:
+    return UserPublic(
+        id=user.id,
+        email=user.email,
+        email_verified=user.email_verified_at is not None,
+    )
+
+
+def _dispatch_verify_email(user: User) -> None:
+    token = make_token(user.id, PURPOSE_VERIFY)
+    url = f"{settings.app_base_url.rstrip('/')}/verify?token={token}"
+    subject, text, html = build_verify_email(url)
+    send_email(user.email, subject, text, html)
+
+
+def _dispatch_reset_email(user: User) -> None:
+    token = make_token(user.id, PURPOSE_RESET)
+    url = f"{settings.app_base_url.rstrip('/')}/reset-password?token={token}"
+    subject, text, html = build_reset_email(url)
+    send_email(user.email, subject, text, html)
+
+
 @router.post("/signup", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
 def signup(
@@ -63,7 +107,8 @@ def signup(
     session.commit()
     session.refresh(user)
     request.session["user_id"] = user.id
-    return UserPublic(id=user.id, email=user.email)
+    _dispatch_verify_email(user)
+    return _user_public(user)
 
 
 @router.post("/login", response_model=UserPublic)
@@ -79,7 +124,7 @@ def login(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials"
         )
     request.session["user_id"] = user.id
-    return UserPublic(id=user.id, email=user.email)
+    return _user_public(user)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -90,7 +135,99 @@ def logout(request: Request):
 
 @router.get("/me", response_model=UserPublic)
 def me(user: User = Depends(current_user)):
-    return UserPublic(id=user.id, email=user.email)
+    return _user_public(user)
+
+
+# ─── Email verification ───────────────────────────────────────────────────
+
+@router.post("/request-verify", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("3/minute")
+def request_verify(request: Request, user: User = Depends(current_user)):
+    """Re-send the verification email to the currently signed-in user."""
+    if user.email_verified_at is not None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    _dispatch_verify_email(user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/verify", response_model=UserPublic)
+@limiter.limit("20/minute")
+def verify_email(
+    request: Request,
+    token: str,
+    session: Session = Depends(get_session),
+):
+    uid = read_token(token, PURPOSE_VERIFY, settings.verify_token_max_age)
+    if uid is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="verification link invalid or expired",
+        )
+    user = session.get(User, uid)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="verification link invalid or expired",
+        )
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.now(timezone.utc)
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+    # Log the user in as a side-effect of clicking the verification link
+    # from their email client.
+    request.session["user_id"] = user.id
+    return _user_public(user)
+
+
+# ─── Password reset ───────────────────────────────────────────────────────
+
+@router.post("/request-reset", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("5/minute")
+def request_password_reset(
+    body: EmailOnly,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    """Start a password reset flow. Always returns 204 to avoid leaking
+    whether an email address is registered."""
+    user = session.exec(select(User).where(User.email == body.email)).first()
+    if user is not None:
+        _dispatch_reset_email(user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/reset", response_model=UserPublic)
+@limiter.limit("5/minute")
+def reset_password(
+    body: ResetIn,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    uid = read_token(body.token, PURPOSE_RESET, settings.reset_token_max_age)
+    if uid is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="reset link invalid or expired",
+        )
+    user = session.get(User, uid)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="reset link invalid or expired",
+        )
+    user.password_hash = hash_password(body.password)
+    # Resetting via email proves ownership of the inbox, so mark verified
+    # as a side-effect if they hadn't already.
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.now(timezone.utc)
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    # Invalidate any existing session and start a fresh one as the reset user.
+    request.session.clear()
+    request.session["user_id"] = user.id
+    return _user_public(user)
 
 
 @router.get("/me/palette", response_model=PaletteOut)

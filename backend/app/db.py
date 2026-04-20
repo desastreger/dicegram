@@ -41,6 +41,10 @@ def _ensure_schema() -> None:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE user ADD COLUMN palette_presets JSON"))
             conn.execute(text("UPDATE user SET palette_presets = '{}' WHERE palette_presets IS NULL"))
+    if "email_verified_at" not in user_cols:
+        with engine.begin() as conn:
+            # Stored as ISO datetime text in SQLite. NULL = unverified.
+            conn.execute(text("ALTER TABLE user ADD COLUMN email_verified_at DATETIME"))
 
 
 def init_db() -> None:

@@ -17,6 +17,27 @@ class Settings(BaseSettings):
     # real diagram; keeps parser/regex cost bounded.
     max_source_bytes: int = 1 * 1024 * 1024
 
+    # Public base URL — used to build verification / password-reset links
+    # in outbound emails. e.g. "https://dicegram.desastreger.cloud".
+    # Defaults to empty in dev so the links point at localhost:5173 when
+    # your frontend is on vite.
+    app_base_url: str = "http://localhost:5173"
+
+    # Email / SMTP. If smtp_host is empty we fall back to a "console" email
+    # transport that logs the body of the email instead of sending it —
+    # useful for dev and for setups that haven't configured SMTP yet.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_use_tls: bool = True  # True = STARTTLS on 587; False = SSL on 465.
+    smtp_from_address: str = "noreply@dicegram.local"
+    smtp_from_name: str = "Dicegram"
+
+    # Token lifetimes (seconds).
+    verify_token_max_age: int = 60 * 60 * 48   # 48h
+    reset_token_max_age: int = 60 * 60         # 1h
+
     @field_validator("secret_key")
     @classmethod
     def _reject_default_in_prod(cls, v: str) -> str:
