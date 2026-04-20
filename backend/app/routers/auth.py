@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 from ..db import get_session
 from ..deps import current_user
 from ..models import User
+from ..palette import ALLOWED_KEYS, DEFAULT_PALETTE, merge_palette
 from ..security import hash_password, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -18,6 +19,14 @@ class Credentials(BaseModel):
 class UserPublic(BaseModel):
     id: int
     email: EmailStr
+
+
+class PaletteOut(BaseModel):
+    palette: dict[str, str]
+
+
+class PaletteIn(BaseModel):
+    palette: dict[str, str] = Field(default_factory=dict)
 
 
 @router.post("/signup", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
@@ -63,3 +72,33 @@ def logout(request: Request):
 @router.get("/me", response_model=UserPublic)
 def me(user: User = Depends(current_user)):
     return UserPublic(id=user.id, email=user.email)
+
+
+@router.get("/me/palette", response_model=PaletteOut)
+def get_palette(user: User = Depends(current_user)):
+    """Return the effective palette (defaults merged with user overrides)."""
+    return PaletteOut(palette=merge_palette(user.branding_palette))
+
+
+@router.put("/me/palette", response_model=PaletteOut)
+def put_palette(
+    body: PaletteIn,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+):
+    """Replace the user palette with the given overrides. Keys outside the
+    allowed set are silently dropped; invalid colours are dropped by
+    `merge_palette`. Pass an empty dict to reset to defaults."""
+    clean: dict[str, str] = {}
+    for k, v in body.palette.items():
+        if k not in ALLOWED_KEYS or not isinstance(v, str):
+            continue
+        v = v.strip()
+        # Accept "" as "inherit default" so the UI can unset individual keys.
+        if v == "" or v.startswith("#") or v.startswith("rgb") or v.startswith("hsl"):
+            clean[k] = v
+    user.branding_palette = clean
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return PaletteOut(palette=merge_palette(user.branding_palette))

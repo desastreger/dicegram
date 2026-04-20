@@ -10,6 +10,7 @@ from ..deps import current_user
 from ..dsl.export_svg import render_svg
 from ..dsl.parser import parse
 from ..models import Dicegram, Share, User
+from ..palette import build_theme
 
 router = APIRouter(tags=["shares"])
 
@@ -106,7 +107,13 @@ def get_shared_svg(slug: str, session: Session = Depends(get_session)) -> Respon
     dicegram = session.get(Dicegram, share.dicegram_id)
     if not dicegram:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
-    return Response(content=render_svg(parse(dicegram.source)), media_type="image/svg+xml")
+    # Shared views use the share owner's palette so the brand travels with the diagram.
+    owner = session.get(User, dicegram.owner_id)
+    theme = build_theme(owner.branding_palette) if owner else build_theme(None)
+    return Response(
+        content=render_svg(parse(dicegram.source), theme=theme),
+        media_type="image/svg+xml",
+    )
 
 
 @router.get("/api/dicegrams/{dicegram_id}/svg")
@@ -118,4 +125,8 @@ def get_dicegram_svg(
     dicegram = session.get(Dicegram, dicegram_id)
     if not dicegram or dicegram.owner_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
-    return Response(content=render_svg(parse(dicegram.source)), media_type="image/svg+xml")
+    theme = build_theme(user.branding_palette)
+    return Response(
+        content=render_svg(parse(dicegram.source), theme=theme),
+        media_type="image/svg+xml",
+    )
