@@ -30,11 +30,11 @@
 			{#if auth.user}
 				<a
 					href="/dicegrams"
-					title="My dicegrams"
+					title="My diegrams"
 					class="flex items-center gap-1 rounded px-2 py-1 text-neutral-300 hover:bg-neutral-900 hover:text-white"
 				>
 					<Icon name="folder" size={14} />
-					<span class="hidden sm:inline">Dicegrams</span>
+					<span class="hidden sm:inline">Diegrams</span>
 				</a>
 				<a
 					href="/editor"
@@ -43,6 +43,14 @@
 				>
 					<Icon name="file-text" size={14} />
 					<span class="hidden sm:inline">Editor</span>
+				</a>
+				<a
+					href="/settings"
+					title="Settings · branding palette"
+					class="flex items-center gap-1 rounded px-2 py-1 text-neutral-300 hover:bg-neutral-900 hover:text-white"
+				>
+					<Icon name="settings" size={14} />
+					<span class="hidden sm:inline">Settings</span>
 				</a>
 				<span class="mx-2 hidden text-[11px] text-neutral-500 md:inline">{auth.user.email}</span>
 				<button

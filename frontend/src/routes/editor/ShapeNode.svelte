@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Handle, Position } from '@xyflow/svelte';
+	import { palette } from '$lib/palette.svelte';
 
 	type ShapeData = {
 		shape: string;
@@ -43,29 +44,18 @@
 			.filter(Boolean)
 	);
 
-	const fill = $derived(
-		data.fill ??
-			(typeAttr === 'start'
-				? '#064e3b'
-				: typeAttr === 'end'
-					? '#3f1d1d'
-					: typeAttr === 'decision'
-						? '#3a2f0b'
-						: typeAttr === 'datastore'
-							? '#0c3a5c'
-							: 'var(--th-node-fill, #1f2937)')
-	);
+	const fill = $derived(data.fill ?? palette.typeFill(typeAttr));
 	const stroke = $derived(
 		data.stroke ??
 			(priority === 'critical'
-				? '#ef4444'
+				? palette.current.priority_critical
 				: priority === 'high'
-					? '#f59e0b'
+					? palette.current.priority_high
 					: status === 'blocked'
-						? '#ef4444'
+						? palette.current.status_blocked
 						: status === 'complete'
-							? '#10b981'
-							: 'var(--th-node-stroke, #64748b)')
+							? palette.current.status_complete
+							: palette.current.node_stroke)
 	);
 	const strokeWidth = $derived(
 		data.stroke_width != null && data.stroke_width !== ''
@@ -77,7 +67,10 @@
 					: 1.5
 	);
 	const textColor = $derived(
-		data.text ?? (status === 'deprecated' ? '#71717a' : 'var(--th-node-text, #e5e7eb)')
+		data.text ??
+			(status === 'deprecated'
+				? palette.current.status_deprecated_text
+				: palette.current.node_text)
 	);
 	const fontSize = $derived(
 		data.font_size != null && data.font_size !== '' ? `${Number(data.font_size)}px` : '13px'

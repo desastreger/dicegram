@@ -1,4 +1,5 @@
 import type { RenderResult } from './render';
+import { palette } from './palette.svelte';
 
 async function fetchSvg(source: string): Promise<string> {
 	const res = await fetch('/api/export/svg', {
@@ -240,37 +241,180 @@ export async function copySvg(source: string): Promise<void> {
 	await navigator.clipboard.writeText(svg);
 }
 
-export const LLM_PROMPT_TEMPLATE = `You are an expert assistant for Dicegram, a step-based dicegram DSL.
+function paletteBlock(): string {
+	const p = palette.current;
+	const used = (k: string) => p[k] && p[k].length > 0;
+	const line = (label: string, key: string, fallback = '') =>
+		`  ${label.padEnd(24)} ${used(key) ? p[key] : fallback || '(inherit node_fill)'}`;
+	return [
+		'BRANDING PALETTE (use these colours when styling — do not invent new ones):',
+		line('node_fill', 'node_fill'),
+		line('node_stroke', 'node_stroke'),
+		line('node_text', 'node_text'),
+		line('type:start', 'type_start'),
+		line('type:end', 'type_end'),
+		line('type:decision', 'type_decision'),
+		line('type:datastore', 'type_datastore'),
+		line('type:process', 'type_process'),
+		line('type:input', 'type_input'),
+		line('type:output', 'type_output'),
+		line('type:manual', 'type_manual'),
+		line('type:automated', 'type_automated'),
+		line('type:approval', 'type_approval'),
+		line('type:external', 'type_external'),
+		line('priority:critical', 'priority_critical'),
+		line('priority:high', 'priority_high'),
+		line('status:blocked', 'status_blocked'),
+		line('status:complete', 'status_complete'),
+		line('edge', 'edge')
+	].join('\n');
+}
 
-GRAMMAR:
-- direction <top-to-bottom|left-to-right|bottom-to-top|right-to-left>
-- setting <key> <value>  (keys: node_width, node_height, h_gap, v_gap, swimlane_gap, color_scheme, snap_grid)
-- swimlane "Name" { ... }                            // groups objects into a lane
-- box "Label" {fill: #hex} { ... }                   // sub-container inside a swimlane
-- group "Name" { obj1 obj2 obj3 }                    // visual overlay across lanes
-- note "Sticky text" [target_object]
-- [shape] name "Label" step:N type:T owner:"X" status:S priority:P tags:"a, b" {fill:#hex, stroke:#hex, text:#hex} @(x,y)
-- shapes: rect, rounded, diamond, circle, parallelogram, hexagon, cylinder, stadium
-- type: process, decision, input, output, datastore, start, end, manual, automated, approval, external
-- status: draft, active, blocked, deprecated, complete
-- priority: low, medium, high, critical
-- connections:
-    A -> B           solid arrow
-    A --> B          dashed arrow
-    A ==> B          thick arrow
-    A --- B          line, no arrow
-    A -.- B          dotted line, no arrow
-    A -> B : "label"
-- // line comments
-- step:N controls vertical (or horizontal) ordering — same step = parallel placement.
+function buildLlmPrompt(source: string): string {
+	return `You are an expert author of Dicegram DSL. Your output will be pasted
+directly into the Dicegram editor, so emit ONLY the DSL block — no prose,
+no Markdown fences, no commentary.
 
-CURRENT DICEGRAM:
-\`\`\`
-{SOURCE}
-\`\`\`
+==============================
+GRAMMAR (authoritative)
+==============================
 
-Respond with the full updated DSL. Don't explain — just output the DSL block.`;
+// Lines starting with // are comments. Blank lines are ignored.
+
+direction <top-to-bottom | left-to-right | bottom-to-top | right-to-left>
+    Sets flow axis. Default top-to-bottom. Shorthand TB / LR / BT / RL accepted.
+
+setting <key> <value>
+    Runtime defaults. Useful keys:
+      node_width, node_height, h_gap, v_gap, swimlane_gap, snap_grid.
+
+swimlane "Display Name" { <objects + boxes> }
+    Groups objects into a lane. In TB/BT lanes are vertical columns;
+    in LR/RL lanes are horizontal rows. Objects outside any swimlane sit
+    in the "free" area.
+
+box "Label" { <objects> }
+box "Label" {fill:#hex, stroke:#hex} { <objects> }
+    A tinted sub-container. Lives INSIDE a swimlane block. The style dict
+    is OPTIONAL and comes BEFORE the body block.
+
+group "Name" { obj1 obj2 obj3 }
+    Dashed visual overlay around referenced objects. Can span swimlanes.
+    Does not own layout — it just draws a dashed border.
+
+note "Sticky text" [target_object]
+    A sticky note attached to an existing object by name.
+
+[shape] unique_name "Display Label" step:N [attrs] [{style}] [@(x,y)]
+    The ONLY way to declare an object. Every field after the label is
+    optional except step:.
+
+    shape (required, one of, in brackets):
+        [rect]           rectangle               (process / task)
+        [rounded]        rounded rectangle       (sub-process)
+        [diamond]        diamond                 (decision / gateway)
+        [circle]         circle / ellipse        (start or end event)
+        [parallelogram]  slanted rectangle       (data input / output)
+        [hexagon]        hexagon                 (preparation)
+        [cylinder]       cylinder                (datastore)
+        [stadium]        pill / capsule          (terminal / boundary)
+
+    unique_name: lowercase identifier, no spaces. Used as the ID in
+    connections. Must be unique across the whole document.
+
+    "Display Label": quoted string shown on the node. \\n for multi-line.
+
+    step:N (required for layout): integer ordering along the flow axis.
+    Same step = parallel placement. Start at step:0.
+
+    attrs (all optional, space-separated):
+        type:<process|decision|input|output|datastore|start|end|manual|automated|approval|external>
+        owner:"Name"            responsibility assignment
+        status:<draft|active|blocked|deprecated|complete>
+            draft=dashed, blocked=red stroke, complete=green stroke,
+            deprecated=strikethrough.
+        priority:<low|medium|high|critical>
+            critical/high thicken + colour the stroke.
+        tags:"alpha, beta"      comma-separated free labels.
+        id:N                    external reference number.
+
+    style dict (optional, in braces, comma-separated, each is key:value):
+        fill:#hex, stroke:#hex, text:#hex, rx:<px>,
+        font_size:<px>, font_family:<name>, opacity:<0..1>, stroke_width:<px>
+
+    @(x,y) (optional): pins the node to an absolute position, overriding
+    auto-layout. Omit unless you really need a fixed pin.
+
+Connections (outside swimlane blocks):
+    A -> B                    solid arrow             (sequence)
+    A --> B                   dashed arrow            (message / conditional)
+    A ==> B                   thick arrow             (critical path)
+    A --- B                   solid line, no arrow    (association)
+    A -.- B                   dotted line, no arrow   (dependency)
+    A -> B : "label text"
+    A -> B : "label" [above|below|center]
+    A -> B condition:"expr" weight:5
+    A -> A : "retry"          self-loops are allowed
+
+==============================
+${paletteBlock()}
+==============================
+
+RULES — follow these exactly:
+1. Emit the whole document. Do not truncate or add "(...)".
+2. Keep shape identifiers (\`unique_name\`) snake_case and terse.
+3. Use the palette colours above. Do NOT invent new hex codes — if you
+   need a colour for a type, rely on the type: attribute and let the
+   palette resolve it (e.g. prefer \`[rect] dbq "Queue" step:2 type:datastore\`
+   over \`[rect] dbq "Queue" step:2 {fill:#0c3a5c}\`).
+4. Include swimlanes when there's more than one actor/responsibility.
+5. Every node needs a step: value. Parallel siblings share a step.
+6. Connections live OUTSIDE swimlane blocks and reference nodes by
+   \`unique_name\`.
+7. Only use the shape brackets and attr values listed above — invented
+   shapes or types will silently fall back to \`[rect]\`.
+
+==============================
+WORKED EXAMPLE
+==============================
+
+direction top-to-bottom
+
+swimlane "Frontend" {
+  [circle] req     "Login clicked" step:0 type:start
+  [rect]   form    "Submit form"   step:1 type:process
+  [circle] done    "Home page"     step:4 type:end
+}
+
+swimlane "Backend" {
+  [diamond]  verify  "Credentials valid?" step:2 type:decision
+  [cylinder] db      "Users DB"           step:2 type:datastore
+  [rect]     issue   "Issue session"      step:3 type:process
+  [rect]     reject  "401 response"       step:3 type:process status:blocked
+}
+
+req -> form
+form -> verify
+verify --> db : "lookup"
+verify -> issue : "yes"
+verify -> reject : "no" [below]
+issue -> done
+reject --> done : "retry"
+
+==============================
+CURRENT DIEGRAM (modify this)
+==============================
+
+${source}
+
+Respond with the full updated DSL, starting immediately with \`direction\`
+(or a comment). Do not wrap the output in Markdown fences.`;
+}
 
 export async function copyLlmPrompt(source: string): Promise<void> {
-	await navigator.clipboard.writeText(LLM_PROMPT_TEMPLATE.replace('{SOURCE}', source));
+	await navigator.clipboard.writeText(buildLlmPrompt(source));
 }
+
+// Back-compat re-export so external callers that used the constant still
+// work — now returns the prompt for an empty source.
+export const LLM_PROMPT_TEMPLATE = buildLlmPrompt('{SOURCE}');
