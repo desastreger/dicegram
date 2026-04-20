@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from ..config import settings
@@ -6,6 +6,7 @@ from ..dsl.compiler import normalize
 from ..dsl.layout import compute_layout
 from ..dsl.parser import parse
 from ..dsl.tree import build_tree
+from ..rate_limit import limiter
 
 router = APIRouter(prefix="/api/render", tags=["render"])
 
@@ -124,7 +125,8 @@ def _box_id(label: str, swimlane: str | None) -> str:
 
 
 @router.post("", response_model=RenderOut)
-def render(body: RenderIn) -> RenderOut:
+@limiter.limit("60/minute")
+def render(body: RenderIn, request: Request) -> RenderOut:
     original = body.source
     notices_out: list[NoticeOut] = []
     normalized_source = original

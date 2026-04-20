@@ -5,11 +5,15 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 
 from .config import settings
 from .db import init_db
+from .rate_limit import limiter
 from .routers import auth, dicegrams, export, render, shares
 
 
@@ -20,6 +24,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Dicegram API", lifespan=lifespan)
+
+# Rate limiting — defaults are generous; per-endpoint limits live on the
+# individual route decorators. See app/rate_limit.py for the shared limiter.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     SessionMiddleware,

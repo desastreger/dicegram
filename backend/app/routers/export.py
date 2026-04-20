@@ -8,6 +8,7 @@ from ..dsl.export_svg import render_svg
 from ..dsl.parser import parse
 from ..models import User
 from ..palette import build_theme
+from ..rate_limit import limiter
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
@@ -17,6 +18,7 @@ class ExportIn(BaseModel):
 
 
 @router.post("/svg")
+@limiter.limit("30/minute")
 def export_svg(
     body: ExportIn,
     request: Request,

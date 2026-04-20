@@ -6,6 +6,7 @@ from ..db import get_session
 from ..deps import current_user
 from ..models import User
 from ..palette import ALLOWED_KEYS, DEFAULT_PALETTE, merge_palette
+from ..rate_limit import limiter
 from ..security import hash_password, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -29,7 +30,24 @@ class PaletteIn(BaseModel):
     palette: dict[str, str] = Field(default_factory=dict)
 
 
+class PresetOut(BaseModel):
+    name: str
+    overrides: dict[str, str]
+    active: bool
+
+
+class PresetsOut(BaseModel):
+    presets: list[PresetOut]
+
+
+class PresetSaveIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    # If omitted, save the user's current active overrides under this name.
+    overrides: dict[str, str] | None = None
+
+
 @router.post("/signup", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
 def signup(
     creds: Credentials,
     request: Request,
@@ -49,6 +67,7 @@ def signup(
 
 
 @router.post("/login", response_model=UserPublic)
+@limiter.limit("10/minute")
 def login(
     creds: Credentials,
     request: Request,
@@ -102,3 +121,88 @@ def put_palette(
     session.commit()
     session.refresh(user)
     return PaletteOut(palette=merge_palette(user.branding_palette))
+
+
+def _sanitize_overrides(raw: dict[str, str]) -> dict[str, str]:
+    clean: dict[str, str] = {}
+    for k, v in raw.items():
+        if k not in ALLOWED_KEYS or not isinstance(v, str):
+            continue
+        v = v.strip()
+        if v == "" or v.startswith("#") or v.startswith("rgb") or v.startswith("hsl"):
+            clean[k] = v
+    return clean
+
+
+def _active_preset_name(user: User) -> str:
+    """Return the preset name whose overrides exactly match the current
+    branding_palette, or '' if none does (i.e. the user is mid-edit)."""
+    cur = user.branding_palette or {}
+    for name, ov in (user.palette_presets or {}).items():
+        if (ov or {}) == cur:
+            return name
+    return ""
+
+
+@router.get("/me/palettes", response_model=PresetsOut)
+def list_presets(user: User = Depends(current_user)):
+    active = _active_preset_name(user)
+    presets = user.palette_presets or {}
+    return PresetsOut(
+        presets=[
+            PresetOut(name=n, overrides=dict(ov or {}), active=(n == active))
+            for n, ov in sorted(presets.items(), key=lambda kv: kv[0].lower())
+        ]
+    )
+
+
+@router.post("/me/palettes", response_model=PresetsOut)
+def save_preset(
+    body: PresetSaveIn,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+):
+    """Create or overwrite a named preset. If `overrides` is omitted, save
+    the user's current active overrides under the given name."""
+    overrides = _sanitize_overrides(
+        body.overrides if body.overrides is not None else (user.branding_palette or {})
+    )
+    presets = dict(user.palette_presets or {})
+    presets[body.name] = overrides
+    user.palette_presets = presets
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return list_presets(user)
+
+
+@router.patch("/me/palettes/{name}/activate", response_model=PaletteOut)
+def activate_preset(
+    name: str,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+):
+    presets = user.palette_presets or {}
+    if name not in presets:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown preset")
+    user.branding_palette = _sanitize_overrides(dict(presets[name] or {}))
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return PaletteOut(palette=merge_palette(user.branding_palette))
+
+
+@router.delete("/me/palettes/{name}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_preset(
+    name: str,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+):
+    presets = dict(user.palette_presets or {})
+    if name not in presets:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown preset")
+    del presets[name]
+    user.palette_presets = presets
+    session.add(user)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
