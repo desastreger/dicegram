@@ -18,12 +18,14 @@
 		value = $bindable(''),
 		theme,
 		revealLine = null,
+		readOnly = false,
 		onNodeClick,
 		onEdgeClick
 	}: {
 		value: string;
 		theme: Theme;
 		revealLine?: number | null;
+		readOnly?: boolean;
 		onNodeClick?: (id: string) => void;
 		onEdgeClick?: (ordinal: number) => void;
 	} = $props();
@@ -191,6 +193,8 @@
 						indentWithTab
 					]),
 					themeCompartment.of(buildTheme(theme)),
+					EditorState.readOnly.of(readOnly),
+					EditorView.editable.of(!readOnly),
 					dslSyntaxExtension((id) => onNodeClick?.(id)),
 					dslAutocomplete(),
 					EditorView.updateListener.of((u) => {

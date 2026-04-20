@@ -57,10 +57,35 @@
 	let normalizeToast = $state<string | null>(null);
 	let normalizeToastTimer: ReturnType<typeof setTimeout> | null = null;
 
-	const demoMode = $derived(page.url.searchParams.get('demo') === '1');
+	// Editor modes:
+	//   full    — logged-in authoring surface (default). All chrome on.
+	//   demo    — `?demo=1`. Anon authoring, localStorage persistence,
+	//             banner inviting sign-up. Everything editable, nothing
+	//             synced to the server.
+	//   landing — chrome-less authoring, no persistence, no auth. The
+	//             landing page iframes this to show a live "try it"
+	//             editor without re-implementing the whole stack.
+	//   embed   — chrome-less read-only viewer. For future iframe embeds
+	//             of specific shared diegrams.
+	type EditorMode = 'full' | 'demo' | 'landing' | 'embed';
+	const mode = $derived<EditorMode>((() => {
+		const m = page.url.searchParams.get('mode');
+		if (m === 'landing' || m === 'embed') return m;
+		if (page.url.searchParams.get('demo') === '1') return 'demo';
+		return 'full';
+	})());
+	const demoMode = $derived(mode === 'demo');
+	// "Show chrome" umbrella: toolbar, tree, inspector, quick-insert,
+	// settings pane, autosave, keyboard shortcuts. Full and demo get the
+	// whole lot; landing + embed strip everything down to code + canvas.
+	const showChrome = $derived(mode === 'full' || mode === 'demo');
+	const persistSource = $derived(mode === 'full' || mode === 'demo');
+	const readOnlySource = $derived(mode === 'embed');
 
 	$effect(() => {
-		if (demoMode) return;
+		// Anonymous-tolerant modes never redirect to /login — they'd break
+		// the iframe / public viewer experience.
+		if (mode !== 'full') return;
 		if (!auth.loading && !auth.user) {
 			const here = page.url.pathname + page.url.search;
 			goto(`/login?next=${encodeURIComponent(here)}`);
@@ -84,6 +109,26 @@
 		}
 	});
 
+	// Landing / embed modes accept a `?template=<id>` URL param to pick a
+	// starter template (e.g. the homepage iframe uses a curated lane-based
+	// flow). `?source=<url-encoded DSL>` is also accepted for ad-hoc
+	// embeds. Runs once on mount; subsequent edits are not persisted.
+	let presetHydrated = false;
+	$effect(() => {
+		if (persistSource || presetHydrated) return;
+		presetHydrated = true;
+		const tplId = page.url.searchParams.get('template');
+		const src = page.url.searchParams.get('source');
+		if (src) {
+			source = src;
+			return;
+		}
+		if (tplId) {
+			const tpl = TEMPLATES.find((t) => t.id === tplId);
+			if (tpl) source = tpl.source;
+		}
+	});
+
 	$effect(() => {
 		if (!demoMode) return;
 		try {
@@ -95,9 +140,11 @@
 
 	// Logged-in drafts (no id yet): mirror source to localStorage so a
 	// refresh doesn't discard the user's work before they've saved. Cleared
-	// once the draft becomes a real diegram (currentId set).
+	// once the draft becomes a real diegram (currentId set). Skipped in
+	// landing/embed — those modes are stateless, an iframe refresh should
+	// start fresh from the template.
 	$effect(() => {
-		if (demoMode || draftHydrated) return;
+		if (!persistSource || demoMode || draftHydrated) return;
 		if (currentId != null) return;
 		draftHydrated = true;
 		try {
@@ -111,7 +158,7 @@
 	});
 
 	$effect(() => {
-		if (demoMode) return;
+		if (!persistSource || demoMode) return;
 		if (currentId != null) {
 			try {
 				localStorage.removeItem(DRAFT_STORAGE_KEY);
@@ -254,6 +301,9 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
+		// Landing / embed modes don't expose save / open / share, so the
+		// shortcuts that trigger those actions are inert there.
+		if (mode === 'landing' || mode === 'embed') return;
 		const mod = e.ctrlKey || e.metaKey;
 		const key = e.key.toLowerCase();
 		// Ctrl/Cmd+S saves from anywhere in the editor.
@@ -440,6 +490,8 @@
 	$effect(() => {
 		const _deps = source + '\u0000' + name;
 		void _deps;
+		// Landing / embed modes never touch the server, full stop.
+		if (mode === 'landing' || mode === 'embed') return;
 		if (demoMode) return;
 		if (!auth.user) return;
 		// Logged-in & saved diegram → classic autosave.
@@ -664,7 +716,10 @@
 	}
 </script>
 
-<div class="flex h-[calc(100vh-var(--header-h))] flex-col" style={themeVars}>
+<div
+	class="flex flex-col"
+	style={`${themeVars} height: ${showChrome ? 'calc(100vh - var(--header-h))' : '100vh'};`}
+>
 	<EdgeMarkers />
 	{#if demoMode}
 		<div
@@ -679,51 +734,53 @@
 			</a>
 		</div>
 	{/if}
-	<Toolbar
-		bind:source
-		bind:name
-		bind:settingsOpen={
-			() => settingsOpen,
-			(v) => {
-				settingsOpen = v;
-				if (v) inspectorOpen = false;
+	{#if showChrome}
+		<Toolbar
+			bind:source
+			bind:name
+			bind:settingsOpen={
+				() => settingsOpen,
+				(v) => {
+					settingsOpen = v;
+					if (v) inspectorOpen = false;
+				}
 			}
-		}
-		bind:inspectorOpen={
-			() => inspectorOpen,
-			(v) => {
-				inspectorOpen = v;
-				if (v) settingsOpen = false;
+			bind:inspectorOpen={
+				() => inspectorOpen,
+				(v) => {
+					inspectorOpen = v;
+					if (v) settingsOpen = false;
+				}
 			}
-		}
-		bind:treeOpen
-		bind:filter
-		{result}
-		{currentId}
-		{rendering}
-		{saveMsg}
-		{saving}
-		{autosaveStatus}
-		onSave={save}
-		onOpen={openList}
-		onNew={newDicegram}
-		onDirectionChange={(prev) => {
-			const stripped = /@\(\s*-?\d+/.test(prev);
-			preNormalizeSource = prev;
-			normalizeToast = stripped
-				? 'Direction changed — stripped pins, redrawn'
-				: 'Direction changed — redrawn';
-			if (normalizeToastTimer) clearTimeout(normalizeToastTimer);
-			normalizeToastTimer = setTimeout(() => {
-				normalizeToast = null;
-				preNormalizeSource = null;
-			}, 5000);
-			// Full redraw: refit the viewport so xyflow doesn't sit on empty
-			// space left behind by the old orientation.
-			canvasFitAllTrigger += 1;
-		}}
-		onLlmOpen={() => (llmDialogOpen = true)}
-	/>
+			bind:treeOpen
+			bind:filter
+			{result}
+			{currentId}
+			{rendering}
+			{saveMsg}
+			{saving}
+			{autosaveStatus}
+			onSave={save}
+			onOpen={openList}
+			onNew={newDicegram}
+			onDirectionChange={(prev) => {
+				const stripped = /@\(\s*-?\d+/.test(prev);
+				preNormalizeSource = prev;
+				normalizeToast = stripped
+					? 'Direction changed — stripped pins, redrawn'
+					: 'Direction changed — redrawn';
+				if (normalizeToastTimer) clearTimeout(normalizeToastTimer);
+				normalizeToastTimer = setTimeout(() => {
+					normalizeToast = null;
+					preNormalizeSource = null;
+				}, 5000);
+				// Full redraw: refit the viewport so xyflow doesn't sit on empty
+				// space left behind by the old orientation.
+				canvasFitAllTrigger += 1;
+			}}
+			onLlmOpen={() => (llmDialogOpen = true)}
+		/>
+	{/if}
 
 	<div
 		class="grid flex-1 overflow-hidden"
@@ -731,7 +788,7 @@
 			? '220px minmax(320px,2fr) minmax(0,3fr)'
 			: 'minmax(320px,2fr) minmax(0,3fr)'}
 	>
-		{#if leftTreeOpen}
+		{#if leftTreeOpen && showChrome}
 			<TreePanel
 				{result}
 				{theme}
@@ -745,11 +802,14 @@
 			style:background-color={theme.codeBg}
 			style:border-color={theme.panelBorder}
 		>
-			<QuickInsert bind:source />
+			{#if showChrome}
+				<QuickInsert bind:source />
+			{/if}
 			<CodeEditor
 				bind:value={source}
 				{theme}
 				{revealLine}
+				readOnly={readOnlySource}
 				onNodeClick={handleNodeSelect}
 				onEdgeClick={(ord) => {
 					const edge = result?.edges?.[ord];
@@ -798,26 +858,28 @@
 	</div>
 </div>
 
-<SettingsPane bind:source bind:open={settingsOpen} {result} onClose={() => (settingsOpen = false)} />
+{#if showChrome}
+	<SettingsPane bind:source bind:open={settingsOpen} {result} onClose={() => (settingsOpen = false)} />
 
-<Inspector
-	bind:source
-	bind:open={inspectorOpen}
-	selected={selectedNode}
-	{selectedEdgeId}
-	{selectedObjectKind}
-	{selectedObjectIndex}
-	{result}
-	{labelFocusTrigger}
-	onClose={() => (inspectorOpen = false)}
-	onSelectionChange={handleSelectionChange}
-	onEdgeSelectionChange={(id) => (selectedEdgeId = id)}
-	onObjectSelectionChange={handleObjectSelect}
-	onReparent={handleReparent}
-	onSiblingMove={handleSiblingMove}
-/>
+	<Inspector
+		bind:source
+		bind:open={inspectorOpen}
+		selected={selectedNode}
+		{selectedEdgeId}
+		{selectedObjectKind}
+		{selectedObjectIndex}
+		{result}
+		{labelFocusTrigger}
+		onClose={() => (inspectorOpen = false)}
+		onSelectionChange={handleSelectionChange}
+		onEdgeSelectionChange={(id) => (selectedEdgeId = id)}
+		onObjectSelectionChange={handleObjectSelect}
+		onReparent={handleReparent}
+		onSiblingMove={handleSiblingMove}
+	/>
 
-<LlmPromptDialog bind:open={llmDialogOpen} promptText={llmPromptText} />
+	<LlmPromptDialog bind:open={llmDialogOpen} promptText={llmPromptText} />
+{/if}
 
 {#if normalizeToast}
 	<div

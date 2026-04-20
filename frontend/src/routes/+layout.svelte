@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import favicon from '$lib/assets/favicon.svg';
 	import { auth } from '$lib/auth.svelte';
 	import { theme } from '$lib/theme.svelte';
@@ -8,6 +9,18 @@
 	import './layout.css';
 
 	let { children } = $props();
+
+	// Chromeless mode for iframe embeds: the landing page's live editor
+	// and future /embed/{slug} share-link viewers render the editor inside
+	// an <iframe>, so the app header, footer and verify-email banner
+	// would duplicate (or clip) against the parent page. Any page can
+	// opt out by adding `?mode=landing` or `?mode=embed` to its URL; the
+	// `/embed/` route also gets it for free via the path check.
+	const chromeless = $derived(
+		page.url.searchParams.get('mode') === 'landing' ||
+			page.url.searchParams.get('mode') === 'embed' ||
+			page.url.pathname.startsWith('/embed/')
+	);
 
 	let resendState = $state<'idle' | 'sending' | 'sent' | 'error'>('idle');
 	let resendMsg = $state<string>('');
@@ -47,6 +60,7 @@
 
 <a href="#main-content" class="skip-link">Skip to main content</a>
 
+{#if !chromeless}
 <header
 	role="banner"
 	class="border-b backdrop-blur"
@@ -134,12 +148,13 @@
 		</div>
 	</nav>
 </header>
+{/if}
 
 <main id="main-content" role="main">
 	{@render children()}
 </main>
 
-{#if auth.user && !auth.user.email_verified}
+{#if !chromeless && auth.user && !auth.user.email_verified}
 	<div
 		class="pointer-events-none fixed inset-x-0 bottom-10 z-40 flex flex-col items-center gap-2 px-3"
 		role="status"
@@ -173,6 +188,7 @@
 	</div>
 {/if}
 
+{#if !chromeless}
 <footer
 	role="contentinfo"
 	class="mt-12 border-t px-4 py-4 text-[11px]"
@@ -204,6 +220,7 @@
 		</a>
 	</div>
 </footer>
+{/if}
 
 <style>
 	:global(.nav-link) {

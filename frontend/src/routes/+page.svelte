@@ -1,12 +1,9 @@
 <script lang="ts">
 	import { auth } from '$lib/auth.svelte';
-	import { getTheme } from '$lib/themes';
-	import { renderDsl, type RenderResult } from '$lib/render';
 	import { LLM_PROMPT_TEMPLATE } from '$lib/export';
 	import Icon from '$lib/Icon.svelte';
 	import LlmPromptDialog from '$lib/LlmPromptDialog.svelte';
-	import Canvas from './editor/Canvas.svelte';
-	import CodeEditor from './editor/CodeEditor.svelte';
+	import { DEFAULT_TEMPLATE_ID } from '$lib/templates';
 
 	let llmOpen = $state(false);
 
@@ -15,41 +12,12 @@
 		'(paste your dicegram source here, or describe what you want and ask the LLM to write it)'
 	);
 
-	const STARTER_SOURCE = `direction left-to-right
-swimlane "Author" {
-	[circle] idea "Idea" type:start
-	[rect] draft "Draft" step:1
-}
-swimlane "Review" {
-	[diamond] ok "Ship?" step:2 type:decision
-}
-swimlane "Release" {
-	[hexagon] ship "Ship" step:3 type:automated
-	[circle] done "Done" type:end
-}
-idea -> draft
-draft -> ok
-ok -> ship : "yes"
-ship -> done`;
-
-	let source = $state(STARTER_SOURCE);
-	let result = $state<RenderResult | null>(null);
-	let theme = $state(getTheme('default-dark'));
-	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-
-	$effect(() => {
-		const src = source;
-		clearTimeout(debounceTimer);
-		debounceTimer = setTimeout(() => {
-			renderDsl(src, true)
-				.then((r) => {
-					result = r;
-				})
-				.catch(() => {
-					/* keep previous result on transient errors */
-				});
-		}, 200);
-	});
+	// Mount the live editor as an iframe pointing at the same /editor
+	// route the app uses, in `landing` mode. This means the homepage
+	// always runs the current editor — new features (syntax, inspector,
+	// line-style brackets, etc.) land here automatically and can never
+	// drift behind the main app the way the old inline mini-editor did.
+	const editorSrc = `/editor?mode=landing&template=${DEFAULT_TEMPLATE_ID}`;
 </script>
 
 <svelte:head>
@@ -105,13 +73,16 @@ ship -> done`;
 		</button>
 	</div>
 
-	<!-- Mini live editor: the real CodeEditor + Canvas components,
-	     sized down and stripped of Toolbar / Inspector / Tree. -->
+	<!-- Live editor iframe: the real /editor route in landing mode. Same
+	     Canvas + CodeEditor + render pipeline as the full app, just with
+	     toolbar / inspector / tree / autosave stripped. -->
 	<div
 		class="mini-editor w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950 text-left shadow-xl"
 	>
 		<div class="flex items-center justify-between border-b border-neutral-800 px-3 py-1.5">
-			<span class="text-[10px] uppercase tracking-wide text-neutral-500">Try it — edit on the left</span>
+			<span class="text-[10px] uppercase tracking-wide text-neutral-500"
+				>Try it — edit on the left</span
+			>
 			<a
 				href="/editor?demo=1"
 				class="text-[11px] text-blue-400 hover:text-blue-300 hover:underline"
@@ -119,19 +90,13 @@ ship -> done`;
 				Open full editor →
 			</a>
 		</div>
-		<div
-			class="grid min-h-0 grid-cols-1 md:grid-cols-2"
-			style="height: min(60vh, 460px)"
-		>
-			<div
-				class="min-w-0 overflow-hidden border-b border-neutral-800 text-left md:border-r md:border-b-0"
-			>
-				<CodeEditor bind:value={source} {theme} />
-			</div>
-			<div class="min-w-0" style:background-color={theme.canvas}>
-				<Canvas {result} {theme} />
-			</div>
-		</div>
+		<iframe
+			src={editorSrc}
+			title="Dicegram live editor"
+			class="block w-full border-0"
+			style="height: min(60vh, 460px); background: #0a0a0a"
+			loading="lazy"
+		></iframe>
 	</div>
 
 	<div class="mt-4 grid w-full grid-cols-1 gap-4 text-left sm:grid-cols-2 lg:grid-cols-3">
