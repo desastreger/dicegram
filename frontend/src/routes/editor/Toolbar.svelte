@@ -50,6 +50,7 @@
 		onOpen: () => void;
 		onNew: (template?: DicegramTemplate | null) => void;
 		onDirectionChange?: (prevSource: string) => void;
+		onLlmOpen?: () => void;
 	} = $props();
 
 	let newOpen = $state(false);
@@ -158,7 +159,7 @@
 	}
 
 	async function doExport(
-		kind: 'svg' | 'png' | 'pdf' | 'html' | 'visio' | 'copy-svg' | 'copy-dsl' | 'copy-llm'
+		kind: 'svg' | 'png' | 'pdf' | 'html' | 'visio' | 'copy-svg' | 'copy-dsl'
 	) {
 		exportOpen = false;
 		const baseName = name || 'dicegram';
@@ -176,9 +177,6 @@
 			} else if (kind === 'copy-dsl') {
 				await copyDsl(source);
 				flashCopyToast('Copied DSL to clipboard');
-			} else if (kind === 'copy-llm') {
-				await copyLlmPrompt(source);
-				flashCopyToast('Copied LLM prompt to clipboard');
 			}
 		} catch (err) {
 			flashCopyToast('Copy failed — ' + (err instanceof Error ? err.message : String(err)));
@@ -446,10 +444,13 @@
 				</button>
 				<button
 					type="button"
-					onclick={() => doExport('copy-llm')}
+					onclick={() => {
+						exportOpen = false;
+						onLlmOpen?.();
+					}}
 					class="flex w-full items-center gap-2 px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
 				>
-					<Icon name="sparkles" size={13} /> Copy LLM prompt
+					<Icon name="sparkles" size={13} /> LLM prompt…
 				</button>
 			</div>
 		{/if}
@@ -457,8 +458,8 @@
 
 	<button
 		type="button"
-		onclick={() => doExport('copy-llm')}
-		title="Copy an LLM prompt that embeds this dicegram + full grammar"
+		onclick={() => onLlmOpen?.()}
+		title="Open the LLM prompt dialog (copy + quick-jump to Claude / ChatGPT / Gemini / …)"
 		class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800"
 	>
 		<Icon name="sparkles" size={13} />

@@ -15,7 +15,8 @@
 		type ParentTarget
 	} from '$lib/patch';
 	import { onMount } from 'svelte';
-	import { downloadSvg } from '$lib/export';
+	import { buildLlmPrompt, downloadSvg } from '$lib/export';
+	import LlmPromptDialog from '$lib/LlmPromptDialog.svelte';
 	import { renderDsl, type RenderResult, type RenderNode } from '$lib/render';
 	import { getTheme, type Theme } from '$lib/themes';
 	import { theme as appTheme } from '$lib/theme.svelte';
@@ -47,6 +48,8 @@
 	let settingsOpen = $state(false);
 	let inspectorOpen = $state(false);
 	let treeOpen = $state(false);
+	let llmDialogOpen = $state(false);
+	const llmPromptText = $derived(buildLlmPrompt(source));
 	let filter = $state('');
 	let selectedNodeId = $state<string | null>(null);
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -719,6 +722,7 @@
 			// space left behind by the old orientation.
 			canvasFitAllTrigger += 1;
 		}}
+		onLlmOpen={() => (llmDialogOpen = true)}
 	/>
 
 	<div
@@ -812,6 +816,8 @@
 	onReparent={handleReparent}
 	onSiblingMove={handleSiblingMove}
 />
+
+<LlmPromptDialog bind:open={llmDialogOpen} promptText={llmPromptText} />
 
 {#if normalizeToast}
 	<div

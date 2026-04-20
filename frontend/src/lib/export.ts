@@ -286,7 +286,7 @@ function settingsBlock(): string {
 	].join('\n');
 }
 
-function buildLlmPrompt(source: string): string {
+export function buildLlmPrompt(source: string): string {
 	const lockRule = palette.locked
 		? '3. BRAND LOCK IS ON: do not emit any style dict ({fill:#…}, {stroke:#…}, {text:#…}). Colour must come from the palette via the `type:` / `status:` / `priority:` attributes only. An inline style override will be visually ignored — the Inspector hides those fields.'
 		: '3. Prefer the `type:` attribute over inline `{fill:#…}` dicts — it lets the user re-brand the diagram just by changing their palette. Emit explicit colours only when the DSL really needs a one-off exception.';
