@@ -8,9 +8,7 @@
 		addEdge,
 		findNodeLineIndex,
 		getSetting,
-		moveNodeAfter,
 		moveNodeAmongSiblings,
-		moveNodeBefore,
 		removeNode,
 		reparentNode,
 		setNodePosition,
@@ -223,14 +221,6 @@
 
 	function handleSiblingMove(id: string, direction: -1 | 1) {
 		source = moveNodeAmongSiblings(source, id, direction);
-	}
-
-	function handleDropBefore(moveId: string, anchorId: string) {
-		source = moveNodeBefore(source, moveId, anchorId);
-	}
-
-	function handleDropAfter(moveId: string, anchorId: string) {
-		source = moveNodeAfter(source, moveId, anchorId);
 	}
 
 	function isEditableTarget(target: EventTarget | null): boolean {
@@ -726,10 +716,6 @@
 				{theme}
 				selectedId={selectedNodeId}
 				onSelect={handleTreeSelect}
-				onSiblingMove={handleSiblingMove}
-				onReparent={handleReparent}
-				onDropBefore={handleDropBefore}
-				onDropAfter={handleDropAfter}
 				onClose={() => (treeOpen = false)}
 			/>
 		{/if}
