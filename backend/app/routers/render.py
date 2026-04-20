@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from ..config import settings
 from ..dsl.compiler import normalize
 from ..dsl.layout import compute_layout
 from ..dsl.parser import parse
@@ -10,7 +11,7 @@ router = APIRouter(prefix="/api/render", tags=["render"])
 
 
 class RenderIn(BaseModel):
-    source: str
+    source: str = Field(max_length=settings.max_source_bytes)
     normalize_source: bool = True
 
 

@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, Field, field_serializer
 from sqlmodel import Session, select
 
+from ..config import settings
 from ..db import get_session
 from ..deps import current_user
 from ..models import Dicegram, User
@@ -18,8 +19,8 @@ def _as_utc_iso(value: datetime) -> str:
 
 
 class DicegramIn(BaseModel):
-    name: str
-    source: str = ""
+    name: str = Field(min_length=1, max_length=200)
+    source: str = Field(default="", max_length=settings.max_source_bytes)
 
 
 class DicegramOut(BaseModel):

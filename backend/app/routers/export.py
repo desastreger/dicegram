@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from ..config import settings
 from ..dsl.export_svg import render_svg
 from ..dsl.parser import parse
 
@@ -8,7 +9,7 @@ router = APIRouter(prefix="/api/export", tags=["export"])
 
 
 class ExportIn(BaseModel):
-    source: str
+    source: str = Field(max_length=settings.max_source_bytes)
 
 
 @router.post("/svg")
