@@ -95,8 +95,8 @@ def _dispatch_reset_email(user: User) -> None:
 @router.post("/signup", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
 def signup(
-    creds: Credentials,
     request: Request,
+    creds: Credentials,
     session: Session = Depends(get_session),
 ):
     exists = session.exec(select(User).where(User.email == creds.email)).first()
@@ -116,8 +116,8 @@ def signup(
 @router.post("/login", response_model=UserPublic)
 @limiter.limit("10/minute")
 def login(
-    creds: Credentials,
     request: Request,
+    creds: Credentials,
     session: Session = Depends(get_session),
 ):
     user = session.exec(select(User).where(User.email == creds.email)).first()
@@ -187,8 +187,8 @@ def verify_email(
 @router.post("/request-reset", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("5/minute")
 def request_password_reset(
-    body: EmailOnly,
     request: Request,
+    body: EmailOnly,
     session: Session = Depends(get_session),
 ):
     """Start a password reset flow. Always returns 204 to avoid leaking
@@ -202,8 +202,8 @@ def request_password_reset(
 @router.post("/reset", response_model=UserPublic)
 @limiter.limit("5/minute")
 def reset_password(
-    body: ResetIn,
     request: Request,
+    body: ResetIn,
     session: Session = Depends(get_session),
 ):
     uid = read_token(body.token, PURPOSE_RESET, settings.reset_token_max_age)

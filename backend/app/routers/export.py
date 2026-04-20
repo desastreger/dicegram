@@ -20,8 +20,8 @@ class ExportIn(BaseModel):
 @router.post("/svg")
 @limiter.limit("30/minute")
 def export_svg(
-    body: ExportIn,
     request: Request,
+    body: ExportIn,
     session: Session = Depends(get_session),
 ) -> Response:
     # Apply the signed-in user's branding palette when available; anonymous

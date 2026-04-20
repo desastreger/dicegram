@@ -126,7 +126,7 @@ def _box_id(label: str, swimlane: str | None) -> str:
 
 @router.post("", response_model=RenderOut)
 @limiter.limit("60/minute")
-def render(body: RenderIn, request: Request) -> RenderOut:
+def render(request: Request, body: RenderIn) -> RenderOut:
     original = body.source
     notices_out: list[NoticeOut] = []
     normalized_source = original
