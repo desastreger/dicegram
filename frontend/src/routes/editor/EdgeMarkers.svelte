@@ -25,7 +25,7 @@
 			orient="auto-start-reverse"
 			markerUnits="userSpaceOnUse"
 		>
-			<path d="M 0 0 L 10 5 L 0 10 z" fill="var(--th-edge, #94a3b8)" />
+			<path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
 		</marker>
 		<!-- Reversed triangle for source-side arrows (point back at the node). -->
 		<marker
@@ -38,7 +38,7 @@
 			orient="auto"
 			markerUnits="userSpaceOnUse"
 		>
-			<path d="M 10 0 L 0 5 L 10 10 z" fill="var(--th-edge, #94a3b8)" />
+			<path d="M 10 0 L 0 5 L 10 10 z" fill="#94a3b8" />
 		</marker>
 		<!-- Outlined arrow (UML "interface", "implements"). -->
 		<marker
@@ -51,7 +51,7 @@
 			orient="auto-start-reverse"
 			markerUnits="userSpaceOnUse"
 		>
-			<path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="var(--th-edge, #94a3b8)" stroke-width="1.5" />
+			<path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="#94a3b8" stroke-width="1.5" />
 		</marker>
 		<marker
 			id="dcg-open-arrow-rev"
@@ -63,7 +63,7 @@
 			orient="auto"
 			markerUnits="userSpaceOnUse"
 		>
-			<path d="M 10 0 L 0 5 L 10 10" fill="none" stroke="var(--th-edge, #94a3b8)" stroke-width="1.5" />
+			<path d="M 10 0 L 0 5 L 10 10" fill="none" stroke="#94a3b8" stroke-width="1.5" />
 		</marker>
 		<!-- Filled circle terminator. -->
 		<marker
@@ -76,7 +76,7 @@
 			orient="auto"
 			markerUnits="userSpaceOnUse"
 		>
-			<circle cx="5" cy="5" r="3.5" fill="var(--th-edge, #94a3b8)" />
+			<circle cx="5" cy="5" r="3.5" fill="#94a3b8" />
 		</marker>
 		<!-- Filled diamond (UML "composition-lite"). -->
 		<marker
@@ -89,7 +89,7 @@
 			orient="auto-start-reverse"
 			markerUnits="userSpaceOnUse"
 		>
-			<path d="M 0 5 L 6 0 L 12 5 L 6 10 z" fill="var(--th-edge, #94a3b8)" />
+			<path d="M 0 5 L 6 0 L 12 5 L 6 10 z" fill="#94a3b8" />
 		</marker>
 		<!-- Tee / stop bar — "must-not" or "blocked" semantic. -->
 		<marker
@@ -102,7 +102,7 @@
 			orient="auto"
 			markerUnits="userSpaceOnUse"
 		>
-			<rect x="0" y="0" width="4" height="10" fill="var(--th-edge, #94a3b8)" />
+			<rect x="0" y="0" width="4" height="10" fill="#94a3b8" />
 		</marker>
 		<!-- Square terminator. -->
 		<marker
@@ -115,7 +115,7 @@
 			orient="auto"
 			markerUnits="userSpaceOnUse"
 		>
-			<rect x="1" y="1" width="6" height="6" fill="var(--th-edge, #94a3b8)" />
+			<rect x="1" y="1" width="6" height="6" fill="#94a3b8" />
 		</marker>
 	</defs>
 </svg>

@@ -322,10 +322,10 @@ _R8_LABEL_SEQ = re.compile(
 _R8_ATTR_RE = re.compile(r'(\w+):((?:"[^"]*"|\S+))')
 
 _KIND_TO_KEYWORD = {
-    "->": "arrow",
-    "-->": "dashed_arrow",
-    "==>": "thick_arrow",
-    "---": "line",
+    "->": "solid_line",
+    "-->": "dashed_line",
+    "==>": "thick_line",
+    "---": "solid_line",
     "-.-": "dotted_line",
 }
 _KIND_TO_DEFAULT_TIP = {

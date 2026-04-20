@@ -36,23 +36,34 @@ OBJECT_RE = re.compile(
 )
 ATTR_RE = re.compile(r'(\w+):((?:"[^"]*"|\S+))')
 CONNECTOR_RE = re.compile(r'^\[connector\]\s+(?:(\w+)\s+)?(.*?)\s*$')
-# Kind-keyword bracket forms — the bracket names the line style, so the
-# most common connectors don't need a redundant `kind:` field. They all
-# parse through the same machinery as `[connector]`.
-#   [arrow]        → kind=solid       default tip=arrow
-#   [solid_arrow]  → kind=solid       default tip=arrow   (alias of [arrow])
-#   [dashed_arrow] → kind=dashed      default tip=arrow
-#   [thick_arrow]  → kind=thick       default tip=arrow
-#   [line]         → kind=solid_line  default tip=none
+# Kind-keyword bracket forms — the bracket names the LINE STYLE. Tip is
+# always a separate visible field, so `[solid_line] … tip:none` gives a
+# plain solid stroke with no arrowhead, same line style, different
+# terminator. Legacy `[arrow]` / `[dashed_arrow]` / etc. still parse for
+# back-compat with files normalized under the old scheme.
+#
+#   [solid_line]   → kind=solid       default tip=arrow
+#   [dashed_line]  → kind=dashed      default tip=arrow
+#   [thick_line]   → kind=thick       default tip=arrow
 #   [dotted_line]  → kind=dotted_line default tip=none
+#   [connector]    → generic (kind from the `kind:` field)
+#
+# Legacy aliases (accepted for read; R8 emits the new keywords):
+#   [arrow] / [solid_arrow]    → kind=solid,  tip=arrow
+#   [dashed_arrow]             → kind=dashed, tip=arrow
+#   [thick_arrow]              → kind=thick,  tip=arrow
+#   [line]                     → kind=solid,  tip=none
 _KIND_KEYWORD_PRESETS: dict[str, tuple[str, str]] = {
+    "solid_line": ("solid", "arrow"),
+    "dashed_line": ("dashed", "arrow"),
+    "thick_line": ("thick", "arrow"),
+    "dotted_line": ("dotted_line", "none"),
+    # legacy aliases
     "arrow": ("solid", "arrow"),
     "solid_arrow": ("solid", "arrow"),
     "dashed_arrow": ("dashed", "arrow"),
     "thick_arrow": ("thick", "arrow"),
-    "line": ("solid_line", "none"),
-    "solid_line": ("solid_line", "none"),
-    "dotted_line": ("dotted_line", "none"),
+    "line": ("solid", "none"),
 }
 KIND_KEYWORD_RE = re.compile(
     r'^\[(' + "|".join(_KIND_KEYWORD_PRESETS) + r')\]\s+(?:(\w+)\s+)?(.*?)\s*$'

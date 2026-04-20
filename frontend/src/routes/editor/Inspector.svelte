@@ -382,10 +382,10 @@
 
 {#if open}
   <aside
-    class="fixed top-[var(--header-h)] right-0 bottom-0 z-40 w-[340px] overflow-y-auto border-l border-neutral-800 bg-neutral-950 text-xs text-neutral-100"
+    class="fixed top-[var(--header-h)] right-0 bottom-0 z-40 flex w-[340px] flex-col border-l border-neutral-800 bg-neutral-950 text-xs text-neutral-100"
   >
     <header
-      class="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-800 bg-neutral-950 px-3 py-2"
+      class="flex shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-950 px-3 py-2"
     >
       <div class="flex items-baseline gap-1.5">
         <h2 class="flex items-center gap-1.5 text-xs font-medium text-neutral-200">
@@ -406,26 +406,35 @@
     </header>
 
     {#if selectedObjectKind}
-      <ObjectPanel
-        bind:source
-        kind={selectedObjectKind}
-        index={selectedObjectIndex}
-        {result}
-        onSelectionChange={(k, i) => onObjectSelectionChange?.(k, i)}
-      />
+      <div class="min-h-0 flex-1 overflow-y-auto">
+        <ObjectPanel
+          bind:source
+          kind={selectedObjectKind}
+          index={selectedObjectIndex}
+          {result}
+          onSelectionChange={(k, i) => onObjectSelectionChange?.(k, i)}
+        />
+      </div>
     {:else if selectedEdgeId}
-      <EdgePanel
-        bind:source
-        {selectedEdgeId}
-        {result}
-        onSelectionChange={(id) => onEdgeSelectionChange?.(id)}
-      />
+      <div class="min-h-0 flex-1 overflow-y-auto">
+        <EdgePanel
+          bind:source
+          {selectedEdgeId}
+          {result}
+          onSelectionChange={(id) => onEdgeSelectionChange?.(id)}
+        />
+      </div>
     {:else if !selected}
       <div class="p-5 text-center text-[11px] text-neutral-500">
         Select anything on the canvas to edit its properties.
       </div>
     {:else}
-      <ShapePreview node={selected} />
+      <!-- Preview sits pinned at the top of the shape branch and stays
+           visible while the fields below scroll. -->
+      <div class="shrink-0 border-b border-neutral-800">
+        <ShapePreview node={selected} />
+      </div>
+      <div class="min-h-0 flex-1 overflow-y-auto">
       <div class="mt-3 mb-1 flex items-center justify-between px-3 text-[10px] uppercase tracking-wide text-neutral-500">
         <span>Hierarchy</span>
         <div class="flex items-center gap-0.5">
@@ -763,6 +772,7 @@
         <Icon name="trash" size={13} />
         {confirmDelete ? 'Click again to confirm' : 'Delete node'}
       </button>
+      </div>
     {/if}
   </aside>
 {/if}

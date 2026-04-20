@@ -19,13 +19,16 @@ const SHAPE_RE = /\[(\w+)\]/g;
 const BRACKET_KEYWORDS = new Set([
 	'connector',
 	'linebreak',
+	'solid_line',
+	'dashed_line',
+	'thick_line',
+	'dotted_line',
+	// legacy aliases
 	'arrow',
 	'solid_arrow',
 	'dashed_arrow',
 	'thick_arrow',
-	'line',
-	'solid_line',
-	'dotted_line'
+	'line'
 ]);
 const ARROW_RE = /(==>|-->|-\.-|---|->)/g;
 const POS_RE = /@\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/g;

@@ -18,13 +18,37 @@
 		value = $bindable(''),
 		theme,
 		revealLine = null,
-		onNodeClick
+		onNodeClick,
+		onEdgeClick
 	}: {
 		value: string;
 		theme: Theme;
 		revealLine?: number | null;
 		onNodeClick?: (id: string) => void;
+		onEdgeClick?: (ordinal: number) => void;
 	} = $props();
+
+	// `[connector]`, `[solid_line]`, `[dashed_line]`, `[thick_line]`,
+	// `[dotted_line]` + legacy `[arrow]`/`[dashed_arrow]`/`[thick_arrow]`
+	// /`[line]`/`[solid_arrow]`. Any line starting with one of these is
+	// treated as a connector definition.
+	const CONNECTOR_OPEN_RE =
+		/^\s*\[(connector|solid_line|dashed_line|thick_line|dotted_line|arrow|solid_arrow|dashed_arrow|thick_arrow|line)\]\b/;
+	// Old inline form: `A -> B`, `A@r -> B@l : "lbl"`, etc.
+	const INLINE_EDGE_RE =
+		/^\s*\w+(?:@\w+)?\s*(?:->|-->|==>|---|-\.-)\s*\w+(?:@\w+)?/;
+
+	function edgeOrdinalForLine(docText: string, targetLine: number): number {
+		const lines = docText.split('\n');
+		let seen = 0;
+		for (let i = 0; i < lines.length; i++) {
+			if (CONNECTOR_OPEN_RE.test(lines[i]) || INLINE_EDGE_RE.test(lines[i])) {
+				if (i + 1 === targetLine) return seen;
+				seen += 1;
+			}
+		}
+		return -1;
+	}
 
 	let container: HTMLDivElement;
 	let view: EditorView | undefined;
@@ -175,10 +199,18 @@
 							value = u.state.doc.toString();
 							syncing = false;
 						}
-						if (u.selectionSet && !u.docChanged && onNodeClick) {
+						if (u.selectionSet && !u.docChanged) {
 							const line = u.state.doc.lineAt(u.state.selection.main.head);
-							const m = /^\s*\[(\w+)\]\s+(\w+)\s+"/.exec(line.text);
-							if (m) onNodeClick(m[2]);
+							const nodeM = /^\s*\[(\w+)\]\s+(\w+)\s+"/.exec(line.text);
+							if (nodeM && !CONNECTOR_OPEN_RE.test(line.text)) {
+								onNodeClick?.(nodeM[2]);
+							} else if (
+								CONNECTOR_OPEN_RE.test(line.text) ||
+								INLINE_EDGE_RE.test(line.text)
+							) {
+								const ord = edgeOrdinalForLine(u.state.doc.toString(), line.number);
+								if (ord >= 0) onEdgeClick?.(ord);
+							}
 						}
 					})
 				]

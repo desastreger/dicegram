@@ -43,15 +43,14 @@ const SHAPES = [
 	'cylinder',
 	'stadium'
 ];
-// Keywords that live inside `[ … ]` but aren't shapes. Kind-keyword
-// forms (`[arrow]`, `[dashed_arrow]`, etc.) parse identically to
-// `[connector]` but the bracket itself names the line style — the
-// preferred form for readability.
+// Keywords that live inside `[ … ]` but aren't shapes. Line-style
+// forms (`[solid_line]`, `[dashed_line]`, `[thick_line]`, `[dotted_line]`)
+// parse identically to `[connector]` — the bracket itself names the
+// line style. Tip is a separate field.
 const BRACKET_KEYWORDS = [
-	'arrow',
-	'dashed_arrow',
-	'thick_arrow',
-	'line',
+	'solid_line',
+	'dashed_line',
+	'thick_line',
 	'dotted_line',
 	'connector',
 	'linebreak'
@@ -188,10 +187,9 @@ function dslCompletion(ctx: CompletionContext): CompletionResult | null {
 		};
 	}
 
-	// inside a `[connector]` / `[arrow]` / `[dashed_arrow]` / `[thick_arrow]`
-	// / `[line]` / `[dotted_line]` line, surface the connector-specific keys.
+	// inside any connector-style line, surface the connector-specific keys.
 	if (
-		/^\s*\[(connector|arrow|solid_arrow|dashed_arrow|thick_arrow|line|solid_line|dotted_line)\]\s/.test(
+		/^\s*\[(connector|solid_line|dashed_line|thick_line|dotted_line|arrow|solid_arrow|dashed_arrow|thick_arrow|line)\]\s/.test(
 			textBefore
 		)
 	) {

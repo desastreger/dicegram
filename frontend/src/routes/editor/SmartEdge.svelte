@@ -8,8 +8,8 @@
 		sourceY: number;
 		targetX: number;
 		targetY: number;
-		markerEnd?: string;
-		markerStart?: string;
+		markerEnd?: string | unknown;
+		markerStart?: string | unknown;
 		style?: string;
 		label?: string;
 		data?: {
@@ -99,28 +99,41 @@
 
 	const labelFill = $derived(data?.labelFill ?? '#e5e7eb');
 	const labelBg = $derived(data?.labelBg ?? '#0f172a');
-	const estWidth = $derived(Math.max(30, (label?.length ?? 0) * 6 + 10));
+	const labelBorder = $derived(data?.labelBorder ?? '#334155');
+	const labelLines = $derived((label ?? '').split('\n'));
+	const labelLineHeight = 14;
+	const labelWidth = $derived(
+		Math.max(30, Math.max(...labelLines.map((s) => s.length)) * 6 + 12)
+	);
+	const labelHeight = $derived(Math.max(16, labelLines.length * labelLineHeight + 4));
 </script>
 
 <BaseEdge {id} path={pathD} {markerEnd} {markerStart} {style} />
 
-{#if label}
+{#if label && labelLines.length > 0}
 	<g pointer-events="none">
+		<!-- Fully opaque background + stroke so the line doesn't bleed
+		     through the label text. -->
 		<rect
-			x={midpoint.x - estWidth / 2}
-			y={midpoint.y - 8}
-			width={estWidth}
-			height="14"
+			x={midpoint.x - labelWidth / 2}
+			y={midpoint.y - labelHeight / 2}
+			width={labelWidth}
+			height={labelHeight}
 			rx="3"
 			fill={labelBg}
-			opacity="0.85"
+			stroke={labelBorder}
+			stroke-width="1"
 		/>
 		<text
 			x={midpoint.x}
-			y={midpoint.y + 3}
+			y={midpoint.y - labelHeight / 2 + labelLineHeight - 3}
 			text-anchor="middle"
 			font-size="11"
-			fill={labelFill}>{label}</text
+			fill={labelFill}
 		>
+			{#each labelLines as line, i}
+				<tspan x={midpoint.x} dy={i === 0 ? 0 : labelLineHeight}>{line}</tspan>
+			{/each}
+		</text>
 	</g>
 {/if}

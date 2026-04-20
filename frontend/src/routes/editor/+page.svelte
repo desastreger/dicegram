@@ -124,16 +124,30 @@
 		}
 	});
 
+	// When the user hits Undo on the normalize toast, we want the pre-
+	// normalize source back AND we want it to stay — so the next render
+	// cycle must ask the backend to skip normalization. The flag auto-
+	// clears on the next user keystroke.
+	let suppressNormalizeOnce = $state(false);
+	let lastSeenSource = '';
+
 	$effect(() => {
 		const src = source;
 		clearTimeout(debounceTimer);
+		// Consume the suppress flag: this render will skip normalize, and
+		// subsequent renders resume normalizing. (If the user undoes again,
+		// the flag gets re-set; otherwise their next keystroke goes through
+		// the normal pipeline.)
+		const wantNormalize = !suppressNormalizeOnce;
+		if (suppressNormalizeOnce) suppressNormalizeOnce = false;
+		if (src !== lastSeenSource) lastSeenSource = src;
 		debounceTimer = setTimeout(async () => {
 			rendering = true;
 			try {
-				const res = await renderDsl(src);
+				const res = await renderDsl(src, wantNormalize);
 				result = res;
 				renderError = null;
-				if (res.source_changed && res.normalized_source !== src) {
+				if (wantNormalize && res.source_changed && res.normalized_source !== src) {
 					preNormalizeSource = src;
 					const count = res.notices.length;
 					normalizeToast =
@@ -157,6 +171,10 @@
 
 	function undoNormalize() {
 		if (!preNormalizeSource) return;
+		// Suppress the next normalize pass so the restored source isn't
+		// immediately rewritten back to the verbose form. Clears the next
+		// time the user actually edits.
+		suppressNormalizeOnce = true;
 		source = preNormalizeSource;
 		preNormalizeSource = null;
 		normalizeToast = null;
@@ -729,6 +747,10 @@
 				{theme}
 				{revealLine}
 				onNodeClick={handleNodeSelect}
+				onEdgeClick={(ord) => {
+					const edge = result?.edges?.[ord];
+					if (edge) handleEdgeSelect(edge.id);
+				}}
 			/>
 			{#if result?.errors?.length}
 				<div

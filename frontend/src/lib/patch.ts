@@ -638,13 +638,16 @@ const EDGE_BLOCK_HEADER_RE =
 // keyword preserved.
 const CONNECTOR_KEYWORDS = [
 	'connector',
+	'solid_line',
+	'dashed_line',
+	'thick_line',
+	'dotted_line',
+	// legacy aliases (accepted for parse; rebuilder emits the new forms)
 	'arrow',
 	'solid_arrow',
 	'dashed_arrow',
 	'thick_arrow',
-	'line',
-	'solid_line',
-	'dotted_line'
+	'line'
 ] as const;
 type ConnectorKeyword = (typeof CONNECTOR_KEYWORDS)[number];
 const CONNECTOR_LINE_RE = new RegExp(
@@ -652,21 +655,26 @@ const CONNECTOR_LINE_RE = new RegExp(
 );
 const CONNECTOR_KEYWORD_PRESETS: Record<ConnectorKeyword, { kind: string; tip: string }> = {
 	connector: { kind: 'solid', tip: 'arrow' },
+	solid_line: { kind: 'solid', tip: 'arrow' },
+	dashed_line: { kind: 'dashed', tip: 'arrow' },
+	thick_line: { kind: 'thick', tip: 'arrow' },
+	dotted_line: { kind: 'dotted_line', tip: 'none' },
+	// legacy
 	arrow: { kind: 'solid', tip: 'arrow' },
 	solid_arrow: { kind: 'solid', tip: 'arrow' },
 	dashed_arrow: { kind: 'dashed', tip: 'arrow' },
 	thick_arrow: { kind: 'thick', tip: 'arrow' },
-	line: { kind: 'solid_line', tip: 'none' },
-	solid_line: { kind: 'solid_line', tip: 'none' },
-	dotted_line: { kind: 'dotted_line', tip: 'none' }
+	line: { kind: 'solid', tip: 'none' }
 };
 // Map a kind name back to the canonical bracket keyword for
-// round-trip emission.
+// round-trip emission. The bracket names the LINE STYLE; tip is a
+// separate field, so `solid` and `solid_line` both emit as [solid_line]
+// with tip distinguishing them.
 const KIND_TO_KEYWORD: Record<string, ConnectorKeyword> = {
-	solid: 'arrow',
-	dashed: 'dashed_arrow',
-	thick: 'thick_arrow',
-	solid_line: 'line',
+	solid: 'solid_line',
+	dashed: 'dashed_line',
+	thick: 'thick_line',
+	solid_line: 'solid_line',
 	dotted_line: 'dotted_line'
 };
 

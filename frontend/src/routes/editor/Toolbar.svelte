@@ -149,6 +149,14 @@
 		}
 	}
 
+	let copyToast = $state<string | null>(null);
+	let copyToastTimer: ReturnType<typeof setTimeout> | null = null;
+	function flashCopyToast(msg: string) {
+		copyToast = msg;
+		if (copyToastTimer) clearTimeout(copyToastTimer);
+		copyToastTimer = setTimeout(() => (copyToast = null), 2400);
+	}
+
 	async function doExport(
 		kind: 'svg' | 'png' | 'pdf' | 'html' | 'visio' | 'copy-svg' | 'copy-dsl' | 'copy-llm'
 	) {
@@ -162,11 +170,18 @@
 			else if (kind === 'visio') {
 				if (!result) throw new Error('nothing to export yet');
 				downloadVisioCsv(baseName, result);
-			} else if (kind === 'copy-svg') await copySvg(source);
-			else if (kind === 'copy-dsl') await copyDsl(source);
-			else if (kind === 'copy-llm') await copyLlmPrompt(source);
+			} else if (kind === 'copy-svg') {
+				await copySvg(source);
+				flashCopyToast('Copied SVG to clipboard');
+			} else if (kind === 'copy-dsl') {
+				await copyDsl(source);
+				flashCopyToast('Copied DSL to clipboard');
+			} else if (kind === 'copy-llm') {
+				await copyLlmPrompt(source);
+				flashCopyToast('Copied LLM prompt to clipboard');
+			}
 		} catch (err) {
-			alert('Export failed: ' + (err instanceof Error ? err.message : String(err)));
+			flashCopyToast('Copy failed — ' + (err instanceof Error ? err.message : String(err)));
 		}
 	}
 
@@ -479,3 +494,13 @@
 		{/if}
 	</div>
 </div>
+
+{#if copyToast}
+	<div
+		role="status"
+		aria-live="polite"
+		class="pointer-events-none fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 shadow-lg"
+	>
+		{copyToast}
+	</div>
+{/if}

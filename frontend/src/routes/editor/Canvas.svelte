@@ -5,8 +5,10 @@
 		Controls,
 		MiniMap,
 		ConnectionMode,
+		MarkerType,
 		type Node,
-		type Edge
+		type Edge,
+		type EdgeMarker
 	} from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
 	import ShapeNode from './ShapeNode.svelte';
@@ -135,39 +137,49 @@
 		return kind === 'solid' || kind === 'dashed' || kind === 'thick';
 	}
 
-	// Points at the ids published by EdgeMarkers.svelte. Our markers use
-	// `fill="context-stroke"` so the terminator colour tracks whatever the
-	// edge's stroke is — no need to duplicate markers per theme colour.
-	function markerUrl(name: string | null): string | undefined {
-		if (!name) return undefined;
+	// For `arrow` / `open_arrow` we use xyflow's built-in MarkerType — it
+	// auto-creates the marker inside its own SVG defs, which is the most
+	// reliable cross-browser path (no dependence on context-stroke or on
+	// a globally-mounted defs block being reachable from xyflow's SVG).
+	// For the decorative terminators (circle/diamond/tee/square) we keep
+	// the custom markers published by EdgeMarkers.svelte.
+	function customMarkerUrl(name: string): string {
 		return `url(#dcg-${name})`;
 	}
 
 	function endMarkerFor(
 		kind: string,
-		endAttr: string | undefined | null
-	): string | undefined {
+		endAttr: string | undefined | null,
+		stroke: string
+	): string | EdgeMarker | undefined {
 		const attr = (endAttr ?? '').trim().toLowerCase();
-		if (attr === 'none') return undefined;
-		if (attr === 'arrow') return markerUrl('arrow');
-		if (attr === 'open_arrow') return markerUrl('open-arrow');
-		if (attr === 'circle') return markerUrl('circle');
-		if (attr === 'diamond') return markerUrl('diamond');
-		if (attr === 'tee') return markerUrl('tee');
-		if (attr === 'square') return markerUrl('square');
-		// Attr not set: fall back to kind's implicit default.
-		return hasArrow(kind) ? markerUrl('arrow') : undefined;
+		const effective = attr || (hasArrow(kind) ? 'arrow' : 'none');
+		if (effective === 'none') return undefined;
+		if (effective === 'arrow')
+			return { type: MarkerType.ArrowClosed, color: stroke, width: 18, height: 18 };
+		if (effective === 'open_arrow')
+			return { type: MarkerType.Arrow, color: stroke, width: 20, height: 20 };
+		if (effective === 'circle') return customMarkerUrl('circle');
+		if (effective === 'diamond') return customMarkerUrl('diamond');
+		if (effective === 'tee') return customMarkerUrl('tee');
+		if (effective === 'square') return customMarkerUrl('square');
+		return undefined;
 	}
 
-	function startMarkerFor(startAttr: string | undefined | null): string | undefined {
+	function startMarkerFor(
+		startAttr: string | undefined | null,
+		stroke: string
+	): string | EdgeMarker | undefined {
 		const attr = (startAttr ?? '').trim().toLowerCase();
 		if (!attr || attr === 'none') return undefined;
-		if (attr === 'arrow') return markerUrl('arrow-rev');
-		if (attr === 'open_arrow') return markerUrl('open-arrow-rev');
-		if (attr === 'circle') return markerUrl('circle');
-		if (attr === 'diamond') return markerUrl('diamond');
-		if (attr === 'tee') return markerUrl('tee');
-		if (attr === 'square') return markerUrl('square');
+		if (attr === 'arrow')
+			return { type: MarkerType.ArrowClosed, color: stroke, width: 18, height: 18, orient: 'auto-start-reverse' };
+		if (attr === 'open_arrow')
+			return { type: MarkerType.Arrow, color: stroke, width: 20, height: 20, orient: 'auto-start-reverse' };
+		if (attr === 'circle') return customMarkerUrl('circle');
+		if (attr === 'diamond') return customMarkerUrl('diamond');
+		if (attr === 'tee') return customMarkerUrl('tee');
+		if (attr === 'square') return customMarkerUrl('square');
 		return undefined;
 	}
 
@@ -394,8 +406,8 @@
 				label: e.label || undefined,
 				style:
 					(edgeDimmed ? `${baseStyle} opacity: 0.2;` : baseStyle) + opacityStyle,
-				markerEnd: endMarkerFor(e.kind, e.attrs?.end),
-				markerStart: startMarkerFor(e.attrs?.start),
+				markerEnd: endMarkerFor(e.kind, e.attrs?.end, edgeColour),
+				markerStart: startMarkerFor(e.attrs?.start, edgeColour),
 				data: {
 					obstacles,
 					labelFill: theme.text,
