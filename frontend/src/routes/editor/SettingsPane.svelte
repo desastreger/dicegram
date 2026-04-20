@@ -46,13 +46,22 @@
 		{ id: 'right-to-left', icon: 'arrow-left', label: 'Right to Left' }
 	];
 
+	const LINE_STYLES: Array<{ value: string; label: string }> = [
+		{ value: 'orthogonal', label: 'Orthogonal (default)' },
+		{ value: 'curved', label: 'Curved' },
+		{ value: 'straight', label: 'Straight (direct)' }
+	];
+	const DEFAULT_LINE_STYLE = 'orthogonal';
+
 	const ALL_SETTING_KEYS = [
 		'color_scheme',
+		'line_style',
 		...NUMBER_KEYS.map((n) => n.key),
 		...TOGGLE_KEYS.map((t) => t.key)
 	];
 
 	const themeId = $derived(patch.getSetting(source, 'color_scheme') ?? DEFAULT_THEME_ID);
+	const lineStyleId = $derived(patch.getSetting(source, 'line_style') ?? DEFAULT_LINE_STYLE);
 	const direction = $derived(patch.getDirection(source));
 	const numberValues = $derived(
 		Object.fromEntries(
@@ -86,6 +95,11 @@
 
 	function setTheme(id: string) {
 		source = patch.setSetting(source, 'color_scheme', id);
+	}
+
+	function setLineStyle(id: string) {
+		if (id === DEFAULT_LINE_STYLE) source = patch.removeSetting(source, 'line_style');
+		else source = patch.setSetting(source, 'line_style', id);
 	}
 
 	function setDir(id: string) {
@@ -154,6 +168,14 @@
 					</button>
 				{/each}
 			</div>
+		</div>
+
+		<div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Line style</div>
+		<div class="px-3">
+			<Dropdown value={lineStyleId} options={LINE_STYLES} onchange={setLineStyle} />
+			<p class="mt-1 text-[10px] leading-snug text-neutral-500">
+				Orthogonal routes around obstacles with right-angle bends. Curved draws a smooth bezier. Straight is a direct diagonal.
+			</p>
 		</div>
 
 		<div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Layout</div>

@@ -29,6 +29,7 @@
 		theme,
 		selectedId,
 		filter = '',
+		lineStyle = 'orthogonal',
 		focusId = null,
 		focusTrigger = 0,
 		fitAllTrigger = 0,
@@ -44,6 +45,7 @@
 		theme: Theme;
 		selectedId?: string | null;
 		filter?: string;
+		lineStyle?: 'orthogonal' | 'curved' | 'straight';
 		focusId?: string | null;
 		focusTrigger?: number;
 		fitAllTrigger?: number;
@@ -346,6 +348,7 @@
 					obstacles,
 					labelFill: theme.text,
 					labelBg: theme.panel,
+					lineStyle,
 					axis:
 						result.direction === 'left-to-right' ||
 						result.direction === 'right-to-left'

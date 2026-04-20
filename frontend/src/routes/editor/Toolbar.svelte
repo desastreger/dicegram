@@ -1,7 +1,16 @@
 <script lang="ts">
 	import Icon from '$lib/Icon.svelte';
 	import { addNode, addSwimlane, getDirection, setDirection } from '$lib/patch';
-	import { copyDsl, copyLlmPrompt, copySvg, downloadPng, downloadSvg } from '$lib/export';
+	import {
+		copyDsl,
+		copyLlmPrompt,
+		copySvg,
+		downloadHtml,
+		downloadPdf,
+		downloadPng,
+		downloadSvg,
+		downloadVisioCsv
+	} from '$lib/export';
 	import type { RenderResult } from '$lib/render';
 	import { TEMPLATES, type DicegramTemplate } from '$lib/templates';
 	import { dicegrams as dicegramsApi } from '$lib/dicegrams';
@@ -141,17 +150,23 @@
 		}
 	}
 
-	async function doExport(kind: 'svg' | 'png' | 'copy-svg' | 'copy-dsl' | 'copy-llm') {
+	async function doExport(
+		kind: 'svg' | 'png' | 'pdf' | 'html' | 'visio' | 'copy-svg' | 'copy-dsl' | 'copy-llm'
+	) {
 		exportOpen = false;
 		const baseName = name || 'dicegram';
 		try {
 			if (kind === 'svg') await downloadSvg(baseName, source);
 			else if (kind === 'png') await downloadPng(baseName, source);
-			else if (kind === 'copy-svg') await copySvg(source);
+			else if (kind === 'pdf') await downloadPdf(baseName, source);
+			else if (kind === 'html') await downloadHtml(baseName, source);
+			else if (kind === 'visio') {
+				if (!result) throw new Error('nothing to export yet');
+				downloadVisioCsv(baseName, result);
+			} else if (kind === 'copy-svg') await copySvg(source);
 			else if (kind === 'copy-dsl') await copyDsl(source);
 			else if (kind === 'copy-llm') await copyLlmPrompt(source);
 		} catch (err) {
-			console.error('export failed', err);
 			alert('Export failed: ' + (err instanceof Error ? err.message : String(err)));
 		}
 	}
@@ -475,6 +490,28 @@
 					class="flex w-full items-center gap-2 px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
 				>
 					<Icon name="download" size={13} /> Download PNG
+				</button>
+				<button
+					type="button"
+					onclick={() => doExport('pdf')}
+					class="flex w-full items-center gap-2 px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
+				>
+					<Icon name="download" size={13} /> Download PDF
+				</button>
+				<button
+					type="button"
+					onclick={() => doExport('html')}
+					class="flex w-full items-center gap-2 px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
+				>
+					<Icon name="download" size={13} /> Download HTML
+				</button>
+				<button
+					type="button"
+					onclick={() => doExport('visio')}
+					title="Visio Data Visualizer CSV. Lossy: groups, notes, free positions and non-flow edges are dropped."
+					class="flex w-full items-center gap-2 px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
+				>
+					<Icon name="download" size={13} /> Visio CSV
 				</button>
 				<div class="border-t border-neutral-800"></div>
 				<button

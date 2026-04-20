@@ -16,6 +16,7 @@
 			labelFill?: string;
 			labelBg?: string;
 			axis?: 'vertical' | 'horizontal' | 'auto';
+			lineStyle?: 'orthogonal' | 'curved' | 'straight';
 		};
 	};
 
@@ -33,19 +34,40 @@
 
 	const obstacles = $derived(data?.obstacles ?? []);
 	const axis = $derived(data?.axis ?? 'auto');
+	const lineStyle = $derived(data?.lineStyle ?? 'orthogonal');
 
 	const waypoints = $derived(
-		routeAround(
-			{ x: sourceX, y: sourceY },
-			{ x: targetX, y: targetY },
-			obstacles,
-			20,
-			8,
-			axis
-		)
+		lineStyle === 'orthogonal'
+			? routeAround(
+					{ x: sourceX, y: sourceY },
+					{ x: targetX, y: targetY },
+					obstacles,
+					20,
+					8,
+					axis
+				)
+			: [
+					{ x: sourceX, y: sourceY },
+					{ x: targetX, y: targetY }
+				]
 	);
 
-	const pathD = $derived(polylineToPath(waypoints));
+	function curvedPath(sx: number, sy: number, tx: number, ty: number, ax: 'vertical' | 'horizontal' | 'auto'): string {
+		const horizontal =
+			ax === 'horizontal' || (ax === 'auto' && Math.abs(tx - sx) >= Math.abs(ty - sy));
+		const dist = Math.hypot(tx - sx, ty - sy);
+		const k = Math.min(120, dist * 0.4);
+		const [c1x, c1y, c2x, c2y] = horizontal
+			? [sx + k, sy, tx - k, ty]
+			: [sx, sy + k, tx, ty - k];
+		return `M ${sx} ${sy} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${tx} ${ty}`;
+	}
+
+	const pathD = $derived(
+		lineStyle === 'curved'
+			? curvedPath(sourceX, sourceY, targetX, targetY, axis)
+			: polylineToPath(waypoints)
+	);
 
 	const midpoint = $derived.by(() => {
 		if (waypoints.length === 0) return { x: sourceX, y: sourceY };

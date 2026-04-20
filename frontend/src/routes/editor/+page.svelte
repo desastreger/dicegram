@@ -133,6 +133,13 @@
 
 	const theme = $derived<Theme>(getTheme(getSetting(source, 'color_scheme')));
 
+	const lineStyle = $derived<'orthogonal' | 'curved' | 'straight'>(
+		(() => {
+			const v = getSetting(source, 'line_style');
+			return v === 'curved' || v === 'straight' ? v : 'orthogonal';
+		})()
+	);
+
 	const themeVars = $derived(
 		`--th-bg:${theme.bg};--th-panel:${theme.panel};--th-panel-border:${theme.panelBorder};` +
 			`--th-text:${theme.text};--th-muted:${theme.muted};--th-accent:${theme.accent};` +
@@ -659,6 +666,7 @@
 				{result}
 				{theme}
 				{filter}
+				{lineStyle}
 				selectedId={selectedNodeId}
 				focusId={canvasFocusId}
 				focusTrigger={canvasFocusTrigger}
