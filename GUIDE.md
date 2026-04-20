@@ -16,7 +16,7 @@
 Dicegram turns plain-text DSL into live architecture diagrams. You write code
 in the editor and see the diagram update; you can also drag shapes on the
 canvas and the DSL rewrites surgically to match. Code, canvas, inspector, and
-scene tree are four windows into the same source file — edits on one surface
+dicetree are four windows into the same source file — edits on one surface
 propagate to the others. Think of it as Mermaid meets Visio — the precision of
 code with the interactivity of a visual editor.
 

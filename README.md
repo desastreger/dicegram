@@ -1,7 +1,7 @@
 # Dicegram
 
 **Text-first diagram editor with a living DSL.** Edit in code, canvas,
-scene tree, and inspector — all four stay in sync. Self-hostable or use
+dicetree, and inspector — all four stay in sync. Self-hostable or use
 the hosted instance.
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](./LICENSE)
@@ -183,7 +183,7 @@ GUIDE.md   CHANGELOG.md   CONTRIBUTING.md   SECURITY.md
 | Ctrl/Cmd+N | New dicegram |
 | Ctrl/Cmd+O | Open list |
 | Ctrl/Cmd+E | Export SVG |
-| Ctrl/Cmd+B | Toggle scene tree |
+| Ctrl/Cmd+B | Toggle dicetree |
 | Ctrl/Cmd+. | Toggle inspector |
 | Ctrl/Cmd+F | Focus filter input |
 | Double-click node | Focus label in inspector |

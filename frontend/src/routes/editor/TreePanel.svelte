@@ -229,7 +229,7 @@
 	>
 		<span class="flex items-center gap-1.5">
 			<Icon name="tree" size={13} />
-			Scene tree
+			Dicetree
 		</span>
 		<button
 			type="button"
@@ -244,7 +244,7 @@
 	<div
 		role="tree"
 		tabindex="-1"
-		aria-label="Scene tree"
+		aria-label="Dicetree"
 		class="flex-1 overflow-auto py-1"
 		onmouseleave={() => (hoveredId = null)}
 	>

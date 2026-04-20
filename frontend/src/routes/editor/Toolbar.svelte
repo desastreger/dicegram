@@ -277,7 +277,7 @@
 		type="button"
 		onclick={() => (treeOpen = !treeOpen)}
 		aria-pressed={treeOpen}
-		title="Scene tree"
+		title="Dicetree"
 		class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800 {treeOpen
 			? 'bg-neutral-800'
 			: ''}"
