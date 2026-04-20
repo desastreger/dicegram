@@ -49,6 +49,18 @@ if [[ $read_stdin -eq 1 ]]; then
   body_lines+=("$(cat)")
 fi
 
+# Warn about untracked files before staging — the default `-u` path only
+# stages tracked changes, so a newly-created file would silently be left
+# out of the commit (and break a fresh clone / deploy).
+untracked=$(git ls-files --others --exclude-standard)
+if [[ -n "$untracked" && "$add_mode" != "A" ]]; then
+  echo "ship: warning — untracked files NOT being committed:" >&2
+  while IFS= read -r f; do
+    [[ -n "$f" ]] && echo "  ? $f" >&2
+  done <<<"$untracked"
+  echo "       re-run with -a to include them, or 'git add <file>' first." >&2
+fi
+
 # Stage tracked changes.
 git add "-${add_mode}"
 
