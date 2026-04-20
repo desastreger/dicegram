@@ -37,10 +37,12 @@ class UserPublic(BaseModel):
 
 class PaletteOut(BaseModel):
     palette: dict[str, str]
+    locked: bool = False
 
 
 class PaletteIn(BaseModel):
     palette: dict[str, str] = Field(default_factory=dict)
+    locked: bool | None = None
 
 
 class PresetOut(BaseModel):
@@ -233,7 +235,10 @@ def reset_password(
 @router.get("/me/palette", response_model=PaletteOut)
 def get_palette(user: User = Depends(current_user)):
     """Return the effective palette (defaults merged with user overrides)."""
-    return PaletteOut(palette=merge_palette(user.branding_palette))
+    return PaletteOut(
+        palette=merge_palette(user.branding_palette),
+        locked=bool(user.palette_locked),
+    )
 
 
 @router.put("/me/palette", response_model=PaletteOut)
@@ -254,10 +259,15 @@ def put_palette(
         if v == "" or v.startswith("#") or v.startswith("rgb") or v.startswith("hsl"):
             clean[k] = v
     user.branding_palette = clean
+    if body.locked is not None:
+        user.palette_locked = bool(body.locked)
     session.add(user)
     session.commit()
     session.refresh(user)
-    return PaletteOut(palette=merge_palette(user.branding_palette))
+    return PaletteOut(
+        palette=merge_palette(user.branding_palette),
+        locked=bool(user.palette_locked),
+    )
 
 
 def _sanitize_overrides(raw: dict[str, str]) -> dict[str, str]:
@@ -326,7 +336,10 @@ def activate_preset(
     session.add(user)
     session.commit()
     session.refresh(user)
-    return PaletteOut(palette=merge_palette(user.branding_palette))
+    return PaletteOut(
+        palette=merge_palette(user.branding_palette),
+        locked=bool(user.palette_locked),
+    )
 
 
 @router.delete("/me/palettes/{name}", status_code=status.HTTP_204_NO_CONTENT)

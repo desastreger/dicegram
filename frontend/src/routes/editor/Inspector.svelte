@@ -590,7 +590,20 @@
         </div>
       </div>
 
-      <div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Style</div>
+      <div class="mt-3 mb-1 flex items-center justify-between px-3 text-[10px] uppercase tracking-wide text-neutral-500">
+        <span>Style</span>
+        {#if palette.locked}
+          <span title="Brand palette is locked in Settings" class="normal-case tracking-normal text-[10px] text-blue-400">
+            Palette locked
+          </span>
+        {/if}
+      </div>
+      {#if palette.locked}
+        <p class="mx-3 mb-2 rounded border border-blue-900/50 bg-blue-950/30 px-2 py-1.5 text-[11px] text-blue-200">
+          Colour overrides are disabled. Edit the active palette in
+          <a href="/settings" class="underline hover:text-white">Settings</a> to change colours.
+        </p>
+      {:else}
       <div class="space-y-1 px-3">
         <div class="flex items-center gap-2">
           <label class="w-14 text-[11px] text-neutral-400">Fill</label>
@@ -599,6 +612,7 @@
             class="h-6 w-8 cursor-pointer rounded border border-neutral-800 bg-neutral-900"
             value={currentFill}
             onchange={(e) => commitStyle('fill', (e.target as HTMLInputElement).value)}
+            aria-label="Fill colour (overrides palette)"
           />
           <input
             type="text"
@@ -606,12 +620,13 @@
             class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
             value={selected.style?.fill ?? ''}
             onchange={(e) => commitHex('fill', (e.target as HTMLInputElement).value)}
+            aria-label="Fill colour hex value"
           />
           <button
             type="button"
             class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100"
             onclick={() => clearStyle('fill')}
-            title="Revert to theme"
+            title="Revert to palette default"
           >
             Reset
           </button>
@@ -623,6 +638,7 @@
             class="h-6 w-8 cursor-pointer rounded border border-neutral-800 bg-neutral-900"
             value={currentStroke}
             onchange={(e) => commitStyle('stroke', (e.target as HTMLInputElement).value)}
+            aria-label="Stroke colour (overrides palette)"
           />
           <input
             type="text"
@@ -630,12 +646,13 @@
             class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
             value={selected.style?.stroke ?? ''}
             onchange={(e) => commitHex('stroke', (e.target as HTMLInputElement).value)}
+            aria-label="Stroke colour hex value"
           />
           <button
             type="button"
             class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100"
             onclick={() => clearStyle('stroke')}
-            title="Revert to theme"
+            title="Revert to palette default"
           >
             Reset
           </button>
@@ -647,6 +664,7 @@
             class="h-6 w-8 cursor-pointer rounded border border-neutral-800 bg-neutral-900"
             value={currentText}
             onchange={(e) => commitStyle('text', (e.target as HTMLInputElement).value)}
+            aria-label="Text colour (overrides palette)"
           />
           <input
             type="text"
@@ -654,17 +672,19 @@
             class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
             value={selected.style?.text ?? ''}
             onchange={(e) => commitHex('text', (e.target as HTMLInputElement).value)}
+            aria-label="Text colour hex value"
           />
           <button
             type="button"
             class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100"
             onclick={() => clearStyle('text')}
-            title="Revert to theme"
+            title="Revert to palette default"
           >
             Reset
           </button>
         </div>
       </div>
+      {/if}
 
       <div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">
         Typography &amp; shape

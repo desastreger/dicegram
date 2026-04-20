@@ -45,6 +45,10 @@ def _ensure_schema() -> None:
         with engine.begin() as conn:
             # Stored as ISO datetime text in SQLite. NULL = unverified.
             conn.execute(text("ALTER TABLE user ADD COLUMN email_verified_at DATETIME"))
+    if "palette_locked" not in user_cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE user ADD COLUMN palette_locked BOOLEAN DEFAULT 0"))
+            conn.execute(text("UPDATE user SET palette_locked = 0 WHERE palette_locked IS NULL"))
 
 
 def init_db() -> None:

@@ -101,6 +101,7 @@ export type Preset = {
 class PaletteStore {
 	current: Record<string, string> = $state({ ...DEFAULTS });
 	presets: Preset[] = $state([]);
+	locked = $state(false);
 	loaded = $state(false);
 	saving = $state(false);
 
@@ -110,6 +111,7 @@ class PaletteStore {
 			if (res.ok) {
 				const j = await res.json();
 				this.current = sanitize(j.palette ?? {});
+				this.locked = Boolean(j.locked);
 			}
 			await this.loadPresets();
 		} catch {
@@ -131,7 +133,7 @@ class PaletteStore {
 		}
 	}
 
-	async save(overrides: Record<string, string>): Promise<void> {
+	async save(overrides: Record<string, string>, locked?: boolean): Promise<void> {
 		// Strip values equal to the default; backend stores overrides only.
 		const payload: Record<string, string> = {};
 		for (const [k, v] of Object.entries(overrides)) {
@@ -142,21 +144,33 @@ class PaletteStore {
 		}
 		this.saving = true;
 		try {
+			const body: Record<string, unknown> = { palette: payload };
+			if (typeof locked === 'boolean') body.locked = locked;
 			const res = await fetch('/api/auth/me/palette', {
 				method: 'PUT',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ palette: payload })
+				body: JSON.stringify(body)
 			});
 			if (res.ok) {
 				const j = await res.json();
 				this.current = sanitize(j.palette ?? {});
+				this.locked = Boolean(j.locked);
 			}
 		} finally {
 			this.saving = false;
 			// Recompute active preset after overrides changed.
 			await this.loadPresets();
 		}
+	}
+
+	async setLocked(locked: boolean): Promise<void> {
+		// Keep current overrides; just flip the lock.
+		const current: Record<string, string> = {};
+		for (const [k, v] of Object.entries(this.current)) {
+			if (v !== DEFAULTS[k]) current[k] = v;
+		}
+		await this.save(current, locked);
 	}
 
 	async reset(): Promise<void> {

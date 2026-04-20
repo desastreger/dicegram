@@ -43,6 +43,10 @@
 		await palette.deletePreset(name);
 	}
 
+	async function toggleLock() {
+		await palette.setLocked(!palette.locked);
+	}
+
 	function onColorInput(key: string, value: string) {
 		draft = { ...draft, [key]: value };
 		queueSave();
@@ -105,6 +109,33 @@
 			</button>
 		</div>
 	</header>
+
+	<!-- Brand lock -->
+	<div class="mb-4 flex items-start gap-3 rounded border border-neutral-800 bg-neutral-950 p-4">
+		<button
+			type="button"
+			onclick={toggleLock}
+			role="switch"
+			aria-checked={palette.locked}
+			class="mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors {palette.locked
+				? 'border-blue-500 bg-blue-600'
+				: 'border-neutral-700 bg-neutral-800'}"
+		>
+			<span
+				class="ml-0.5 h-4 w-4 transform rounded-full bg-white transition-transform {palette.locked
+					? 'translate-x-4'
+					: 'translate-x-0'}"
+			></span>
+		</button>
+		<div class="min-w-0 flex-1">
+			<div class="text-sm font-medium text-neutral-100">Enforce brand palette</div>
+			<p class="mt-0.5 text-xs text-neutral-500">
+				When on, the editor's Inspector hides inline colour overrides — every node takes its
+				colour from this palette. Keep off for creative freedom; turn on for agency / enterprise
+				brand consistency.
+			</p>
+		</div>
+	</div>
 
 	<!-- Preset switcher -->
 	<div class="mb-8 rounded border border-neutral-800 bg-neutral-950 p-4">
