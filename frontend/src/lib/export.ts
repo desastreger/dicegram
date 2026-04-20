@@ -394,7 +394,7 @@ Connections (outside swimlane blocks):
         A -> B end:none               no decoration at target
         A -> B start:circle end:arrow dot at source, arrow at target
         A -> B start:arrow            arrow at source too (bidirectional)
-        Opacity: `opacity:0.5` attr on the edge (0..1).
+        Opacity: \`opacity:0.5\` attr on the edge (0..1).
 
 ==============================
 ${settingsBlock()}
