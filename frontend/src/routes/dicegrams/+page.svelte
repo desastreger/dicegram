@@ -31,7 +31,7 @@
 		try {
 			items = await dicegrams.list();
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'failed to load dicegrams';
+			error = err instanceof Error ? err.message : 'failed to load diegrams';
 		} finally {
 			loading = false;
 		}
@@ -148,7 +148,7 @@
 <section class="mx-auto max-w-6xl px-4 py-6 text-neutral-100">
 	<div class="mb-4 flex items-center justify-between">
 		<h1 class="flex items-baseline gap-2 text-lg font-semibold">
-			My dicegrams
+			My diegrams
 			<span class="text-xs text-neutral-500">{items.length}</span>
 		</h1>
 		<button
@@ -162,10 +162,10 @@
 	</div>
 
 	{#if loading}
-		<p class="text-xs text-neutral-400">Loading dicegrams…</p>
+		<p class="text-xs text-neutral-400">Loading diegrams…</p>
 	{:else if error}
 		<div class="rounded border border-red-900 bg-red-950/50 p-3 text-xs text-red-300">
-			<p class="font-medium">Could not load dicegrams</p>
+			<p class="font-medium">Could not load diegrams</p>
 			<p class="mt-1 text-red-400">{error}</p>
 			<button
 				type="button"
@@ -179,7 +179,7 @@
 		<div
 			class="rounded-lg border border-dashed border-neutral-800 bg-neutral-950 p-10 text-center"
 		>
-			<p class="text-sm text-neutral-300">You don't have any dicegrams yet.</p>
+			<p class="text-sm text-neutral-300">You don't have any diegrams yet.</p>
 			<p class="mt-1 text-xs text-neutral-500">
 				Start with a blank canvas and your work will show up here.
 			</p>

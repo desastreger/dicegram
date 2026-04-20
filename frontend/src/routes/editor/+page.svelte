@@ -64,7 +64,10 @@
 	});
 
 	const DEMO_STORAGE_KEY = 'dicegram:demo:source';
+	const DRAFT_STORAGE_KEY = 'dicegram:editor:draft';
 	let demoHydrated = false;
+	let draftHydrated = false;
+
 	$effect(() => {
 		if (!demoMode || demoHydrated) return;
 		demoHydrated = true;
@@ -81,6 +84,40 @@
 		if (!demoMode) return;
 		try {
 			localStorage.setItem(DEMO_STORAGE_KEY, source);
+		} catch {
+			/* ignore */
+		}
+	});
+
+	// Logged-in drafts (no id yet): mirror source to localStorage so a
+	// refresh doesn't discard the user's work before they've saved. Cleared
+	// once the draft becomes a real diegram (currentId set).
+	$effect(() => {
+		if (demoMode || draftHydrated) return;
+		if (currentId != null) return;
+		draftHydrated = true;
+		try {
+			const stored = localStorage.getItem(DRAFT_STORAGE_KEY);
+			if (stored && stored.length > 0 && stored !== DEFAULT_TEMPLATE.source) {
+				source = stored;
+			}
+		} catch {
+			/* ignore */
+		}
+	});
+
+	$effect(() => {
+		if (demoMode) return;
+		if (currentId != null) {
+			try {
+				localStorage.removeItem(DRAFT_STORAGE_KEY);
+			} catch {
+				/* ignore */
+			}
+			return;
+		}
+		try {
+			localStorage.setItem(DRAFT_STORAGE_KEY, source);
 		} catch {
 			/* ignore */
 		}
@@ -339,7 +376,7 @@
 	async function save() {
 		if (demoMode) {
 			showSaveToast(
-				{ kind: 'error', message: 'Sign up to save — demo dicegrams live in your browser only.' },
+				{ kind: 'error', message: 'Sign up to save — demo diegrams live in your browser only.' },
 				5000
 			);
 			return;
@@ -763,9 +800,9 @@
 			role="dialog"
 			tabindex="-1"
 		>
-			<h2 class="mb-3 text-lg font-semibold text-neutral-100">Your dicegrams</h2>
+			<h2 class="mb-3 text-lg font-semibold text-neutral-100">Your diegrams</h2>
 			{#if myDicegrams.length === 0}
-				<p class="text-sm text-neutral-400">No saved dicegrams yet.</p>
+				<p class="text-sm text-neutral-400">No saved diegrams yet.</p>
 			{:else}
 				<ul class="flex max-h-96 flex-col gap-1 overflow-auto">
 					{#each myDicegrams as d (d.id)}
