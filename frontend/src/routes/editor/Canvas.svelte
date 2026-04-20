@@ -4,7 +4,6 @@
 		Background,
 		Controls,
 		MiniMap,
-		MarkerType,
 		ConnectionMode,
 		type Node,
 		type Edge
@@ -136,38 +135,40 @@
 		return kind === 'solid' || kind === 'dashed' || kind === 'thick';
 	}
 
-	function endMarkerFor(
-		kind: string,
-		endAttr: string | undefined | null,
-		colour: string
-	): { type: MarkerType; color: string } | undefined {
-		// xyflow only ships Arrow/ArrowClosed. For fancier terminators
-		// (circle, diamond, tee, square) we fall back to the closed arrow
-		// on the canvas — the backend SVG renderer handles the real
-		// shapes on export. end:'none' explicitly suppresses the marker.
-		const attr = (endAttr ?? '').trim().toLowerCase();
-		if (attr === 'none') return undefined;
-		if (attr === 'arrow' || attr === 'open_arrow' || attr === 'circle' ||
-		    attr === 'diamond' || attr === 'tee' || attr === 'square') {
-			return {
-				type: attr === 'open_arrow' ? MarkerType.Arrow : MarkerType.ArrowClosed,
-				color: colour
-			};
-		}
-		// Attr not set: fall back to kind's implicit default.
-		return hasArrow(kind) ? { type: MarkerType.ArrowClosed, color: colour } : undefined;
+	// Points at the ids published by EdgeMarkers.svelte. Our markers use
+	// `fill="context-stroke"` so the terminator colour tracks whatever the
+	// edge's stroke is — no need to duplicate markers per theme colour.
+	function markerUrl(name: string | null): string | undefined {
+		if (!name) return undefined;
+		return `url(#dcg-${name})`;
 	}
 
-	function startMarkerFor(
-		startAttr: string | undefined | null,
-		colour: string
-	): { type: MarkerType; color: string } | undefined {
+	function endMarkerFor(
+		kind: string,
+		endAttr: string | undefined | null
+	): string | undefined {
+		const attr = (endAttr ?? '').trim().toLowerCase();
+		if (attr === 'none') return undefined;
+		if (attr === 'arrow') return markerUrl('arrow');
+		if (attr === 'open_arrow') return markerUrl('open-arrow');
+		if (attr === 'circle') return markerUrl('circle');
+		if (attr === 'diamond') return markerUrl('diamond');
+		if (attr === 'tee') return markerUrl('tee');
+		if (attr === 'square') return markerUrl('square');
+		// Attr not set: fall back to kind's implicit default.
+		return hasArrow(kind) ? markerUrl('arrow') : undefined;
+	}
+
+	function startMarkerFor(startAttr: string | undefined | null): string | undefined {
 		const attr = (startAttr ?? '').trim().toLowerCase();
 		if (!attr || attr === 'none') return undefined;
-		return {
-			type: attr === 'open_arrow' ? MarkerType.Arrow : MarkerType.ArrowClosed,
-			color: colour
-		};
+		if (attr === 'arrow') return markerUrl('arrow-rev');
+		if (attr === 'open_arrow') return markerUrl('open-arrow-rev');
+		if (attr === 'circle') return markerUrl('circle');
+		if (attr === 'diamond') return markerUrl('diamond');
+		if (attr === 'tee') return markerUrl('tee');
+		if (attr === 'square') return markerUrl('square');
+		return undefined;
 	}
 
 	function centerOf(n: RenderNode | undefined) {
@@ -393,8 +394,8 @@
 				label: e.label || undefined,
 				style:
 					(edgeDimmed ? `${baseStyle} opacity: 0.2;` : baseStyle) + opacityStyle,
-				markerEnd: endMarkerFor(e.kind, e.attrs?.end, edgeColour),
-				markerStart: startMarkerFor(e.attrs?.start, edgeColour),
+				markerEnd: endMarkerFor(e.kind, e.attrs?.end),
+				markerStart: startMarkerFor(e.attrs?.start),
 				data: {
 					obstacles,
 					labelFill: theme.text,

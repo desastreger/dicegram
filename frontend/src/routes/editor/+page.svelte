@@ -25,6 +25,8 @@
 	import { buildTreeFallback } from '$lib/tree-fallback';
 	import Canvas from './Canvas.svelte';
 	import CodeEditor from './CodeEditor.svelte';
+	import EdgeMarkers from './EdgeMarkers.svelte';
+	import QuickInsert from './QuickInsert.svelte';
 	import Toolbar from './Toolbar.svelte';
 	import SettingsPane from './SettingsPane.svelte';
 	import Inspector from './Inspector.svelte';
@@ -651,6 +653,8 @@
 	}
 </script>
 
+<EdgeMarkers />
+
 <div class="flex h-[calc(100vh-var(--header-h))] flex-col" style={themeVars}>
 	{#if demoMode}
 		<div
@@ -734,6 +738,7 @@
 			style:background-color={theme.codeBg}
 			style:border-color={theme.panelBorder}
 		>
+			<QuickInsert bind:source />
 			<CodeEditor
 				bind:value={source}
 				{theme}
@@ -750,10 +755,11 @@
 			{/if}
 		</section>
 		<section
-			class="relative min-w-0 transition-[padding-right]"
+			class="relative flex min-w-0 flex-col transition-[padding-right]"
 			style:padding-right={rightPaneOpen ? '340px' : '0'}
 			style:background-color={theme.canvas}
 		>
+			<QuickInsert bind:source />
 			<Canvas
 				{result}
 				{theme}

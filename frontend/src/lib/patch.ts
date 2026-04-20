@@ -348,6 +348,75 @@ export function addSwimlane(source: string, name: string): string {
 	return source.trimEnd() + block;
 }
 
+export function addBox(
+	source: string,
+	opts: { label: string; swimlane?: string | null; fill?: string }
+): string {
+	const style = opts.fill ? ` {fill: ${opts.fill}}` : '';
+	const block = `\n\tbox "${opts.label}"${style} {\n\t}\n`;
+	if (opts.swimlane) {
+		// Place inside the named swimlane.
+		const lines = source.split('\n');
+		const slRe = new RegExp(`^\\s*swimlane\\s+"${escapeRegex(opts.swimlane)}"\\s*\\{\\s*$`);
+		let depth = 0;
+		let inLane = false;
+		let insertAt = -1;
+		for (let i = 0; i < lines.length; i++) {
+			if (!inLane && slRe.test(lines[i])) {
+				inLane = true;
+				depth = 1;
+				continue;
+			}
+			if (inLane) {
+				const t = lines[i].trim();
+				if (t === '}') {
+					depth--;
+					if (depth === 0) {
+						insertAt = i;
+						break;
+					}
+				} else if (t.endsWith('{')) depth++;
+			}
+		}
+		if (insertAt >= 0) {
+			lines.splice(insertAt, 0, `\tbox "${opts.label}"${style} {`, '\t}');
+			return lines.join('\n');
+		}
+	}
+	return source.trimEnd() + block;
+}
+
+export function addGroup(source: string, name: string, members: string[] = []): string {
+	const block = `\ngroup "${name}" { ${members.join(' ')} }\n`;
+	return source.trimEnd() + block;
+}
+
+export function addNote(source: string, text: string, target: string): string {
+	const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+	return source.trimEnd() + `\nnote "${escaped}" [${target}]\n`;
+}
+
+/** Produce a node name that isn't already used in `source`. */
+export function nextNodeName(source: string, prefix = 'node'): string {
+	const used = new Set<string>();
+	const re = /^\s*\[\w+\]\s+(\w+)\s+"/gm;
+	for (const m of source.matchAll(re)) used.add(m[1]);
+	let i = 1;
+	while (used.has(`${prefix}${i}`)) i++;
+	return `${prefix}${i}`;
+}
+
+/** Produce a unique swimlane/box label. */
+export function nextLabel(source: string, kind: 'swimlane' | 'box' | 'group', base: string): string {
+	const re = new RegExp(`^\\s*${kind}\\s+"([^"]+)"`, 'gm');
+	const used = new Set<string>();
+	for (const m of source.matchAll(re)) used.add(m[1]);
+	if (!used.has(base)) return base;
+	let i = 2;
+	while (used.has(`${base} ${i}`)) i++;
+	return `${base} ${i}`;
+}
+
 export type ParentTarget =
 	| { kind: 'root' }
 	| { kind: 'swimlane'; name: string }
