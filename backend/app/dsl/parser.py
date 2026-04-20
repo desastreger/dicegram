@@ -34,6 +34,17 @@ GROUP_OPEN_RE = re.compile(r'^group\s+"([^"]+)"\s*\{(.*)$')
 NOTE_RE = re.compile(r'^note\s+"((?:[^"\\]|\\.)*)"\s+\[(\w+)\]$')
 IDENT_RE = re.compile(r"\w+")
 
+# Verbose block-form edge:  A@r -> B@l {
+#                               label: "yes"
+#                               end: arrow
+#                           }
+# Header matches whether or not the optional `edge` keyword prefixes it.
+_EDGE_BLOCK_SYMS = r"->|-->|==>|---|-\.-"
+EDGE_BLOCK_OPEN_RE = re.compile(
+    r"^(?:edge\s+)?(\w+)(?:@(\w+))?\s*(" + _EDGE_BLOCK_SYMS + r")\s*(\w+)(?:@(\w+))?\s*\{\s*(.*)$"
+)
+EDGE_BLOCK_ATTR_RE = re.compile(r'(\w+)\s*:\s*((?:"[^"]*"|\S+))')
+
 
 @dataclass
 class Node:
@@ -206,6 +217,67 @@ def _split_node_port(token: str) -> tuple[str, str | None]:
     return name.strip(), _PORT_ALIASES.get(port, port) or None
 
 
+_KIND_SYM_TO_KIND = {
+    "->": "solid",
+    "-->": "dashed",
+    "==>": "thick",
+    "---": "solid_line",
+    "-.-": "dotted_line",
+}
+_KIND_ALIAS = {
+    "solid": "solid",
+    "dashed": "dashed",
+    "thick": "thick",
+    "solid_line": "solid_line",
+    "line": "solid_line",
+    "solid-line": "solid_line",
+    "dotted_line": "dotted_line",
+    "dotted": "dotted_line",
+    "dotted-line": "dotted_line",
+}
+
+
+def _apply_edge_block_attr(edge: Edge, key: str, value: str) -> None:
+    """Mutate `edge` with a single `key: value` pair from a block body.
+
+    Handles the structured edge fields (`from`, `to`, `kind`, `label`) and
+    falls through to `attrs` for everything else (so `end:`, `start:`,
+    `opacity:`, `color:`, `condition:`, `weight:`, custom user keys all
+    Just Work). Quoted values lose their surrounding quotes.
+    """
+    key = key.strip().lower()
+    v = value.strip()
+    if v.startswith('"') and v.endswith('"') and len(v) >= 2:
+        v = v[1:-1].replace("\\n", "\n").replace('\\"', '"')
+
+    if key in ("from", "from_port", "source_port"):
+        edge.source_port = _PORT_ALIASES.get(v.lower(), v.lower()) or None
+        return
+    if key in ("to", "to_port", "target_port"):
+        edge.target_port = _PORT_ALIASES.get(v.lower(), v.lower()) or None
+        return
+    if key == "label":
+        edge.label = v
+        return
+    if key == "kind":
+        canonical = _KIND_ALIAS.get(v.lower())
+        if canonical:
+            edge.kind = canonical
+        return
+    if key in ("start", "end"):
+        edge.attrs[key] = v.lower()
+        return
+    edge.attrs[key] = v
+
+
+def _finalize_block_edge_body(edge: Edge, body: str) -> None:
+    """Parse a block body — single-line `{ a:1 b:"hello world" }` or
+    multi-line — into edge attrs. Accepts `key: value` with whitespace
+    around the colon (block form convention) and quoted string values."""
+    for am in EDGE_BLOCK_ATTR_RE.finditer(body):
+        _apply_edge_block_attr(edge, am.group(1), am.group(2))
+
+
 def _parse_connection(line: str) -> Edge | None:
     for pattern, kind in CONNECTION_PATTERNS:
         idx = line.find(pattern)
@@ -275,11 +347,21 @@ def parse(source: str) -> Parsed:
     parsed = Parsed()
     stack: list[tuple[str, object]] = []  # (kind, container_object)
     group_collecting: Group | None = None
+    edge_collecting: Edge | None = None
 
     for lineno, raw in enumerate(source.split("\n"), 1):
         line = _strip_inline_comment(raw).rstrip()
         stripped = line.strip()
         if not stripped:
+            continue
+
+        # Block-form edge body: collect `key: value` until '}'.
+        if edge_collecting is not None:
+            if stripped == "}":
+                parsed.edges.append(edge_collecting)
+                edge_collecting = None
+                continue
+            _finalize_block_edge_body(edge_collecting, stripped)
             continue
 
         # Group body: collect identifiers until '}'
@@ -376,7 +458,31 @@ def parse(source: str) -> Parsed:
                 bx_obj.members.append(node.name)
             continue
 
-        # connection
+        # block-form connection:  A@r -> B@l { … }
+        m = EDGE_BLOCK_OPEN_RE.match(stripped)
+        if m:
+            src_port = _PORT_ALIASES.get((m.group(2) or "").lower()) if m.group(2) else None
+            tgt_port = _PORT_ALIASES.get((m.group(5) or "").lower()) if m.group(5) else None
+            kind = _KIND_SYM_TO_KIND.get(m.group(3), "solid")
+            block_edge = Edge(
+                source=m.group(1),
+                target=m.group(4),
+                kind=kind,
+                source_port=src_port,
+                target_port=tgt_port,
+            )
+            rest = (m.group(6) or "").strip()
+            if rest.endswith("}"):
+                # Single-line block:  A -> B { label:"x" end:circle }
+                _finalize_block_edge_body(block_edge, rest[:-1])
+                parsed.edges.append(block_edge)
+            else:
+                if rest:
+                    _finalize_block_edge_body(block_edge, rest)
+                edge_collecting = block_edge
+            continue
+
+        # inline connection
         edge = _parse_connection(stripped)
         if edge:
             parsed.edges.append(edge)

@@ -575,6 +575,18 @@ export function moveNodeAfter(source: string, moveId: string, anchorId: string):
 const EDGE_LINE_RE =
 	/^(\s*)(\w+)(?:@(\w+))?\s+(->|-->|==>|---|-\.-)\s+(\w+)(?:@(\w+))?(\s*:\s*.*)?\s*$/;
 
+// Verbose block-form header:  `edge A@r -> B@l {` or `A -> B {`. Counted
+// as an edge for ordinal purposes so the Inspector stays in sync, but
+// the inline modifier helpers refuse to rewrite them (a block spans
+// multiple lines; surgical in-place editing would silently drop the
+// body). Users wanting to edit block-form edges edit the DSL directly.
+const EDGE_BLOCK_HEADER_RE =
+	/^(\s*)(?:edge\s+)?(\w+)(?:@\w+)?\s*(->|-->|==>|---|-\.-)\s*(\w+)(?:@\w+)?\s*\{/;
+
+function isEdgeLine(line: string): boolean {
+	return EDGE_LINE_RE.test(line) || EDGE_BLOCK_HEADER_RE.test(line);
+}
+
 const EDGE_LABEL_RE = /"((?:[^"\\]|\\.)*)"/;
 const EDGE_ATTR_RE = /(\w+):((?:"[^"]*"|\S+))/g;
 
@@ -666,7 +678,7 @@ function findEdgeLineIndexByOrdinal(source: string, ordinal: number): number {
 	const lines = source.split('\n');
 	let seen = 0;
 	for (let i = 0; i < lines.length; i++) {
-		if (EDGE_LINE_RE.test(lines[i])) {
+		if (isEdgeLine(lines[i])) {
 			if (seen === ordinal) return i;
 			seen += 1;
 		}
@@ -682,6 +694,12 @@ function modifyEdgeLine(
 	const idx = findEdgeLineIndexByOrdinal(source, ordinal);
 	if (idx < 0) return source;
 	const lines = source.split('\n');
+	// Refuse to touch block-form edges — the body spans multiple lines
+	// and rewriting only the header would silently drop the body's attrs.
+	// Authors editing block-form edges do it directly in the DSL.
+	if (EDGE_BLOCK_HEADER_RE.test(lines[idx]) && !EDGE_LINE_RE.test(lines[idx])) {
+		return source;
+	}
 	const parts = parseEdgeLine(lines[idx]);
 	if (!parts) return source;
 	const out = modify(parts);

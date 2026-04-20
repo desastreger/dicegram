@@ -396,6 +396,28 @@ Connections (outside swimlane blocks):
         A -> B start:arrow            arrow at source too (bidirectional)
         Opacity: \`opacity:0.5\` attr on the edge (0..1).
 
+    Verbose block form — spell every detail explicitly. Use this when
+    an edge carries more than 2-3 attrs, or when clarity matters more
+    than brevity. Everything supported inline is also supported here:
+
+        edge meet_love -> trust {
+            label:      "yes"
+            kind:       solid          (solid | dashed | thick | line | dotted)
+            from:       right          (t/top/n, b/bottom/s, l/left/w, r/right/e)
+            to:         left
+            start:      none           (same values as end:)
+            end:        arrow
+            opacity:    0.5
+            color:      #ff5500
+            condition:  "user agrees"
+            weight:     5
+        }
+
+    The \`edge\` keyword before the source name is optional; \`A -> B { … }\`
+    parses identically. Ports on the header line (\`A@r -> B@l { … }\`)
+    compose with any \`from:\` / \`to:\` inside the block — the block wins
+    when both are given.
+
 ==============================
 ${settingsBlock()}
 
