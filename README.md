@@ -33,7 +33,13 @@ the hosted instance.
 - **8 shapes** — rect, rounded, diamond, circle, parallelogram, hexagon,
   cylinder, stadium. Plus swimlanes, boxes, groups, and notes.
 - **5 connector styles** — `->`, `-->`, `==>`, `---`, `-.-`. All orthogonal,
-  all obstacle-avoiding via an A\* grid router.
+  all obstacle-avoiding via an A\* grid router. Authorable three ways:
+  inline (`A -> B`), verbose block (`edge A -> B { … }`), or as a
+  first-class object (`[connector] c1 from:A@r to:B@l tip:arrow`).
+- **7 terminator decorations** — arrow, open_arrow, circle, diamond,
+  tee, square, none. Set via `tip:`/`back:` on either end.
+- **Multi-line labels** — `"First" [linebreak] "Second"` (no `\n`
+  escapes to memorize).
 - **Exports** — SVG, PNG, PDF, standalone HTML, Visio Data Visualizer CSV
   (round-trips to Microsoft Visio). Also clipboard DSL/SVG and an LLM-prompt
   template for AI-assisted authoring.
@@ -47,18 +53,20 @@ the hosted instance.
 ## DSL snippet
 
 ```
-direction: top-to-bottom
+direction top-to-bottom
 
-swimlane "Backend"
-swimlane "Frontend"
+swimlane "Frontend" {
+  [circle] request "Request" type:start step:0
+  [circle] reply   "Response" type:end   step:3
+}
 
-[circle] request "Request" type:start swimlane:"Frontend" step:0
-[rect]   api     "FastAPI"          swimlane:"Backend"  step:1
-[cylinder] db    "SQLite"           swimlane:"Backend"  step:2
-[circle] reply   "Response" type:end swimlane:"Frontend" step:3
+swimlane "Backend" {
+  [rect]     api "HTTP API" [linebreak] "(FastAPI)" step:1
+  [cylinder] db  "SQLite"                           step:2
+}
 
-request -> api "POST /dicegrams"
-api --> db "write"
+request -> api : "POST /dicegrams"
+[connector] write_path from:api@b to:db@t kind:dashed tip:arrow label:"write"
 db ==> api
 api -> reply
 ```

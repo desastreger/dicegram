@@ -6,6 +6,52 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.2.0] — 2026-04-20
+
+Connector grammar upgrade. Edges now have the same authoring depth as
+nodes — they can be named, referenced, inspector-edited, and carry
+structured anchor fields the self-healer understands.
+
+### Added
+- **`[connector]` bracket form** — one-line object-style syntax mirroring
+  node declarations: `[connector] c1 from:A@r to:B@l kind:dashed
+  tip:arrow back:circle label:"yes"`. Round-trips through the inspector,
+  counts as an edge for ordinal purposes, and survives normalization.
+- **`from_anchor:` / `to_anchor:` fields** — explicit source/target
+  anchor sides (`top`/`bottom`/`left`/`right`) separable from the node
+  reference. Gives the self-healing compiler a structured signal for
+  fixing layout drift without guessing author intent.
+- **`tip:` / `back:` keywords** — user-friendly aliases for `end:` /
+  `start:` edge decorations in both inline and block/bracket forms.
+- **`[linebreak]` label token** — multi-line labels as `"First part"
+  [linebreak] "Second part"` in node labels, edge labels, note text, and
+  connector `label:` values. Replaces the programmer-ism of `\n` escapes
+  in strings. Old files with `\n` still parse.
+- **Standalone "LLM prompt" button** on the editor toolbar — previously
+  buried inside the Export dropdown.
+- **Autocomplete** surfaces `[connector]`, `[linebreak]`, `tip:` / `back:`
+  values, `kind:` values, anchor sides, and all bracket-form keys when
+  the cursor sits inside a `[connector]` line.
+
+### Fixed
+- **Arrow tips now render reliably** — `SmartEdge` was dropping
+  `markerStart` (no source-side tips reached the DOM). Markers also
+  depended on SVG-2 `context-stroke` support which isn't universal yet;
+  switched to a CSS variable (`--th-edge`) set by the editor wrapper.
+- **`[connector] ... to:b` no longer collapses `b` into the port alias
+  for "bottom"** when the target is a node literally named `b`. The
+  bare-port interpretation now only applies in block-form headers where
+  source/target is already bound.
+
+### Changed
+- **LLM prompt** rewritten for the new grammar. Documents bracket form,
+  block form, anchor fields, `tip:`/`back:`, and `[linebreak]` — so
+  LLM-generated DSL pasted into the editor stays consistent.
+- **Syntax highlighter** colours `[connector]` and `[linebreak]` as
+  keywords (distinct from shape brackets).
+
+---
+
 ## [4.1.0] — 2026-04-18
 
 Live-editor polish round: UX audit findings (most of the top-10), inspector

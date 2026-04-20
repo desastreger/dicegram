@@ -201,6 +201,93 @@ Unknown attribute keys are accepted and stored (extensible).
 
 Connections are written outside swimlane blocks and reference objects by name across any swimlane.
 
+#### Explicit anchors
+
+Override the geometry-based port picker when layout calls for it:
+
+```
+A@r -> B@l             // exit right, enter left
+A@top -> B@bottom      // t/top/n, b/bottom/s, l/left/w, r/right/e
+```
+
+#### End decorations
+
+| Value | Meaning |
+|-------|---------|
+| `arrow` | default tip for `->`, `-->`, `==>` |
+| `open_arrow` | outlined arrow (UML "implements") |
+| `circle` | filled circle |
+| `diamond` | filled diamond (UML "aggregates") |
+| `tee` | perpendicular stop bar |
+| `square` | square cap |
+| `none` | no decoration |
+
+Use inline: `A -> B tip:circle` (at the target), `A -> B back:arrow` (at
+the source, for bidirectional). `tip:` / `back:` are user-friendly
+aliases for the internal `end:` / `start:`.
+
+#### `[connector]` bracket form
+
+When a connector carries more than a couple of attrs, or when you want
+it to behave like a first-class object (named, inspector-editable,
+autocomplete-friendly, greppable), use the bracket form:
+
+```
+[connector] c1 from:decide@r to:issue@l kind:dashed tip:arrow back:none label:"yes"
+[connector] c2 from:alice to:bob from_anchor:bottom to_anchor:top kind:solid
+```
+
+Fields:
+
+| Key | Required? | Meaning |
+|-----|-----------|---------|
+| `from:` | yes | Source node. Accepts `name` or `name@anchor`. |
+| `to:` | yes | Target node. Same grammar. |
+| `from_anchor:` | no | Explicit source anchor. Separated from `from:` so the self-healer has a structured signal to fix layout drift. |
+| `to_anchor:` | no | Explicit target anchor. |
+| `kind:` | no | `solid` (default), `dashed`, `thick`, `solid_line`, `dotted_line`. |
+| `tip:` | no | Terminator at the target end. Values listed above. |
+| `back:` | no | Terminator at the source end. |
+| `label:` | no | Quoted label. Supports `[linebreak]` for multi-line. |
+| `opacity:` / `color:` / `condition:` / `weight:` / custom | no | Pass through. |
+
+#### Verbose block form
+
+Spell every detail explicitly across multiple lines:
+
+```
+edge decide -> issue {
+    label:        "yes"
+    kind:         solid
+    from_anchor:  right
+    to_anchor:    left
+    back:         none
+    tip:          arrow
+    opacity:      0.5
+    color:        #ff5500
+    condition:    "user agrees"
+    weight:       5
+}
+```
+
+The `edge` keyword is optional; `A -> B { … }` parses identically. Ports
+on the header line (`A@r -> B@l { … }`) compose with any
+`from_anchor:` / `to_anchor:` inside the block — the block wins.
+
+### Multi-line labels
+
+Split any label across lines by inserting a `[linebreak]` token between
+quoted segments:
+
+```
+[rect] api "HTTP API" [linebreak] "(FastAPI)" step:1
+[connector] c1 from:a to:b label:"Validate" [linebreak] "(cached)"
+note "Runs nightly" [linebreak] "via cron" [service]
+```
+
+`[linebreak]` is discoverable in autocomplete — no more guessing at
+`\n` escape sequences.
+
 ### Swimlanes
 
 ```
