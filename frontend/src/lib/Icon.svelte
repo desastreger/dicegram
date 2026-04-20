@@ -165,5 +165,16 @@
 		<path d="M4 6v12a8 2.5 0 0 0 16 0V6" />
 	{:else if name === 'shape-stadium'}
 		<rect x="2" y="7" width="20" height="10" rx="5" />
+	{:else if name === 'sun'}
+		<circle cx="12" cy="12" r="4" />
+		<path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+	{:else if name === 'moon'}
+		<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+	{:else if name === 'lock'}
+		<rect x="3" y="11" width="18" height="11" rx="2" />
+		<path d="M7 11V7a5 5 0 0 1 10 0v4" />
+	{:else if name === 'unlock'}
+		<rect x="3" y="11" width="18" height="11" rx="2" />
+		<path d="M7 11V7a5 5 0 0 1 9.9-1" />
 	{/if}
 </svg>
