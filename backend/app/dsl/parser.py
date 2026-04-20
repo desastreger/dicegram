@@ -22,8 +22,20 @@ CONNECTION_PATTERNS = [
     ("->", "solid"),
 ]
 
-OBJECT_RE = re.compile(r'^\[(\w+)\]\s+(\w+)\s+"((?:[^"\\]|\\.)*)"\s*(.*?)\s*$')
+# Labels may be a single quoted string OR a sequence joined by the
+# `[linebreak]` token — e.g. `"First" [linebreak] "Second"`. The label
+# portion is captured greedily and parsed apart later.
+_LABEL_PART_RE = re.compile(r'("(?:[^"\\]|\\.)*"|\[linebreak\])')
+_LABEL_SEQ_RE = re.compile(
+    r'(?P<label>"(?:[^"\\]|\\.)*"(?:\s*\[linebreak\]\s*"(?:[^"\\]|\\.)*")*)'
+)
+OBJECT_RE = re.compile(
+    r'^\[(\w+)\]\s+(\w+)\s+'
+    r'("(?:[^"\\]|\\.)*"(?:\s*\[linebreak\]\s*"(?:[^"\\]|\\.)*")*)'
+    r'\s*(.*?)\s*$'
+)
 ATTR_RE = re.compile(r'(\w+):((?:"[^"]*"|\S+))')
+CONNECTOR_RE = re.compile(r'^\[connector\]\s+(?:(\w+)\s+)?(.*?)\s*$')
 STYLE_BLOCK_RE = re.compile(r"\{([^{}]*)\}")
 POSITION_RE = re.compile(r"@\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)")
 SETTING_RE = re.compile(r"^setting\s+(\w+)\s+(.+)$")
@@ -31,7 +43,11 @@ DIRECTION_RE = re.compile(r"^direction\s+(\S+)$")
 SWIMLANE_OPEN_RE = re.compile(r'^swimlane\s+"([^"]+)"\s*\{$')
 BOX_OPEN_RE = re.compile(r'^box\s+"([^"]+)"\s*(?:\{([^{}]*)\})?\s*\{$')
 GROUP_OPEN_RE = re.compile(r'^group\s+"([^"]+)"\s*\{(.*)$')
-NOTE_RE = re.compile(r'^note\s+"((?:[^"\\]|\\.)*)"\s+\[(\w+)\]$')
+NOTE_RE = re.compile(
+    r'^note\s+'
+    r'("(?:[^"\\]|\\.)*"(?:\s*\[linebreak\]\s*"(?:[^"\\]|\\.)*")*)'
+    r'\s+\[(\w+)\]$'
+)
 IDENT_RE = re.compile(r"\w+")
 
 # Verbose block-form edge:  A@r -> B@l {
@@ -43,7 +59,12 @@ _EDGE_BLOCK_SYMS = r"->|-->|==>|---|-\.-"
 EDGE_BLOCK_OPEN_RE = re.compile(
     r"^(?:edge\s+)?(\w+)(?:@(\w+))?\s*(" + _EDGE_BLOCK_SYMS + r")\s*(\w+)(?:@(\w+))?\s*\{\s*(.*)$"
 )
-EDGE_BLOCK_ATTR_RE = re.compile(r'(\w+)\s*:\s*((?:"[^"]*"|\S+))')
+EDGE_BLOCK_ATTR_RE = re.compile(
+    r'(\w+)\s*:\s*('
+    r'"(?:[^"\\]|\\.)*"(?:\s*\[linebreak\]\s*"(?:[^"\\]|\\.)*")*'
+    r'|\S+'
+    r')'
+)
 
 
 @dataclass
@@ -168,6 +189,22 @@ def _split_attrs(rest: str) -> tuple[dict, dict, tuple[float, float] | None]:
     return attrs, style, position
 
 
+def _join_label_parts(raw: str) -> str:
+    """Collapse `"A" [linebreak] "B"` → `A\\nB`. Also honours the legacy
+    `\\n` escape inside a single quoted string so pre-existing files keep
+    working; new files should prefer the `[linebreak]` token which is
+    discoverable in autocomplete."""
+    parts: list[str] = []
+    for m in _LABEL_PART_RE.finditer(raw):
+        tok = m.group(1)
+        if tok == "[linebreak]":
+            parts.append("\n")
+        else:
+            inner = tok[1:-1].replace("\\n", "\n").replace('\\"', '"')
+            parts.append(inner)
+    return "".join(parts)
+
+
 def _parse_object(line: str, swimlane: str | None, box: str | None) -> Node | None:
     m = OBJECT_RE.match(line)
     if not m:
@@ -176,7 +213,7 @@ def _parse_object(line: str, swimlane: str | None, box: str | None) -> Node | No
     if shape not in SHAPE_KEYWORDS:
         return None
     name = m.group(2)
-    label = m.group(3).replace("\\n", "\n")
+    label = _join_label_parts(m.group(3))
     attrs, style, position = _split_attrs(m.group(4))
     step_explicit = "step" in attrs
     step_raw = attrs.pop("step", "0")
@@ -240,20 +277,58 @@ _KIND_ALIAS = {
 def _apply_edge_block_attr(edge: Edge, key: str, value: str) -> None:
     """Mutate `edge` with a single `key: value` pair from a block body.
 
-    Handles the structured edge fields (`from`, `to`, `kind`, `label`) and
-    falls through to `attrs` for everything else (so `end:`, `start:`,
-    `opacity:`, `color:`, `condition:`, `weight:`, custom user keys all
-    Just Work). Quoted values lose their surrounding quotes.
+    In `[connector]` / block form, `from:` and `to:` can carry a node ref
+    (with optional `@port`) OR a bare port word. A bare port word (e.g.
+    `from: right`) keeps the current port-only semantics from the pre-
+    connector block grammar. A node ref (e.g. `from: decide` or
+    `from: decide@r`) sets the source name and optional port.
+
+    `from_anchor:` / `to_anchor:` are anchor-only — they only ever set the
+    port, never the source/target name. Preferred in `[connector]` form so
+    authors can keep anchors visible and separable from node refs (the
+    compiler then has a structured signal to work with).
+
+    Everything else lands in `attrs` (so `tip:` → stored under `end`,
+    `back:` → stored under `start`, custom keys pass through).
     """
     key = key.strip().lower()
     v = value.strip()
-    if v.startswith('"') and v.endswith('"') and len(v) >= 2:
+    # Label sequences: `"First" [linebreak] "Second"` collapse to multi-line.
+    if v.startswith('"') and "[linebreak]" in v:
+        v = _join_label_parts(v)
+    elif v.startswith('"') and v.endswith('"') and len(v) >= 2:
         v = v[1:-1].replace("\\n", "\n").replace('\\"', '"')
 
-    if key in ("from", "from_port", "source_port"):
+    if key in ("from", "source", "origin"):
+        vl = v.lower()
+        # Bare port word (`from: right`) only when source is already set
+        # from the block header — otherwise a single-letter node name like
+        # `b` would silently become a port. In `[connector]` form, source
+        # starts empty, so this branch never fires and everything is a ref.
+        if "@" not in v and vl in _PORT_ALIASES and edge.source:
+            edge.source_port = _PORT_ALIASES[vl]
+        else:
+            name, port = _split_node_port(v)
+            if name:
+                edge.source = name
+            if port:
+                edge.source_port = port
+        return
+    if key in ("to", "target", "destination"):
+        vl = v.lower()
+        if "@" not in v and vl in _PORT_ALIASES and edge.target:
+            edge.target_port = _PORT_ALIASES[vl]
+        else:
+            name, port = _split_node_port(v)
+            if name:
+                edge.target = name
+            if port:
+                edge.target_port = port
+        return
+    if key in ("from_port", "from_anchor", "source_port", "source_anchor", "origin_anchor"):
         edge.source_port = _PORT_ALIASES.get(v.lower(), v.lower()) or None
         return
-    if key in ("to", "to_port", "target_port"):
+    if key in ("to_port", "to_anchor", "target_port", "target_anchor", "destination_anchor"):
         edge.target_port = _PORT_ALIASES.get(v.lower(), v.lower()) or None
         return
     if key == "label":
@@ -263,6 +338,12 @@ def _apply_edge_block_attr(edge: Edge, key: str, value: str) -> None:
         canonical = _KIND_ALIAS.get(v.lower())
         if canonical:
             edge.kind = canonical
+        return
+    if key == "tip":
+        edge.attrs["end"] = v.lower()
+        return
+    if key == "back":
+        edge.attrs["start"] = v.lower()
         return
     if key in ("start", "end"):
         edge.attrs[key] = v.lower()
@@ -276,6 +357,28 @@ def _finalize_block_edge_body(edge: Edge, body: str) -> None:
     around the colon (block form convention) and quoted string values."""
     for am in EDGE_BLOCK_ATTR_RE.finditer(body):
         _apply_edge_block_attr(edge, am.group(1), am.group(2))
+
+
+def _parse_connector(line: str) -> Edge | None:
+    """`[connector] c1 from:decide@r to:issue@l kind:dashed tip:arrow`.
+
+    A single-line object-style connector. `from:`/`to:` carry the node
+    reference (with optional `@port` shorthand); `from_anchor:` /
+    `to_anchor:` are the separable anchor fields that surface in the
+    inspector and give the self-healer a structured signal to fix layout
+    drift. `tip:` / `back:` are user-friendly aliases for `end:` / `start:`.
+    """
+    m = CONNECTOR_RE.match(line)
+    if not m:
+        return None
+    body = m.group(2) or ""
+    edge = Edge(source="", target="", kind="solid")
+    if m.group(1):
+        edge.attrs["name"] = m.group(1)
+    _finalize_block_edge_body(edge, body)
+    if not edge.source or not edge.target:
+        return None
+    return edge
 
 
 def _parse_connection(line: str) -> Edge | None:
@@ -295,9 +398,9 @@ def _parse_connection(line: str) -> Edge | None:
         if colon != -1:
             target = right[:colon].strip()
             tail = right[colon + 1 :].strip()
-            lm = re.match(r'^"((?:[^"\\]|\\.)*)"', tail)
+            lm = _LABEL_SEQ_RE.match(tail)
             if lm:
-                label = lm.group(1).replace("\\n", "\n")
+                label = _join_label_parts(lm.group("label"))
                 tail = tail[lm.end() :]
             for am in ATTR_RE.finditer(tail):
                 k = am.group(1)
@@ -441,7 +544,13 @@ def parse(source: str) -> Parsed:
         # note
         m = NOTE_RE.match(stripped)
         if m:
-            parsed.notes.append(Note(text=m.group(1).replace("\\n", "\n"), target=m.group(2)))
+            parsed.notes.append(Note(text=_join_label_parts(m.group(1)), target=m.group(2)))
+            continue
+
+        # bracket-form connector:  [connector] name? from:A to:B kind:… tip:…
+        connector = _parse_connector(stripped)
+        if connector:
+            parsed.edges.append(connector)
             continue
 
         # object

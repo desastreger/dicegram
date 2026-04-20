@@ -1,10 +1,44 @@
 // Surgical DSL string patching. All functions take a source string + change params,
 // return a new source string with minimal disruption (preserves formatting where possible).
 
-const NODE_LINE_RE = /^(\s*)\[(\w+)\]\s+(\w+)\s+"((?:[^"\\]|\\.)*)"(.*)$/;
+// A label is one quoted string OR a sequence joined by `[linebreak]` — e.g.
+// `"First" [linebreak] "Second"`. The sequence form is preferred for multi-
+// line labels so users never have to type `\n` themselves (a programmer
+// habit that doesn't translate to end users).
+const LABEL_SEQ_SRC =
+	'"(?:[^"\\\\]|\\\\.)*"(?:\\s*\\[linebreak\\]\\s*"(?:[^"\\\\]|\\\\.)*")*';
+const LABEL_PART_RE = /("(?:[^"\\]|\\.)*"|\[linebreak\])/g;
+const NODE_LINE_RE = new RegExp(
+	'^(\\s*)\\[(\\w+)\\]\\s+(\\w+)\\s+(' + LABEL_SEQ_SRC + ')(.*)$'
+);
 const ATTR_FIND_RE = /(\w+):((?:"[^"]*"|\S+))/g;
 const STYLE_BLOCK_RE = /\{([^{}]*)\}/;
 const POSITION_RE = /@\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/;
+
+export function joinLabelParts(raw: string): string {
+	const out: string[] = [];
+	LABEL_PART_RE.lastIndex = 0;
+	let m: RegExpExecArray | null;
+	while ((m = LABEL_PART_RE.exec(raw)) !== null) {
+		const tok = m[1];
+		if (tok === '[linebreak]') {
+			out.push('\n');
+		} else {
+			out.push(tok.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/\\n/g, '\n'));
+		}
+	}
+	return out.join('');
+}
+
+export function formatLabel(label: string): string {
+	if (label.includes('\n')) {
+		return label
+			.split('\n')
+			.map((seg) => `"${seg.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`)
+			.join(' [linebreak] ');
+	}
+	return `"${label.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
 
 export function escapeRegex(s: string): string {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -73,7 +107,7 @@ export function parseNodeLine(line: string): NodeLineParts | null {
 	const m = line.match(NODE_LINE_RE);
 	if (!m) return null;
 	const [, indent, shape, name, rawLabel, rest] = m;
-	const label = rawLabel.replace(/\\n/g, '\n');
+	const label = joinLabelParts(rawLabel);
 	const { style, attrs, position } = parseRest(rest);
 	return { indent, shape, name, label, style, attrs, position };
 }
@@ -93,9 +127,8 @@ const ATTR_ORDER = [
 ];
 
 export function serializeNodeLine(parts: NodeLineParts): string {
-	const escapedLabel = parts.label.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
 	const segments: string[] = [
-		`${parts.indent}[${parts.shape}] ${parts.name} "${escapedLabel}"`
+		`${parts.indent}[${parts.shape}] ${parts.name} ${formatLabel(parts.label)}`
 	];
 
 	const remaining = new Set(Object.keys(parts.attrs));
@@ -199,6 +232,11 @@ export function removeNode(source: string, id: string): string {
 		const parts = parseNodeLine(line);
 		if (parts && parts.name === id) continue;
 		if (/->|-->|==>|---|-\.-/.test(line) && idRe.test(line)) continue;
+		// `[connector]` form carries refs in `from:` / `to:` attrs.
+		if (CONNECTOR_LINE_RE.test(line)) {
+			const conn = parseConnectorLineEdge(line);
+			if (conn && (conn.src === id || conn.dst === id)) continue;
+		}
 		const noteM = line.match(/^\s*note\s+"[^"]*"\s+\[(\w+)\]\s*$/);
 		if (noteM && noteM[1] === id) continue;
 		result.push(line);
@@ -342,8 +380,7 @@ export function addEdge(
 	let line = `${opts.src} ${sym} ${opts.dst}`;
 	const tail: string[] = [];
 	if (opts.label) {
-		const esc = opts.label.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-		tail.push(`"${esc}"`);
+		tail.push(formatLabel(opts.label));
 	}
 	for (const [k, v] of Object.entries(opts.attrs ?? {})) {
 		if (v == null || v === '') continue;
@@ -403,8 +440,7 @@ export function addGroup(source: string, name: string, members: string[] = []): 
 }
 
 export function addNote(source: string, text: string, target: string): string {
-	const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
-	return source.trimEnd() + `\nnote "${escaped}" [${target}]\n`;
+	return source.trimEnd() + `\nnote ${formatLabel(text)} [${target}]\n`;
 }
 
 /** Produce a node name that isn't already used in `source`. */
@@ -594,11 +630,26 @@ const EDGE_LINE_RE =
 const EDGE_BLOCK_HEADER_RE =
 	/^(\s*)(?:edge\s+)?(\w+)(?:@\w+)?\s*(->|-->|==>|---|-\.-)\s*(\w+)(?:@\w+)?\s*\{/;
 
+// Object-style connector: `[connector] name? from:A@r to:B@l kind:dashed
+// tip:arrow back:none label:"x"`. Counts as an edge line for ordinal
+// purposes and is round-trip editable (inspector rewrites preserve the
+// bracket form).
+const CONNECTOR_LINE_RE = /^(\s*)\[connector\]\s+(?:(\w+)\s+)?(.*)$/;
+
 function isEdgeLine(line: string): boolean {
-	return EDGE_LINE_RE.test(line) || EDGE_BLOCK_HEADER_RE.test(line);
+	return (
+		EDGE_LINE_RE.test(line) ||
+		EDGE_BLOCK_HEADER_RE.test(line) ||
+		CONNECTOR_LINE_RE.test(line)
+	);
 }
 
-const EDGE_LABEL_RE = /"((?:[^"\\]|\\.)*)"/;
+const EDGE_LABEL_RE = new RegExp(LABEL_SEQ_SRC);
+// Value production for bracket-form attrs: label sequences OR bare tokens.
+const EDGE_CONNECTOR_ATTR_RE = new RegExp(
+	'(\\w+)\\s*:\\s*(' + LABEL_SEQ_SRC + '|\\S+)',
+	'g'
+);
 const EDGE_ATTR_RE = /(\w+):((?:"[^"]*"|\S+))/g;
 
 export const EDGE_KIND_SYM: Record<string, string> = {
@@ -636,9 +687,12 @@ type EdgeParts = {
 	dstPort: string | null;
 	label: string | null;
 	attrs: Record<string, string>;
+	// `inline` = `A -> B : "x"`; `connector` = `[connector] name from:A to:B`.
+	form: 'inline' | 'connector';
+	connectorName?: string;
 };
 
-function parseEdgeLine(line: string): EdgeParts | null {
+function parseInlineEdgeLine(line: string): EdgeParts | null {
 	const m = line.match(EDGE_LINE_RE);
 	if (!m) return null;
 	const tail = m[7] ?? '';
@@ -646,7 +700,7 @@ function parseEdgeLine(line: string): EdgeParts | null {
 	let rest = tail.replace(/^\s*:\s*/, '');
 	const lm = rest.match(EDGE_LABEL_RE);
 	if (lm && rest.startsWith(lm[0])) {
-		label = lm[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/\\n/g, '\n');
+		label = joinLabelParts(lm[0]);
 		rest = rest.slice(lm[0].length);
 	}
 	const attrs: Record<string, string> = {};
@@ -663,19 +717,132 @@ function parseEdgeLine(line: string): EdgeParts | null {
 		dst: m[5],
 		dstPort: canonPort(m[6]),
 		label,
-		attrs
+		attrs,
+		form: 'inline'
 	};
 }
 
+function parseConnectorLineEdge(line: string): EdgeParts | null {
+	const m = line.match(CONNECTOR_LINE_RE);
+	if (!m) return null;
+	const indent = m[1];
+	const connectorName = m[2] ?? undefined;
+	const body = m[3] ?? '';
+
+	let src = '';
+	let srcPort: string | null = null;
+	let dst = '';
+	let dstPort: string | null = null;
+	let label: string | null = null;
+	let kindName = 'solid';
+	const attrs: Record<string, string> = {};
+
+	EDGE_CONNECTOR_ATTR_RE.lastIndex = 0;
+	let am: RegExpExecArray | null;
+	while ((am = EDGE_CONNECTOR_ATTR_RE.exec(body)) !== null) {
+		const key = am[1].toLowerCase();
+		const rawV = am[2];
+		const v = rawV.startsWith('"') ? joinLabelParts(rawV) : rawV;
+		if (key === 'from' || key === 'source' || key === 'origin') {
+			const vLow = v.toLowerCase();
+			// Bare port word only if source is already set (block-form
+			// legacy). In bracket form src starts empty, so every `from:`
+			// is treated as a node ref.
+			if (!v.includes('@') && PORT_ALIASES[vLow] && src) {
+				srcPort = PORT_ALIASES[vLow];
+			} else {
+				const atIdx = v.indexOf('@');
+				const name = atIdx < 0 ? v : v.slice(0, atIdx);
+				const port = atIdx < 0 ? '' : v.slice(atIdx + 1);
+				if (name) src = name;
+				if (port) srcPort = canonPort(port);
+			}
+		} else if (key === 'to' || key === 'target' || key === 'destination') {
+			const vLow = v.toLowerCase();
+			if (!v.includes('@') && PORT_ALIASES[vLow] && dst) {
+				dstPort = PORT_ALIASES[vLow];
+			} else {
+				const atIdx = v.indexOf('@');
+				const name = atIdx < 0 ? v : v.slice(0, atIdx);
+				const port = atIdx < 0 ? '' : v.slice(atIdx + 1);
+				if (name) dst = name;
+				if (port) dstPort = canonPort(port);
+			}
+		} else if (
+			key === 'from_anchor' ||
+			key === 'from_port' ||
+			key === 'source_anchor' ||
+			key === 'source_port' ||
+			key === 'origin_anchor'
+		) {
+			srcPort = canonPort(v);
+		} else if (
+			key === 'to_anchor' ||
+			key === 'to_port' ||
+			key === 'target_anchor' ||
+			key === 'target_port' ||
+			key === 'destination_anchor'
+		) {
+			dstPort = canonPort(v);
+		} else if (key === 'label') {
+			label = v;
+		} else if (key === 'kind') {
+			if (EDGE_KIND_SYM[v.toLowerCase()]) kindName = v.toLowerCase();
+		} else if (key === 'tip') {
+			attrs.end = v.toLowerCase();
+		} else if (key === 'back') {
+			attrs.start = v.toLowerCase();
+		} else {
+			attrs[key] = v;
+		}
+	}
+
+	if (!src || !dst) return null;
+
+	return {
+		indent,
+		src,
+		srcPort,
+		sym: EDGE_KIND_SYM[kindName] ?? '->',
+		dst,
+		dstPort,
+		label,
+		attrs,
+		form: 'connector',
+		connectorName
+	};
+}
+
+function parseEdgeLine(line: string): EdgeParts | null {
+	return parseInlineEdgeLine(line) ?? parseConnectorLineEdge(line);
+}
+
+function rebuildConnectorLine(p: EdgeParts): string {
+	const kindName = EDGE_SYM_KIND[p.sym] ?? 'solid';
+	const bits: string[] = [`[connector]`];
+	if (p.connectorName) bits.push(p.connectorName);
+	bits.push(`from:${p.srcPort ? `${p.src}@${p.srcPort}` : p.src}`);
+	bits.push(`to:${p.dstPort ? `${p.dst}@${p.dstPort}` : p.dst}`);
+	if (kindName !== 'solid') bits.push(`kind:${kindName}`);
+	if (p.attrs.end) bits.push(`tip:${p.attrs.end}`);
+	if (p.attrs.start) bits.push(`back:${p.attrs.start}`);
+	for (const [k, v] of Object.entries(p.attrs)) {
+		if (k === 'end' || k === 'start' || k === 'name') continue;
+		if (v === '' || v == null) continue;
+		const needsQuote = /\s|,/.test(v) || v === '';
+		bits.push(`${k}:${needsQuote ? `"${v}"` : v}`);
+	}
+	if (p.label && p.label.length > 0) bits.push(`label:${formatLabel(p.label)}`);
+	return `${p.indent}${bits.join(' ')}`;
+}
+
 function rebuildEdgeLine(p: EdgeParts): string {
+	if (p.form === 'connector') return rebuildConnectorLine(p);
 	const srcPart = p.srcPort ? `${p.src}@${p.srcPort}` : p.src;
 	const dstPart = p.dstPort ? `${p.dst}@${p.dstPort}` : p.dst;
 	let line = `${p.indent}${srcPart} ${p.sym} ${dstPart}`;
 	const tailBits: string[] = [];
-	if (p.label && p.label.length > 0) {
-		const escaped = p.label.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-		tailBits.push(`"${escaped}"`);
-	}
+	if (p.label && p.label.length > 0) tailBits.push(formatLabel(p.label));
 	for (const [k, v] of Object.entries(p.attrs)) {
 		if (v === '' || v == null) continue;
 		const needsQuote = /\s|,/.test(v) || v === '';
@@ -770,7 +937,9 @@ const SWIMLANE_OPEN_RE = /^(\s*)swimlane\s+"([^"]+)"\s*\{\s*$/;
 // Captures: 1=indent 2=label 3=optional-style-block-contents (inside {})
 const BOX_OPEN_RE = /^(\s*)box\s+"([^"]+)"\s*(?:\{([^{}]*)\})?\s*\{\s*$/;
 const GROUP_LINE_RE = /^(\s*)group\s+"([^"]+)"\s*\{(.*)\}\s*$/;
-const NOTE_LINE_RE = /^(\s*)note\s+"((?:[^"\\]|\\.)*)"\s+\[(\w+)\]\s*$/;
+const NOTE_LINE_RE = new RegExp(
+	'^(\\s*)note\\s+(' + LABEL_SEQ_SRC + ')\\s+\\[(\\w+)\\]\\s*$'
+);
 
 function findSwimlaneHeaderIndex(source: string, name: string): number {
 	const lines = source.split('\n');
@@ -945,7 +1114,7 @@ export function setNoteText(source: string, ordinal: number, text: string): stri
 	if (idx < 0) return source;
 	const m = lines[idx].match(NOTE_LINE_RE);
 	if (!m) return source;
-	lines[idx] = `${m[1]}note "${escapeDslString(text)}" [${m[3]}]`;
+	lines[idx] = `${m[1]}note ${formatLabel(text)} [${m[3]}]`;
 	return lines.join('\n');
 }
 
@@ -957,7 +1126,7 @@ export function setNoteTarget(source: string, ordinal: number, target: string): 
 	if (idx < 0) return source;
 	const m = lines[idx].match(NOTE_LINE_RE);
 	if (!m) return source;
-	lines[idx] = `${m[1]}note "${m[2]}" [${t}]`;
+	lines[idx] = `${m[1]}note ${m[2]} [${t}]`;
 	return lines.join('\n');
 }
 

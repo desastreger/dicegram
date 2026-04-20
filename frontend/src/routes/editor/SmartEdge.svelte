@@ -9,6 +9,7 @@
 		targetX: number;
 		targetY: number;
 		markerEnd?: string;
+		markerStart?: string;
 		style?: string;
 		label?: string;
 		data?: {
@@ -27,6 +28,7 @@
 		targetX,
 		targetY,
 		markerEnd,
+		markerStart,
 		style,
 		label,
 		data
@@ -100,7 +102,7 @@
 	const estWidth = $derived(Math.max(30, (label?.length ?? 0) * 6 + 10));
 </script>
 
-<BaseEdge {id} path={pathD} {markerEnd} {style} />
+<BaseEdge {id} path={pathD} {markerEnd} {markerStart} {style} />
 
 {#if label}
 	<g pointer-events="none">

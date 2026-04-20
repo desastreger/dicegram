@@ -16,6 +16,7 @@ const SHAPE_SET = new Set([
 
 const KEYWORD_RE = /^(direction|setting|swimlane|box|group|note)\b/;
 const SHAPE_RE = /\[(\w+)\]/g;
+const BRACKET_KEYWORDS = new Set(['connector', 'linebreak']);
 const ARROW_RE = /(==>|-->|-\.-|---|->)/g;
 const POS_RE = /@\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/g;
 const ATTR_RE = /\b(\w+):(?=("[^"]*"|\S+))/g;
@@ -101,12 +102,19 @@ export function scanSource(src: string): {
 		SHAPE_RE.lastIndex = 0;
 		let shm: RegExpExecArray | null;
 		while ((shm = SHAPE_RE.exec(effLine)) !== null) {
-			if (!SHAPE_SET.has(shm[1])) continue;
-			decos.push({
-				from: lineStart + shm.index,
-				to: lineStart + shm.index + shm[0].length,
-				cls: 'tok-shape'
-			});
+			if (SHAPE_SET.has(shm[1])) {
+				decos.push({
+					from: lineStart + shm.index,
+					to: lineStart + shm.index + shm[0].length,
+					cls: 'tok-shape'
+				});
+			} else if (BRACKET_KEYWORDS.has(shm[1])) {
+				decos.push({
+					from: lineStart + shm.index,
+					to: lineStart + shm.index + shm[0].length,
+					cls: 'tok-keyword'
+				});
+			}
 		}
 
 		const defM = NODE_DEF_RE.exec(effLine);

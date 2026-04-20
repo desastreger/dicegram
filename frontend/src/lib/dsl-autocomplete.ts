@@ -43,6 +43,12 @@ const SHAPES = [
 	'cylinder',
 	'stadium'
 ];
+// Keywords that live inside `[ … ]` but aren't shapes: `[connector]` opens
+// a bracket-form edge; `[linebreak]` inside a label sequence splits lines.
+const BRACKET_KEYWORDS = ['connector', 'linebreak'];
+const TIP_KINDS = ['arrow', 'open_arrow', 'circle', 'diamond', 'tee', 'square', 'none'];
+const EDGE_KINDS = ['solid', 'dashed', 'thick', 'solid_line', 'dotted_line'];
+const ANCHORS = ['top', 'bottom', 'left', 'right'];
 const TYPES = [
 	'process',
 	'decision',
@@ -111,12 +117,25 @@ function dslCompletion(ctx: CompletionContext): CompletionResult | null {
 	// attribute-value completion: `type:pro|` or `status:ac|`
 	const attrMatch = /(\w+):([\w-]*)$/.exec(textBefore);
 	if (attrMatch) {
-		const key = attrMatch[1];
+		const key = attrMatch[1].toLowerCase();
 		const valueStart = ctx.pos - attrMatch[2].length;
 		if (key === 'type') return { from: valueStart, options: asCompletion(TYPES, 'enum') };
 		if (key === 'status') return { from: valueStart, options: asCompletion(STATUSES, 'enum') };
 		if (key === 'priority')
 			return { from: valueStart, options: asCompletion(PRIORITIES, 'enum') };
+		if (key === 'tip' || key === 'back' || key === 'end' || key === 'start')
+			return { from: valueStart, options: asCompletion(TIP_KINDS, 'enum') };
+		if (key === 'kind')
+			return { from: valueStart, options: asCompletion(EDGE_KINDS, 'enum') };
+		if (
+			key === 'from_anchor' ||
+			key === 'to_anchor' ||
+			key === 'from_port' ||
+			key === 'to_port' ||
+			key === 'source_port' ||
+			key === 'target_port'
+		)
+			return { from: valueStart, options: asCompletion(ANCHORS, 'enum') };
 	}
 
 	// direction values
@@ -146,12 +165,41 @@ function dslCompletion(ctx: CompletionContext): CompletionResult | null {
 		};
 	}
 
-	// shape brackets
+	// shape brackets — extend with `[connector]` (opens a bracket-form edge)
+	// and `[linebreak]` (splits a label sequence across lines).
 	const shapeMatch = /\[(\w*)$/.exec(textBefore);
 	if (shapeMatch) {
 		return {
 			from: ctx.pos - shapeMatch[1].length,
-			options: asCompletion(SHAPES, 'class')
+			options: [
+				...asCompletion(SHAPES, 'class'),
+				...asCompletion(BRACKET_KEYWORDS, 'keyword')
+			]
+		};
+	}
+
+	// inside a `[connector] …` line, surface the connector-specific keys.
+	if (/^\s*\[connector\]\s/.test(textBefore)) {
+		const connectorKeys = [
+			'from:',
+			'to:',
+			'from_anchor:',
+			'to_anchor:',
+			'kind:',
+			'tip:',
+			'back:',
+			'label:',
+			'opacity:',
+			'color:',
+			'condition:',
+			'weight:'
+		];
+		return {
+			from: before.from,
+			options: [
+				...connectorKeys.map((k) => ({ label: k, type: 'property' })),
+				...asCompletion(collectDeclared(ctx.state.doc.toString()), 'variable')
+			]
 		};
 	}
 

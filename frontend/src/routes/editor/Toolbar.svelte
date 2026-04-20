@@ -440,6 +440,16 @@
 		{/if}
 	</div>
 
+	<button
+		type="button"
+		onclick={() => doExport('copy-llm')}
+		title="Copy an LLM prompt that embeds this dicegram + full grammar"
+		class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800"
+	>
+		<Icon name="sparkles" size={13} />
+		<span class="hidden md:inline">LLM prompt</span>
+	</button>
+
 	<div class="ml-auto flex items-center gap-2 text-[11px]">
 		<input
 			type="text"

@@ -341,7 +341,11 @@ note "Sticky text" [target_object]
     unique_name: lowercase identifier, no spaces. Used as the ID in
     connections. Must be unique across the whole document.
 
-    "Display Label": quoted string shown on the node. \\n for multi-line.
+    "Display Label": quoted string shown on the node. For multi-line
+    labels, use the \`[linebreak]\` token between quoted segments:
+        [rect] api "First part" [linebreak] "Second part" step:0
+    Never emit raw \\n inside a string — that's a programmer-ism. The
+    \`[linebreak]\` token is the authoritative way to split a label.
 
     step:N (required for layout): integer ordering along the flow axis.
     Same step = parallel placement. Start at step:0.
@@ -401,22 +405,55 @@ Connections (outside swimlane blocks):
     than brevity. Everything supported inline is also supported here:
 
         edge meet_love -> trust {
-            label:      "yes"
-            kind:       solid          (solid | dashed | thick | line | dotted)
-            from:       right          (t/top/n, b/bottom/s, l/left/w, r/right/e)
-            to:         left
-            start:      none           (same values as end:)
-            end:        arrow
-            opacity:    0.5
-            color:      #ff5500
-            condition:  "user agrees"
-            weight:     5
+            label:        "yes"
+            kind:         solid          (solid | dashed | thick | solid_line | dotted_line)
+            from_anchor:  right          (top, bottom, left, right — the anchor side)
+            to_anchor:    left
+            back:         none           (tip at the source end; same values as tip:)
+            tip:          arrow
+            opacity:      0.5
+            color:        #ff5500
+            condition:    "user agrees"
+            weight:       5
         }
 
     The \`edge\` keyword before the source name is optional; \`A -> B { … }\`
     parses identically. Ports on the header line (\`A@r -> B@l { … }\`)
-    compose with any \`from:\` / \`to:\` inside the block — the block wins
-    when both are given.
+    compose with any \`from_anchor:\` / \`to_anchor:\` inside the block — the
+    block wins when both are given.
+
+    Object-style bracket form — the preferred form when you want a
+    connector to surface in the inspector and be clicked as a single
+    unit. One line, named fields, no trailing colon tail:
+
+        [connector] c1 from:decide@r to:issue@l kind:dashed tip:arrow back:none label:"yes"
+
+    Bracket-form keys (all optional unless marked):
+        from:           source node — REQUIRED. \`from:A@right\` splits
+                        into node "A" + anchor "right". \`from:A\` alone
+                        lets the picker choose the anchor.
+        to:             target node — REQUIRED. Same grammar as \`from:\`.
+        from_anchor:    explicit source anchor (top/bottom/left/right).
+                        Separated from \`from:\` for the self-healer: a
+                        visible anchor field means the compiler can fix
+                        bad routing without guessing user intent.
+        to_anchor:      explicit target anchor.
+        kind:           line style (default solid).
+        tip:            terminator at the target end (default arrow for
+                        solid/dashed/thick; none for solid_line/dotted_line).
+                        Values: arrow, open_arrow, circle, diamond, tee,
+                        square, none.
+        back:           terminator at the source end. Same values as tip.
+        label:          quoted label. Multi-line: use \`[linebreak]\`
+                        between quoted segments.
+        opacity:        0..1.
+        color:          #rrggbb edge colour override.
+        condition / weight / <custom>: pass through unchanged.
+
+    Prefer inline \`A -> B\` for terse sequence diagrams; use \`[connector]\`
+    when you want the edge to behave like a first-class object (named,
+    inspector-editable, autocomplete-friendly) or when the connector
+    carries a bundle of attrs.
 
 ==============================
 ${settingsBlock()}

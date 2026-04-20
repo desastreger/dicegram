@@ -643,9 +643,8 @@
 	}
 </script>
 
-<EdgeMarkers />
-
 <div class="flex h-[calc(100vh-var(--header-h))] flex-col" style={themeVars}>
+	<EdgeMarkers />
 	{#if demoMode}
 		<div
 			class="flex items-center justify-center gap-3 border-b border-blue-800/60 bg-blue-950/50 px-3 py-1 text-[11px] text-blue-100"
