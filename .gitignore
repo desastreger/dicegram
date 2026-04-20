@@ -12,7 +12,34 @@ backend/.venv/
 backend/.env
 backend/*.db
 backend/*.db-journal
+backend/*.sqlite
+backend/*.sqlite3
 
 # frontend (SvelteKit) — node_modules etc. are handled by frontend/.gitignore
 frontend/.env
 
+# deploy
+.env
+.env.local
+.env.*.local
+
+# credentials / keys — never commit, ever
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+id_ecdsa
+id_ecdsa.*
+
+# editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.bak
+*.orig
+*.log

@@ -5,14 +5,23 @@ title: "[Feature] "
 labels: enhancement
 ---
 
-**What problem does this solve?**
-Describe the use case or pain point this feature addresses.
+**Problem**
+What pain point or use case does this address? Who's affected?
 
-**Proposed solution**
-Describe how you'd like this to work. Include DSL syntax examples if proposing new syntax.
+**Proposal**
+How would it work? If you're proposing DSL syntax, show before/after:
 
-**Alternatives considered**
-Any workarounds or alternative approaches you've thought of.
+```
+# before
+node a "A"
 
-**Additional context**
-Any mockups, screenshots, or references that help illustrate the idea.
+# after
+node a "A" priority:high
+```
+
+**Alternatives**
+Workarounds you've tried or other designs you considered.
+
+**Context**
+Links to similar features in other tools (Mermaid, draw.io, Visio, Excalidraw),
+mockups, screenshots, or real diagrams that would benefit from this.

@@ -1,95 +1,163 @@
 # Dicegram
 
-Web app for turning plain text into living architecture diagrams — "Dicegrams".
-Accounts, saved dicegrams, shareable read-only URLs, and a demo mode that runs
-entirely in the browser.
+**Text-first diagram editor with a living DSL.** Edit in code, canvas,
+scene tree, and inspector — all four stay in sync. Self-hostable or use
+the hosted instance.
 
-The DSL is the canonical source of truth: every visual property of every object
-lives in the source file (like a Godot `.tscn`). The code editor, canvas,
-inspector and scene tree are four windows into the same text — edits on one
-surface propagate to the others immediately.
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](./LICENSE)
+[![Live demo](https://img.shields.io/badge/live-dicegram.desastreger.cloud-22c55e)](https://dicegram.desastreger.cloud)
 
-## Stack
+---
 
-- **Backend:** FastAPI + SQLModel + SQLite, Argon2 password hashing, signed
-  session cookies.
-- **Frontend:** SvelteKit 2 + Svelte 5 + TailwindCSS v4 + TypeScript + Svelte
-  Flow (`@xyflow/svelte`) + CodeMirror 6.
-- **Dev runner:** `reset-dev.bat` (Windows) — hard-resets both servers and the
-  vite port range in one command.
+## Try it
+
+- **Hosted**: **[https://dicegram.desastreger.cloud](https://dicegram.desastreger.cloud)**
+- **No-signup demo**: [dicegram.desastreger.cloud/editor?demo=1](https://dicegram.desastreger.cloud/editor?demo=1) (runs entirely in your browser, saves to `localStorage`)
+
+## Why Dicegram
+
+| | Dicegram | Mermaid | draw.io | Excalidraw |
+|---|---|---|---|---|
+| Text is the source of truth | ✓ | ✓ | — | — |
+| Edit in both text **and** visual, staying in sync | ✓ | — | ✓ | ✓ |
+| Orthogonal obstacle-routed connectors | ✓ | partial | ✓ | — |
+| Visio CSV round-trip | ✓ | — | partial | — |
+| Self-host with one command | ✓ | n/a | ✓ | ✓ |
+| Hosted + self-hostable under the same source | ✓ (AGPL) | ✓ | ✓ | ✓ |
+
+## Features
+
+- **Four synced surfaces** — code editor (DSL), canvas (Svelte Flow), scene
+  tree (Godot-style drag-to-reparent), inspector (every object kind has a
+  panel).
+- **8 shapes** — rect, rounded, diamond, circle, parallelogram, hexagon,
+  cylinder, stadium. Plus swimlanes, boxes, groups, and notes.
+- **5 connector styles** — `->`, `-->`, `==>`, `---`, `-.-`. All orthogonal,
+  all obstacle-avoiding via an A\* grid router.
+- **Exports** — SVG, PNG, PDF, standalone HTML, Visio Data Visualizer CSV
+  (round-trips to Microsoft Visio). Also clipboard DSL/SVG and an LLM-prompt
+  template for AI-assisted authoring.
+- **Accounts + shares** — Argon2 password hashing, signed-cookie sessions,
+  read-only `/d/{slug}` share links you can revoke.
+- **Autosave** — 2 s debounced `PUT`, plus `Ctrl+S` for the impatient.
+- **Self-healing compiler** — trims trailing whitespace, snaps pinned
+  positions to the grid, drops dangling refs, renames duplicates. Every
+  normalization surfaces an inline Undo toast.
+
+## DSL snippet
+
+```
+direction: top-to-bottom
+
+swimlane "Backend"
+swimlane "Frontend"
+
+[circle] request "Request" type:start swimlane:"Frontend" step:0
+[rect]   api     "FastAPI"          swimlane:"Backend"  step:1
+[cylinder] db    "SQLite"           swimlane:"Backend"  step:2
+[circle] reply   "Response" type:end swimlane:"Frontend" step:3
+
+request -> api "POST /dicegrams"
+api --> db "write"
+db ==> api
+api -> reply
+```
+
+Full grammar, shape types, attributes, swimlanes, boxes, groups, and notes:
+see [**GUIDE.md**](./GUIDE.md). Ready-made examples live in
+[`examples/`](./examples).
+
+## Self-host in one command
+
+You need Docker Engine + the Compose plugin on a box you control.
+
+```bash
+git clone https://github.com/desastreger/dicegram.git
+cd dicegram
+chmod +x deploy.sh docker-entrypoint.sh
+./deploy.sh --caddy    # with built-in Let's Encrypt TLS (needs a domain)
+./deploy.sh            # app-only, behind your own reverse proxy
+```
+
+`deploy.sh` bootstraps `.env` with a generated `SECRET_KEY`, validates
+required variables (`DOMAIN`, `ACME_EMAIL` for the Caddy profile), builds
+the image, starts the stack, and polls the healthcheck. The app persists
+to a named Docker volume at `/data`; SQLite is fine for small deployments,
+or swap to Postgres via `DATABASE_URL`.
+
+Tuned out of the box for a 4 vCPU / 16 GB VPS. See
+[`docker-compose.yml`](./docker-compose.yml) for resource limits and the
+[`Caddyfile`](./Caddyfile) for the reverse-proxy config.
+
+## Need it hosted for you?
+
+If you'd rather not run infrastructure, use the hosted instance at
+**[dicegram.desastreger.cloud](https://dicegram.desastreger.cloud)**, or
+reach out via **[desastregerstudio.com](https://desastregerstudio.com)**
+for a managed deployment, SLA, or commercial license (see *Licensing*
+below).
 
 ## Local development
 
-### One-shot reset (recommended)
-
-```
-reset-dev.bat
-```
-
-Kills anything on `:8000` and `:5173-5180`, restarts backend (`:8000`) +
-frontend (`:5173`), opens the browser. Use this when ports get wedged after
-crashes or leftover dev servers — faster and more reliable than `start-dev.bat`.
-
-### Manual start
-
-Backend on port 8000:
-
 ```bash
+# Backend (FastAPI on :8000)
 cd backend
-python -m venv .venv
-.venv/Scripts/activate          # Windows bash: source .venv/Scripts/activate
+python -m venv .venv && source .venv/Scripts/activate   # Windows Git Bash
 pip install -r requirements.txt
 cp .env.example .env
 uvicorn app.main:app --reload --port 8000
-```
 
-Frontend on port 5173:
-
-```bash
+# Frontend (Vite on :5173)
 cd frontend
 npm install
 npm run dev
 ```
 
-Vite proxies `/api/*` → `http://localhost:8000`, so frontend and backend share
-an origin in dev. Open http://localhost:5173.
+Vite proxies `/api/*` → `http://localhost:8000`, so both live on the same
+origin. Open http://localhost:5173.
 
-## Key features
+## Architecture
 
-### Editing surface
-- **Three-way sync** — code editor (DSL), canvas (Svelte Flow), inspector
-  stay in sync at all times.
-- **Inspector covers every object kind** — shapes, edges, swimlanes, boxes,
-  groups, notes. Click anything on the canvas and its editable properties
-  appear in the right pane.
-- **Scene tree** — Godot-style drag-and-drop to reparent, Arrow keys to move
-  among siblings.
-- **Self-healing DSL** — `backend/app/dsl/compiler.py` normalizes the source
-  (trim trailing whitespace, snap pinned positions to the grid, drop dangling
-  refs, rename duplicates, shift co-located pinned siblings) on every render
-  with an inline Undo toast.
+- **Backend**: FastAPI + SQLModel + SQLite (WAL + multi-worker ready),
+  Argon2 password hashing, itsdangerous-signed session cookies.
+- **Frontend**: SvelteKit 2 + Svelte 5 (runes) + TailwindCSS v4 +
+  TypeScript + `@xyflow/svelte` + CodeMirror 6. Built with
+  `@sveltejs/adapter-static` — the backend serves the SPA as static files.
+- **Single container**: multi-stage Dockerfile (Node builder → Python
+  runtime). Optional Caddy sidecar for auto-TLS.
 
-### Connectors
-- **Orthogonal only** — no diagonals, no curves. All connectors render as
-  straight lines with L-shape elbows, on both the canvas (xyflow + custom
-  `SmartEdge`) and the backend SVG export. When the edge path would cross
-  an obstacle, an A\* grid router picks an orthogonal polyline around it.
+```
+backend/
+  app/
+    dsl/          parser, compiler (self-heal), layout, svg export, tree
+    routers/      auth, dicegrams, render, export, shares
+    main.py  models.py  db.py  config.py  deps.py  security.py
+  requirements.txt
+frontend/
+  src/
+    lib/          api, auth, render, patch, themes, …
+    routes/
+      +page.svelte              landing + embedded mini editor
+      login/ signup/ dicegrams/ d/[slug]/
+      editor/                   Canvas, CodeEditor, Inspector, TreePanel,
+                                Toolbar, SettingsPane, EdgePanel,
+                                ObjectPanel, SmartEdge, ShapeNode, …
+examples/         *.dgm / *.txt ready-to-load diagrams
+deploy.sh  Dockerfile  docker-compose.yml  Caddyfile
+GUIDE.md   CHANGELOG.md   CONTRIBUTING.md   SECURITY.md
+```
 
-### Persistence
-- **Autosave** — logged-in users get a silent `PUT /api/dicegrams/{id}`
-  2 s after the last edit. Ctrl+S still saves immediately.
-- **Share / revoke** from the editor toolbar — read-only public URL at
-  `/d/{slug}`.
-- **Demo mode** at `/editor?demo=1` — no account required, source persists
-  to `localStorage`. Save prompts to sign up instead of calling the API.
+## Keyboard shortcuts
 
-### Keybindings (global, outside CodeMirror)
+<details>
+<summary>Global (outside CodeMirror)</summary>
+
 | Shortcut | Action |
 |---|---|
 | Ctrl/Cmd+S | Save |
-| Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z | Global undo / redo |
+| Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z | Undo / redo |
 | Ctrl/Cmd+N | New dicegram |
-| Ctrl/Cmd+O | Open dicegram list |
+| Ctrl/Cmd+O | Open list |
 | Ctrl/Cmd+E | Export SVG |
 | Ctrl/Cmd+B | Toggle scene tree |
 | Ctrl/Cmd+. | Toggle inspector |
@@ -97,44 +165,29 @@ an origin in dev. Open http://localhost:5173.
 | Double-click node | Focus label in inspector |
 | Delete | Remove selected node |
 
-### Export
-- `POST /api/export/svg` — backend-rendered SVG (source of truth for shares).
-- Canvas → PNG rasterization, DSL copy, and an LLM-prompt template for
-  AI-assisted DSL authoring.
+</details>
 
-## DSL reference
+## Contributing
 
-See [GUIDE.md](GUIDE.md) — DSL grammar, shape types, connection types,
-attributes, swimlanes, boxes, groups, notes. The grammar is identical
-between the web app and the (archived) desktop app.
+See [CONTRIBUTING.md](./CONTRIBUTING.md). Security reports go to the
+address in [SECURITY.md](./SECURITY.md). Release notes live in
+[CHANGELOG.md](./CHANGELOG.md).
+
+## Licensing
+
+Dicegram is **GNU AGPL-3.0-or-later** — you can use, modify, and self-host
+freely. If you run a modified version as a network service, you must
+publish your modifications under AGPL-3.0 too.
+
+If AGPL's copyleft doesn't fit your use case (e.g. you're embedding Dicegram
+in a closed-source commercial product), a **commercial license** is
+available — contact [desastregerstudio.com](https://desastregerstudio.com).
+
+Third-party dependencies and their licenses are listed in
+[THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md).
 
 ## Archived desktop app
 
-The original PySide6 desktop editor lives in `diagram_app.py` + `run.py`,
-preserved on tag `v3.0-desktop-final` and branch `archive/pyside-desktop`.
-The web app supersedes it and the desktop scripts will be removed once
-parity is signed off.
-
-## Layout of the repo
-
-```
-backend/
-  app/
-    dsl/          # parser, compiler (self-heal), layout, svg export, tree
-    routers/      # auth, dicegrams, render, export, shares
-    main.py, models.py, db.py, config.py, deps.py, security.py
-  requirements.txt
-frontend/
-  src/
-    lib/          # patch, render, auth, api, viewport-state, themes, …
-    routes/
-      +page.svelte              # landing with embedded mini editor
-      login, signup, dicegrams, d/[slug]
-      editor/                   # full editor: Canvas, CodeEditor, Inspector,
-                                # TreePanel, Toolbar, Settings, EdgePanel,
-                                # ObjectPanel, SmartEdge, ShapeNode, …
-reset-dev.bat                   # hard-reset dev runner
-start-dev.bat                   # first-time bootstrap + run
-UX_AUDIT.md                     # running UX / bug log
-GUIDE.md                        # DSL reference
-```
+The original PySide6 desktop editor is preserved on tag
+`v3.0-desktop-final` and branch `archive/pyside-desktop`. The web app
+supersedes it; it's kept for history only.

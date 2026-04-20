@@ -1,35 +1,38 @@
 ---
 name: Bug Report
-about: Report a bug in Diagram Editor
+about: Report a bug in Dicegram
 title: "[Bug] "
 labels: bug
 ---
 
-**Describe the bug**
-A clear description of what the bug is.
+**What happened?**
+A clear description of the bug.
 
-**To reproduce**
-Steps to reproduce the behavior:
-1. Open/create a diagram with this code: ...
-2. Click on / drag / type ...
-3. See error
+**Steps to reproduce**
+1. Go to '...'
+2. Type / click / drag '...'
+3. See '...'
 
 **Expected behavior**
 What you expected to happen.
 
-**Actual behavior**
-What actually happened. Include any error messages from the error panel or console.
-
 **DSL code (if applicable)**
+The source that triggers the bug. Feel free to minimize it to the smallest
+reproducer:
+
 ```
-Paste the diagram code that triggers the bug
 ```
 
-**Environment:**
-- OS: [e.g., Windows 11, macOS 14, Ubuntu 24.04]
-- Python version: [e.g., 3.12.1]
-- PySide6 version: [e.g., 6.7.0]
-- Running from: [source / standalone exe / .bat launcher]
+**Environment**
+- Dicegram version / commit: (e.g. `main @ 43126c8`, or date deployed)
+- Deployment: [ ] self-hosted Docker  [ ] local dev  [ ] hosted at dicegram.desastreger.cloud
+- OS: (Windows 11 / macOS 14 / Ubuntu 24.04 / …)
+- Browser + version: (Chrome 131, Firefox 128, Safari 17, …)
 
-**Screenshots**
-If applicable, add screenshots of the issue.
+**Backend logs (for server-side bugs)**
+```
+docker compose logs --tail=40 dicegram
+```
+
+**Screenshots / screencast**
+Drag images or a short GIF if it helps.
