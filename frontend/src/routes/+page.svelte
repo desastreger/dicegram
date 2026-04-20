@@ -80,7 +80,7 @@ ship -> done`;
 		Dicegram
 	</h1>
 	<p class="max-w-xl text-base break-words text-neutral-400 sm:text-lg">
-		Roll plain text into living Dicegrams. Write a step, get a shape. Share, save, version.
+		Roll plain text into living diegrams. Write a step, get a shape. Share, save, version.
 	</p>
 	<div class="flex flex-wrap justify-center gap-3">
 		{#if auth.user}

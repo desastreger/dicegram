@@ -143,20 +143,19 @@ body {
 /* ─── Light-mode overrides for existing dark-neutral Tailwind utilities ──
    The UI was built dark-first, so rather than rewrite every page we map
    the handful of neutral-palette utilities the app actually uses onto
-   theme tokens when the user flips to light mode. Editor surfaces opt
-   out via the `data-canvas="true"` attribute so the canvas stays dark
-   regardless of the document theme. */
-:root[data-theme='light'] :not([data-canvas='true'], [data-canvas='true'] *).bg-neutral-950 { background-color: var(--app-bg); }
-:root[data-theme='light'] :not([data-canvas='true'], [data-canvas='true'] *).bg-neutral-900 { background-color: var(--app-surface); }
-:root[data-theme='light'] :not([data-canvas='true'], [data-canvas='true'] *).bg-neutral-800 { background-color: var(--app-surface-2); }
-:root[data-theme='light'] :not([data-canvas='true'], [data-canvas='true'] *).text-neutral-100 { color: var(--app-text); }
-:root[data-theme='light'] :not([data-canvas='true'], [data-canvas='true'] *).text-neutral-200 { color: var(--app-text); }
-:root[data-theme='light'] :not([data-canvas='true'], [data-canvas='true'] *).text-neutral-300 { color: var(--app-text); }
-:root[data-theme='light'] :not([data-canvas='true'], [data-canvas='true'] *).text-neutral-400 { color: var(--app-text-muted); }
-:root[data-theme='light'] :not([data-canvas='true'], [data-canvas='true'] *).text-neutral-500 { color: var(--app-text-dim); }
-:root[data-theme='light'] :not([data-canvas='true'], [data-canvas='true'] *).border-neutral-700 { border-color: var(--app-border-strong); }
-:root[data-theme='light'] :not([data-canvas='true'], [data-canvas='true'] *).border-neutral-800 { border-color: var(--app-border); }
-:root[data-theme='light'] :not([data-canvas='true'], [data-canvas='true'] *).border-neutral-900 { border-color: var(--app-border); }
-:root[data-theme='light'] :not([data-canvas='true'], [data-canvas='true'] *).hover\:bg-neutral-900:hover { background-color: var(--app-surface-2); }
-:root[data-theme='light'] :not([data-canvas='true'], [data-canvas='true'] *).hover\:bg-neutral-800:hover { background-color: var(--app-surface-2); }
-:root[data-theme='light'] :not([data-canvas='true'], [data-canvas='true'] *).hover\:text-white:hover { color: var(--app-text); }
+   theme tokens when the user flips to light mode. Applies site-wide
+   including the editor surface. */
+:root[data-theme='light'] .bg-neutral-950 { background-color: var(--app-bg); }
+:root[data-theme='light'] .bg-neutral-900 { background-color: var(--app-surface); }
+:root[data-theme='light'] .bg-neutral-800 { background-color: var(--app-surface-2); }
+:root[data-theme='light'] .text-neutral-100 { color: var(--app-text); }
+:root[data-theme='light'] .text-neutral-200 { color: var(--app-text); }
+:root[data-theme='light'] .text-neutral-300 { color: var(--app-text); }
+:root[data-theme='light'] .text-neutral-400 { color: var(--app-text-muted); }
+:root[data-theme='light'] .text-neutral-500 { color: var(--app-text-dim); }
+:root[data-theme='light'] .border-neutral-700 { border-color: var(--app-border-strong); }
+:root[data-theme='light'] .border-neutral-800 { border-color: var(--app-border); }
+:root[data-theme='light'] .border-neutral-900 { border-color: var(--app-border); }
+:root[data-theme='light'] .hover\:bg-neutral-900:hover { background-color: var(--app-surface-2); }
+:root[data-theme='light'] .hover\:bg-neutral-800:hover { background-color: var(--app-surface-2); }
+:root[data-theme='light'] .hover\:text-white:hover { color: var(--app-text); }

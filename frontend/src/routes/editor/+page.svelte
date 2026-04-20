@@ -442,8 +442,8 @@
 		autoCreating = true;
 		autosaveStatus = 'saving';
 		try {
-			const defaultName =
-				name && name !== 'Untitled dicegram' ? name : 'Untitled diegram';
+			// Singular instance = "dicegram" (plural is "diegrams").
+			const defaultName = name && name.trim().length > 0 ? name : 'Untitled dicegram';
 			const d = await api.create({ name: defaultName, source });
 			currentId = d.id;
 			name = d.name;
@@ -642,7 +642,7 @@
 	}
 </script>
 
-<div class="flex h-[calc(100vh-var(--header-h))] flex-col" style={themeVars} data-canvas="true">
+<div class="flex h-[calc(100vh-var(--header-h))] flex-col" style={themeVars}>
 	{#if demoMode}
 		<div
 			class="flex items-center justify-center gap-3 border-b border-blue-800/60 bg-blue-950/50 px-3 py-1 text-[11px] text-blue-100"
@@ -825,7 +825,7 @@
 				onclick={() => goto('/dicegrams')}
 				class="rounded border border-green-800 px-2 py-0.5 text-[11px] text-green-200 hover:bg-green-900"
 			>
-				View in Dicegrams
+				View in Diegrams
 			</button>
 		{/if}
 	</div>

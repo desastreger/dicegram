@@ -9,6 +9,10 @@
 
 	let { children } = $props();
 
+	let resendState = $state<'idle' | 'sending' | 'sent' | 'error'>('idle');
+	let resendMsg = $state<string>('');
+	let resendTimer: ReturnType<typeof setTimeout> | null = null;
+
 	onMount(() => {
 		auth.refresh();
 		theme.rehydrate();
@@ -17,6 +21,25 @@
 	async function handleLogout() {
 		await auth.logout();
 		await goto('/');
+	}
+
+	async function resendVerification() {
+		if (resendState === 'sending') return;
+		resendState = 'sending';
+		resendMsg = 'Sending…';
+		try {
+			await (await import('$lib/api')).api.post('/auth/request-verify');
+			resendState = 'sent';
+			resendMsg = 'Verification email sent — check your inbox. No email? SMTP may not be configured; the link is in the server logs.';
+		} catch {
+			resendState = 'error';
+			resendMsg = 'Could not re-send. Check your connection or the server logs.';
+		}
+		if (resendTimer) clearTimeout(resendTimer);
+		resendTimer = setTimeout(() => {
+			resendState = 'idle';
+			resendMsg = '';
+		}, 6000);
 	}
 </script>
 
@@ -118,7 +141,7 @@
 
 {#if auth.user && !auth.user.email_verified}
 	<div
-		class="pointer-events-none fixed inset-x-0 bottom-10 z-40 flex justify-center px-3"
+		class="pointer-events-none fixed inset-x-0 bottom-10 z-40 flex flex-col items-center gap-2 px-3"
 		role="status"
 		aria-live="polite"
 	>
@@ -129,20 +152,24 @@
 			Please verify your email —
 			<button
 				type="button"
-				onclick={async () => {
-					try {
-						await (await import('$lib/api')).api.post('/auth/request-verify');
-						alert('Verification email re-sent.');
-					} catch {
-						alert('Could not resend the email — check SMTP settings or the server logs.');
-					}
-				}}
-				class="ml-1 underline"
+				onclick={resendVerification}
+				disabled={resendState === 'sending'}
+				class="ml-1 underline disabled:opacity-60"
 				style="color: var(--app-warn);"
 			>
-				resend link
+				{resendState === 'sending' ? 'sending…' : 'resend link'}
 			</button>
 		</div>
+		{#if resendMsg}
+			<div
+				class="pointer-events-auto max-w-sm rounded-md border px-3 py-2 text-center text-[11px] shadow-lg backdrop-blur"
+				style={resendState === 'error'
+					? 'border-color: var(--app-danger); background: color-mix(in oklab, var(--app-danger) 10%, var(--app-surface)); color: var(--app-text);'
+					: 'border-color: var(--app-ok); background: color-mix(in oklab, var(--app-ok) 10%, var(--app-surface)); color: var(--app-text);'}
+			>
+				{resendMsg}
+			</div>
+		{/if}
 	</div>
 {/if}
 
