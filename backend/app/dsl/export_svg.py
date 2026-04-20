@@ -207,11 +207,65 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
         f'width="{width:.1f}" height="{height:.1f}" '
         f'style="background:{th["bg"]}; font-family: -apple-system, sans-serif">'
     )
+    edge_fill = th["edge"]
     parts.append(
-        f'<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" '
+        '<defs>'
+        # Classic filled triangle — the default at the target end.
+        f'<marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" '
         f'markerWidth="10" markerHeight="10" orient="auto-start-reverse" markerUnits="userSpaceOnUse">'
-        f'<path d="M 0 0 L 10 5 L 0 10 z" fill="{th["edge"]}" /></marker></defs>'
+        f'<path d="M 0 0 L 10 5 L 0 10 z" fill="{edge_fill}" /></marker>'
+        # Reversed copy for arrow-at-source when the line direction is
+        # start→end and we want a head pointing back INTO the source.
+        f'<marker id="arrow_rev" viewBox="0 0 10 10" refX="0" refY="5" '
+        f'markerWidth="10" markerHeight="10" orient="auto" markerUnits="userSpaceOnUse">'
+        f'<path d="M 10 0 L 0 5 L 10 10 z" fill="{edge_fill}" /></marker>'
+        # Open / outlined arrow — "interface" or "implements" in UML dialect.
+        f'<marker id="open_arrow" viewBox="0 0 10 10" refX="10" refY="5" '
+        f'markerWidth="10" markerHeight="10" orient="auto-start-reverse" markerUnits="userSpaceOnUse">'
+        f'<path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="{edge_fill}" stroke-width="1.5" /></marker>'
+        f'<marker id="open_arrow_rev" viewBox="0 0 10 10" refX="0" refY="5" '
+        f'markerWidth="10" markerHeight="10" orient="auto" markerUnits="userSpaceOnUse">'
+        f'<path d="M 10 0 L 0 5 L 10 10" fill="none" stroke="{edge_fill}" stroke-width="1.5" /></marker>'
+        # Filled circle — common "bulb" or "aggregation" terminator.
+        f'<marker id="circle_end" viewBox="0 0 10 10" refX="5" refY="5" '
+        f'markerWidth="8" markerHeight="8" orient="auto" markerUnits="userSpaceOnUse">'
+        f'<circle cx="5" cy="5" r="3.5" fill="{edge_fill}" /></marker>'
+        # Hollow diamond — "composition-lite". Solid diamond alternative is
+        # available via explicit `end:diamond_solid` if we ever extend.
+        f'<marker id="diamond_end" viewBox="0 0 12 10" refX="11" refY="5" '
+        f'markerWidth="12" markerHeight="10" orient="auto-start-reverse" markerUnits="userSpaceOnUse">'
+        f'<path d="M 0 5 L 6 0 L 12 5 L 6 10 z" fill="{edge_fill}" /></marker>'
+        # Tee / bar — perpendicular stub, common "stop" or "must-not" semantic.
+        f'<marker id="tee_end" viewBox="0 0 4 10" refX="2" refY="5" '
+        f'markerWidth="4" markerHeight="10" orient="auto" markerUnits="userSpaceOnUse">'
+        f'<rect x="0" y="0" width="4" height="10" fill="{edge_fill}" /></marker>'
+        # Square terminator — deliberate "pinned"-looking end cap.
+        f'<marker id="square_end" viewBox="0 0 8 8" refX="4" refY="4" '
+        f'markerWidth="8" markerHeight="8" orient="auto" markerUnits="userSpaceOnUse">'
+        f'<rect x="1" y="1" width="6" height="6" fill="{edge_fill}" /></marker>'
+        '</defs>'
     )
+
+    # Marker id lookup shared by both ends. `is_start=True` flips to the
+    # reversed arrow variants so an arrow pointing back at the source is a
+    # proper triangle, not an accidental outline.
+    def marker_id(kind: str, is_start: bool) -> str | None:
+        kind = (kind or "").lower()
+        if kind in ("none", "", "off"):
+            return None
+        if kind == "arrow":
+            return "arrow_rev" if is_start else "arrow"
+        if kind == "open_arrow":
+            return "open_arrow_rev" if is_start else "open_arrow"
+        if kind == "circle":
+            return "circle_end"
+        if kind == "diamond":
+            return "diamond_end"
+        if kind == "tee":
+            return "tee_end"
+        if kind == "square":
+            return "square_end"
+        return None
 
     parts.append(f'<rect x="{min_x:.1f}" y="{min_y:.1f}" width="{width:.1f}" height="{height:.1f}" fill="{th["bg"]}" />')
 
@@ -250,41 +304,77 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
         parts.append(_text_lines(n.label, cx, cy, text_color, font_size, font_family))
 
     horizontal_dir = layout["direction"] in ("left-to-right", "right-to-left")
+
+    def port_point(rect: dict, port: str) -> tuple[float, float]:
+        cx = rect["x"] + rect["w"] / 2
+        cy = rect["y"] + rect["h"] / 2
+        if port == "t":
+            return cx, rect["y"]
+        if port == "b":
+            return cx, rect["y"] + rect["h"]
+        if port == "l":
+            return rect["x"], cy
+        if port == "r":
+            return rect["x"] + rect["w"], cy
+        return cx, cy
+
+    def pick_ports(src: dict, tgt: dict) -> tuple[str, str]:
+        """Geometry-based port picker — pick the *dominant axis* from the
+        source→target vector rather than locking to the chart's flow axis.
+        An edge with a mostly-vertical delta now enters the target from
+        the top/bottom even under a left-to-right chart, which matches
+        user expectation ("a connector coming from above should enter the
+        top, not the left"). Tie-break toward the chart axis.
+        """
+        dx = (tgt["x"] + tgt["w"] / 2) - (src["x"] + src["w"] / 2)
+        dy = (tgt["y"] + tgt["h"] / 2) - (src["y"] + src["h"] / 2)
+        if abs(dx) > abs(dy) or (abs(dx) == abs(dy) and horizontal_dir):
+            return ("r", "l") if dx >= 0 else ("l", "r")
+        return ("b", "t") if dy >= 0 else ("t", "b")
+
     for i, edge in enumerate(parsed.edges):
         sp = positions.get(edge.source)
         tp = positions.get(edge.target)
         if not sp or not tp:
             continue
-        # Match the chart's primary flow axis when picking which side to
-        # exit and enter — Visio convention. Backward edges flip to the
-        # reverse-flow handles so the arrow still lands at the target's
-        # natural entry side.
-        scx = sp["x"] + sp["w"] / 2
-        scy = sp["y"] + sp["h"] / 2
-        tcx = tp["x"] + tp["w"] / 2
-        tcy = tp["y"] + tp["h"] / 2
-        ddx = tcx - scx
-        ddy = tcy - scy
-        if horizontal_dir:
-            if ddx >= 0:
-                sx, sy = sp["x"] + sp["w"], scy
-                tx, ty = tp["x"], tcy
-            else:
-                sx, sy = sp["x"], scy
-                tx, ty = tp["x"] + tp["w"], tcy
-        else:
-            if ddy >= 0:
-                sx, sy = scx, sp["y"] + sp["h"]
-                tx, ty = tcx, tp["y"]
-            else:
-                sx, sy = scx, sp["y"]
-                tx, ty = tcx, tp["y"] + tp["h"]
+
+        auto_sport, auto_tport = pick_ports(sp, tp)
+        sport = edge.source_port or auto_sport
+        tport = edge.target_port or auto_tport
+        sx, sy = port_point(sp, sport)
+        tx, ty = port_point(tp, tport)
+        # The middle-hop path honours the source exit axis so the
+        # arrowhead's tangent matches the entry side. If the source port
+        # is t/b, the first segment is vertical; if l/r, horizontal.
+        source_vertical = sport in ("t", "b")
+
         sw = {"thick": 3, "dashed": 1.5, "solid_line": 1.5, "dotted_line": 1.5, "solid": 1.5}.get(edge.kind, 1.5)
         dash = {"dashed": "6 4", "dotted_line": "2 4"}.get(edge.kind, "")
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
-        marker = ' marker-end="url(#arrow)"' if edge.kind in {"solid", "dashed", "thick"} else ""
+
+        # Kind-default decorations. An explicit `start:` / `end:` attr on
+        # the edge always wins over these defaults.
+        default_end = "arrow" if edge.kind in {"solid", "dashed", "thick"} else "none"
+        default_start = "none"
+        end_kind = str(edge.attrs.get("end", default_end)).lower()
+        start_kind = str(edge.attrs.get("start", default_start)).lower()
+        end_m = marker_id(end_kind, is_start=False)
+        start_m = marker_id(start_kind, is_start=True)
+        marker = ""
+        if end_m:
+            marker += f' marker-end="url(#{end_m})"'
+        if start_m:
+            marker += f' marker-start="url(#{start_m})"'
+
+        opacity_attr = ""
+        op_val = edge.attrs.get("opacity")
+        try:
+            if op_val is not None and 0 <= float(op_val) <= 1:
+                opacity_attr = f' opacity="{float(op_val):.2f}"'
+        except (TypeError, ValueError):
+            pass
         # Orthogonal L-shape: first and last segment perpendicular to the
-        # handle side (so the arrow head's tangent matches the flow axis).
+        # handle side (so the arrow head's tangent matches the entry axis).
         # Snap near-aligned endpoints together so sub-pixel drift doesn't
         # produce a visible zigzag.
         ALIGN_EPS = 4.0
@@ -296,33 +386,32 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
         dy = ty - sy
         if dx == 0 or dy == 0:
             path_d = f"M {sx:.1f} {sy:.1f} L {tx:.1f} {ty:.1f}"
-        elif horizontal_dir:
-            # r→l (or reverse): first AND last segment horizontal; vertical
-            # middle hop. Last L stroke is horizontal → arrow points
-            # horizontally into the target's left/right side.
-            mx = sx + dx / 2
-            path_d = (
-                f"M {sx:.1f} {sy:.1f} L {mx:.1f} {sy:.1f} "
-                f"L {mx:.1f} {ty:.1f} L {tx:.1f} {ty:.1f}"
-            )
-        else:
-            # b→t (or reverse): first AND last segment vertical; horizontal
-            # middle hop. Last L stroke is vertical → arrow points down
-            # (or up for BT direction) into the target's top/bottom side.
+        elif source_vertical:
+            # Source port is top or bottom: first segment vertical, then
+            # horizontal middle, then vertical into target. Final stroke
+            # is vertical, so the end-marker's tangent points up/down.
             my = sy + dy / 2
             path_d = (
                 f"M {sx:.1f} {sy:.1f} L {sx:.1f} {my:.1f} "
                 f"L {tx:.1f} {my:.1f} L {tx:.1f} {ty:.1f}"
             )
+        else:
+            # Source port is left or right: first segment horizontal, then
+            # vertical middle, then horizontal into target.
+            mx = sx + dx / 2
+            path_d = (
+                f"M {sx:.1f} {sy:.1f} L {mx:.1f} {sy:.1f} "
+                f"L {mx:.1f} {ty:.1f} L {tx:.1f} {ty:.1f}"
+            )
         parts.append(
             f'<path d="{path_d}" fill="none" '
-            f'stroke="{th["edge"]}" stroke-width="{sw}"{dash_attr}{marker} />'
+            f'stroke="{th["edge"]}" stroke-width="{sw}"{dash_attr}{opacity_attr}{marker} />'
         )
         if edge.label:
             # Label sits on the middle (perpendicular) segment's midpoint.
             if dx == 0 or dy == 0:
                 mx_lbl, my_lbl = (sx + tx) / 2, (sy + ty) / 2
-            elif not horizontal_dir:
+            elif source_vertical:
                 mx_lbl, my_lbl = (sx + tx) / 2, sy + dy / 2
             else:
                 mx_lbl, my_lbl = sx + dx / 2, (sy + ty) / 2

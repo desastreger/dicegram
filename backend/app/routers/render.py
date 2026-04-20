@@ -37,6 +37,8 @@ class EdgeOut(BaseModel):
     kind: str
     label: str = ""
     attrs: dict = Field(default_factory=dict)
+    source_port: str | None = None
+    target_port: str | None = None
 
 
 class LaneOut(BaseModel):
@@ -176,6 +178,8 @@ def render(body: RenderIn) -> RenderOut:
             kind=e.kind,
             label=e.label,
             attrs=e.attrs,
+            source_port=e.source_port,
+            target_port=e.target_port,
         )
         for i, e in enumerate(parsed.edges)
     ]

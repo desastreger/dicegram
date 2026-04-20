@@ -22,6 +22,8 @@ export type RenderEdge = {
 	kind: 'solid' | 'dashed' | 'thick' | 'solid_line' | 'dotted_line';
 	label: string;
 	attrs: Record<string, string>;
+	source_port: string | null;
+	target_port: string | null;
 };
 
 export type RenderLane = {

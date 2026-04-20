@@ -1,7 +1,13 @@
 <script lang="ts">
 	import Icon from '$lib/Icon.svelte';
 	import Dropdown from '$lib/Dropdown.svelte';
-	import { setEdgeLabel, setEdgeKind, removeEdge } from '$lib/patch';
+	import {
+		setEdgeLabel,
+		setEdgeKind,
+		setEdgePort,
+		setEdgeAttr,
+		removeEdge
+	} from '$lib/patch';
 	import type { RenderResult } from '$lib/render';
 
 	let {
@@ -43,7 +49,36 @@
 		{ value: 'dotted_line', label: 'dotted line (no arrow)' }
 	];
 
+	const portOptions = [
+		{ value: '', label: 'auto (by geometry)' },
+		{ value: 't', label: 'top' },
+		{ value: 'b', label: 'bottom' },
+		{ value: 'l', label: 'left' },
+		{ value: 'r', label: 'right' }
+	];
+
+	const endOptions = [
+		{ value: 'none', label: 'none' },
+		{ value: 'arrow', label: 'arrow ▸' },
+		{ value: 'open_arrow', label: 'open arrow ▹' },
+		{ value: 'circle', label: 'circle ●' },
+		{ value: 'diamond', label: 'diamond ◆' },
+		{ value: 'tee', label: 'tee |' },
+		{ value: 'square', label: 'square ▪' }
+	];
+
 	const currentKind = $derived(edge?.kind ?? 'solid');
+	const currentSourcePort = $derived(edge?.source_port ?? '');
+	const currentTargetPort = $derived(edge?.target_port ?? '');
+	const defaultEnd = $derived(
+		edge && ['solid', 'dashed', 'thick'].includes(edge.kind) ? 'arrow' : 'none'
+	);
+	const currentEndDeco = $derived(edge?.attrs?.end ?? defaultEnd);
+	const currentStartDeco = $derived(edge?.attrs?.start ?? 'none');
+	let opacityDraft = $state('');
+	$effect(() => {
+		if (edge && selectedEdgeId !== lastId) opacityDraft = edge.attrs?.opacity ?? '';
+	});
 
 	function commitLabel() {
 		if (ordinal < 0) return;
@@ -53,6 +88,41 @@
 	function commitKind(value: string) {
 		if (ordinal < 0) return;
 		source = setEdgeKind(source, ordinal, value);
+	}
+
+	function commitSourcePort(value: string) {
+		if (ordinal < 0) return;
+		source = setEdgePort(source, ordinal, 'source', value || null);
+	}
+
+	function commitTargetPort(value: string) {
+		if (ordinal < 0) return;
+		source = setEdgePort(source, ordinal, 'target', value || null);
+	}
+
+	function commitStartDeco(value: string) {
+		if (ordinal < 0) return;
+		source = setEdgeAttr(source, ordinal, 'start', value === 'none' ? null : value);
+	}
+
+	function commitEndDeco(value: string) {
+		if (ordinal < 0) return;
+		// Drop the attr when it matches the kind's implicit default so the
+		// DSL stays minimal.
+		const drop = value === defaultEnd;
+		source = setEdgeAttr(source, ordinal, 'end', drop ? null : value);
+	}
+
+	function commitOpacity() {
+		if (ordinal < 0) return;
+		const v = opacityDraft.trim();
+		if (v === '') {
+			source = setEdgeAttr(source, ordinal, 'opacity', null);
+			return;
+		}
+		const n = Number(v);
+		if (!Number.isFinite(n) || n < 0 || n > 1) return;
+		source = setEdgeAttr(source, ordinal, 'opacity', n.toString());
 	}
 
 	let confirmDelete = $state(false);
@@ -111,6 +181,61 @@
 				bind:value={labelDraft}
 				onblur={commitLabel}
 				onkeydown={onLabelKey}
+			/>
+		</div>
+	</div>
+
+	<div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">
+		Ports
+	</div>
+	<div class="space-y-1 px-3">
+		<div class="flex items-center gap-2">
+			<label class="w-14 text-[11px] text-neutral-400">From</label>
+			<div class="flex-1">
+				<Dropdown value={currentSourcePort} options={portOptions} onchange={commitSourcePort} />
+			</div>
+		</div>
+		<div class="flex items-center gap-2">
+			<label class="w-14 text-[11px] text-neutral-400">To</label>
+			<div class="flex-1">
+				<Dropdown value={currentTargetPort} options={portOptions} onchange={commitTargetPort} />
+			</div>
+		</div>
+	</div>
+
+	<div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">
+		Tips
+	</div>
+	<div class="space-y-1 px-3">
+		<div class="flex items-center gap-2">
+			<label class="w-14 text-[11px] text-neutral-400">Start</label>
+			<div class="flex-1">
+				<Dropdown value={currentStartDeco} options={endOptions} onchange={commitStartDeco} />
+			</div>
+		</div>
+		<div class="flex items-center gap-2">
+			<label class="w-14 text-[11px] text-neutral-400">End</label>
+			<div class="flex-1">
+				<Dropdown value={currentEndDeco} options={endOptions} onchange={commitEndDeco} />
+			</div>
+		</div>
+		<div class="flex items-center gap-2">
+			<label class="w-14 text-[11px] text-neutral-400">Opacity</label>
+			<input
+				type="number"
+				step="0.05"
+				min="0"
+				max="1"
+				placeholder="1.0"
+				class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
+				bind:value={opacityDraft}
+				onblur={commitOpacity}
+				onkeydown={(e) => {
+					if (e.key === 'Enter') {
+						(e.currentTarget as HTMLElement).blur();
+						commitOpacity();
+					}
+				}}
 			/>
 		</div>
 	</div>

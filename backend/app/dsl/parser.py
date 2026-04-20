@@ -56,6 +56,10 @@ class Edge:
     kind: str
     label: str = ""
     attrs: dict = field(default_factory=dict)
+    # Explicit port on the source side (one of 't','b','l','r'). None = let
+    # the renderer pick a port from geometry. Authored as `A@r -> B@l`.
+    source_port: str | None = None
+    target_port: str | None = None
 
 
 @dataclass
@@ -183,6 +187,25 @@ def _parse_object(line: str, swimlane: str | None, box: str | None) -> Node | No
     )
 
 
+_PORT_ALIASES = {
+    "t": "t", "top": "t", "n": "t", "north": "t",
+    "b": "b", "bottom": "b", "s": "b", "south": "b",
+    "l": "l", "left": "l", "w": "l", "west": "l",
+    "r": "r", "right": "r", "e": "r", "east": "r",
+}
+
+
+def _split_node_port(token: str) -> tuple[str, str | None]:
+    """`decide@r` → ("decide", "r"). Unknown ports pass through as-is so
+    downstream error reporting sees them.
+    """
+    if "@" not in token:
+        return token, None
+    name, _, port = token.partition("@")
+    port = port.strip().lower()
+    return name.strip(), _PORT_ALIASES.get(port, port) or None
+
+
 def _parse_connection(line: str) -> Edge | None:
     for pattern, kind in CONNECTION_PATTERNS:
         idx = line.find(pattern)
@@ -214,9 +237,30 @@ def _parse_connection(line: str) -> Edge | None:
         if not target:
             continue
         source = left.split()[0]
-        if not IDENT_RE.fullmatch(source) or not IDENT_RE.fullmatch(target):
+
+        source_name, source_port = _split_node_port(source)
+        target_name, target_port = _split_node_port(target)
+
+        if not IDENT_RE.fullmatch(source_name) or not IDENT_RE.fullmatch(target_name):
             continue
-        return Edge(source=source, target=target, kind=kind, label=label, attrs=attrs)
+
+        # Normalize arrow / decoration attrs to short forms so renderers
+        # don't have to guess. Accepted values:
+        #   arrow  circle  diamond  square  tee  open_arrow  none
+        for key in ("start", "end"):
+            v = attrs.get(key)
+            if isinstance(v, str):
+                attrs[key] = v.strip().lower()
+
+        return Edge(
+            source=source_name,
+            target=target_name,
+            kind=kind,
+            label=label,
+            attrs=attrs,
+            source_port=source_port,
+            target_port=target_port,
+        )
     return None
 
 

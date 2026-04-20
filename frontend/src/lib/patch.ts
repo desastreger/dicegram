@@ -500,9 +500,14 @@ export function moveNodeAfter(source: string, moveId: string, anchorId: string):
 
 // --- edge editing ------------------------------------------------------------
 
-// Capture: 1=indent 2=src 3=sym 4=dst 5=optional ": \"label\"" tail
+// Edge lines now carry optional `@port` suffixes and attr pairs after the
+// label:  `A@r -> B@l : "yes" end:circle weight:5`.
+// Capture: 1=indent  2=src  3=src-port  4=sym  5=dst  6=dst-port  7=tail
 const EDGE_LINE_RE =
-	/^(\s*)(\w+)\s+(->|-->|==>|---|-\.-)\s+(\w+)(\s*:\s*"((?:[^"\\]|\\.)*)")?\s*$/;
+	/^(\s*)(\w+)(?:@(\w+))?\s+(->|-->|==>|---|-\.-)\s+(\w+)(?:@(\w+))?(\s*:\s*.*)?\s*$/;
+
+const EDGE_LABEL_RE = /"((?:[^"\\]|\\.)*)"/;
+const EDGE_ATTR_RE = /(\w+):((?:"[^"]*"|\S+))/g;
 
 export const EDGE_KIND_SYM: Record<string, string> = {
 	solid: '->',
@@ -519,6 +524,75 @@ export const EDGE_SYM_KIND: Record<string, string> = {
 	'-.-': 'dotted_line'
 };
 
+const PORT_ALIASES: Record<string, 't' | 'b' | 'l' | 'r'> = {
+	t: 't', top: 't', n: 't', north: 't',
+	b: 'b', bottom: 'b', s: 'b', south: 'b',
+	l: 'l', left: 'l', w: 'l', west: 'l',
+	r: 'r', right: 'r', e: 'r', east: 'r'
+};
+function canonPort(p: string | null | undefined): 't' | 'b' | 'l' | 'r' | null {
+	if (!p) return null;
+	return PORT_ALIASES[p.trim().toLowerCase()] ?? null;
+}
+
+type EdgeParts = {
+	indent: string;
+	src: string;
+	srcPort: string | null;
+	sym: string;
+	dst: string;
+	dstPort: string | null;
+	label: string | null;
+	attrs: Record<string, string>;
+};
+
+function parseEdgeLine(line: string): EdgeParts | null {
+	const m = line.match(EDGE_LINE_RE);
+	if (!m) return null;
+	const tail = m[7] ?? '';
+	let label: string | null = null;
+	let rest = tail.replace(/^\s*:\s*/, '');
+	const lm = rest.match(EDGE_LABEL_RE);
+	if (lm && rest.startsWith(lm[0])) {
+		label = lm[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/\\n/g, '\n');
+		rest = rest.slice(lm[0].length);
+	}
+	const attrs: Record<string, string> = {};
+	for (const am of rest.matchAll(EDGE_ATTR_RE)) {
+		let v = am[2];
+		if (v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
+		attrs[am[1]] = v;
+	}
+	return {
+		indent: m[1],
+		src: m[2],
+		srcPort: canonPort(m[3]),
+		sym: m[4],
+		dst: m[5],
+		dstPort: canonPort(m[6]),
+		label,
+		attrs
+	};
+}
+
+function rebuildEdgeLine(p: EdgeParts): string {
+	const srcPart = p.srcPort ? `${p.src}@${p.srcPort}` : p.src;
+	const dstPart = p.dstPort ? `${p.dst}@${p.dstPort}` : p.dst;
+	let line = `${p.indent}${srcPart} ${p.sym} ${dstPart}`;
+	const tailBits: string[] = [];
+	if (p.label && p.label.length > 0) {
+		const escaped = p.label.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+		tailBits.push(`"${escaped}"`);
+	}
+	for (const [k, v] of Object.entries(p.attrs)) {
+		if (v === '' || v == null) continue;
+		const needsQuote = /\s|,/.test(v) || v === '';
+		tailBits.push(`${k}:${needsQuote ? `"${v}"` : v}`);
+	}
+	if (tailBits.length) line += ` : ${tailBits.join(' ')}`;
+	return line;
+}
+
 function findEdgeLineIndexByOrdinal(source: string, ordinal: number): number {
 	const lines = source.split('\n');
 	let seen = 0;
@@ -534,49 +608,58 @@ function findEdgeLineIndexByOrdinal(source: string, ordinal: number): number {
 function modifyEdgeLine(
 	source: string,
 	ordinal: number,
-	modify: (match: RegExpMatchArray) => string | null
+	modify: (parts: EdgeParts) => EdgeParts | null
 ): string {
 	const idx = findEdgeLineIndexByOrdinal(source, ordinal);
 	if (idx < 0) return source;
 	const lines = source.split('\n');
-	const m = lines[idx].match(EDGE_LINE_RE);
-	if (!m) return source;
-	const out = modify(m);
+	const parts = parseEdgeLine(lines[idx]);
+	if (!parts) return source;
+	const out = modify(parts);
 	if (out === null) {
 		lines.splice(idx, 1);
 	} else {
-		lines[idx] = out;
+		lines[idx] = rebuildEdgeLine(out);
 	}
 	return lines.join('\n');
 }
 
-function rebuildEdgeLine(
-	indent: string,
-	src: string,
-	sym: string,
-	dst: string,
-	label: string | null
-): string {
-	let line = `${indent}${src} ${sym} ${dst}`;
-	if (label && label.length > 0) {
-		const escaped = label.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-		line += ` : "${escaped}"`;
-	}
-	return line;
-}
-
 export function setEdgeLabel(source: string, ordinal: number, label: string): string {
-	return modifyEdgeLine(source, ordinal, (m) =>
-		rebuildEdgeLine(m[1], m[2], m[3], m[4], label)
-	);
+	return modifyEdgeLine(source, ordinal, (p) => ({ ...p, label: label || null }));
 }
 
 export function setEdgeKind(source: string, ordinal: number, kind: string): string {
 	const sym = EDGE_KIND_SYM[kind];
 	if (!sym) return source;
-	return modifyEdgeLine(source, ordinal, (m) =>
-		rebuildEdgeLine(m[1], m[2], sym, m[4], m[6] ?? null)
+	return modifyEdgeLine(source, ordinal, (p) => ({ ...p, sym }));
+}
+
+export function setEdgePort(
+	source: string,
+	ordinal: number,
+	which: 'source' | 'target',
+	port: string | null
+): string {
+	const clean = canonPort(port);
+	return modifyEdgeLine(source, ordinal, (p) =>
+		which === 'source'
+			? { ...p, srcPort: clean }
+			: { ...p, dstPort: clean }
 	);
+}
+
+export function setEdgeAttr(
+	source: string,
+	ordinal: number,
+	key: string,
+	value: string | null
+): string {
+	return modifyEdgeLine(source, ordinal, (p) => {
+		const attrs = { ...p.attrs };
+		if (value == null || value === '') delete attrs[key];
+		else attrs[key] = value;
+		return { ...p, attrs };
+	});
 }
 
 export function removeEdge(source: string, ordinal: number): string {

@@ -136,6 +136,40 @@
 		return kind === 'solid' || kind === 'dashed' || kind === 'thick';
 	}
 
+	function endMarkerFor(
+		kind: string,
+		endAttr: string | undefined | null,
+		colour: string
+	): { type: MarkerType; color: string } | undefined {
+		// xyflow only ships Arrow/ArrowClosed. For fancier terminators
+		// (circle, diamond, tee, square) we fall back to the closed arrow
+		// on the canvas — the backend SVG renderer handles the real
+		// shapes on export. end:'none' explicitly suppresses the marker.
+		const attr = (endAttr ?? '').trim().toLowerCase();
+		if (attr === 'none') return undefined;
+		if (attr === 'arrow' || attr === 'open_arrow' || attr === 'circle' ||
+		    attr === 'diamond' || attr === 'tee' || attr === 'square') {
+			return {
+				type: attr === 'open_arrow' ? MarkerType.Arrow : MarkerType.ArrowClosed,
+				color: colour
+			};
+		}
+		// Attr not set: fall back to kind's implicit default.
+		return hasArrow(kind) ? { type: MarkerType.ArrowClosed, color: colour } : undefined;
+	}
+
+	function startMarkerFor(
+		startAttr: string | undefined | null,
+		colour: string
+	): { type: MarkerType; color: string } | undefined {
+		const attr = (startAttr ?? '').trim().toLowerCase();
+		if (!attr || attr === 'none') return undefined;
+		return {
+			type: attr === 'open_arrow' ? MarkerType.Arrow : MarkerType.ArrowClosed,
+			color: colour
+		};
+	}
+
 	function centerOf(n: RenderNode | undefined) {
 		if (!n) return { cx: 0, cy: 0 };
 		return { cx: n.x + n.width / 2, cy: n.y + n.height / 2 };
@@ -156,12 +190,12 @@
 		const horizontal = direction === 'left-to-right' || direction === 'right-to-left';
 		const dx = tx - sx;
 		const dy = ty - sy;
-		// Bias handle choice to the chart's primary flow axis so the arrow
-		// tip always points in the flow direction (Visio convention). A
-		// backward edge (target upstream) uses the reverse-flow handles so
-		// the arrow still reads correctly at the target shape's natural
-		// entry side.
-		if (horizontal) {
+		// Geometry-based: whichever axis has the larger |delta| wins.
+		// A vertically-offset pair connects top↔bottom even under a
+		// horizontal chart, which matches user expectation ("a connector
+		// coming from above should enter the top, not the left").
+		// Tie-break toward the chart axis.
+		if (Math.abs(dx) > Math.abs(dy) || (Math.abs(dx) === Math.abs(dy) && horizontal)) {
 			return dx >= 0
 				? { sourceHandle: 'r', targetHandle: 'l' }
 				: { sourceHandle: 'l', targetHandle: 'r' };
@@ -169,6 +203,17 @@
 		return dy >= 0
 			? { sourceHandle: 'b', targetHandle: 't' }
 			: { sourceHandle: 't', targetHandle: 'b' };
+	}
+
+	// Normalize a caller-supplied port to the canonical 't/b/l/r'.
+	function normPort(p: string | null | undefined): 't' | 'b' | 'l' | 'r' | null {
+		if (!p) return null;
+		const s = p.trim().toLowerCase();
+		if (s === 't' || s === 'top' || s === 'n' || s === 'north') return 't';
+		if (s === 'b' || s === 'bottom' || s === 's' || s === 'south') return 'b';
+		if (s === 'l' || s === 'left' || s === 'w' || s === 'west') return 'l';
+		if (s === 'r' || s === 'right' || s === 'e' || s === 'east') return 'r';
+		return null;
 	}
 
 	$effect(() => {
@@ -310,14 +355,13 @@
 			const t = nodeById.get(e.target);
 			const { cx: sx, cy: sy } = centerOf(s);
 			const { cx: tx, cy: ty } = centerOf(t);
-			const { sourceHandle, targetHandle } = pickHandles(
-				sx,
-				sy,
-				tx,
-				ty,
-				result.direction,
-				e.source === e.target
-			);
+			const auto = pickHandles(sx, sy, tx, ty, result.direction, e.source === e.target);
+			// Explicit port authored in DSL (`A@r -> B@l`) always wins over
+			// the smart picker.
+			const explicitSource = normPort(e.source_port);
+			const explicitTarget = normPort(e.target_port);
+			const sourceHandle = explicitSource ?? auto.sourceHandle;
+			const targetHandle = explicitTarget ?? auto.targetHandle;
 			const strokeOverride = e.attrs?.color;
 			const edgeDimmed = dimmedIds.has(e.source) || dimmedIds.has(e.target);
 
@@ -332,6 +376,13 @@
 			}
 
 			const baseStyle = styleFor(e.kind, strokeOverride);
+			const edgeColour = strokeOverride || edgeColor;
+			const opacityAttr = e.attrs?.opacity;
+			const opacityStyle = (() => {
+				const n = opacityAttr ? Number(opacityAttr) : NaN;
+				if (!Number.isFinite(n) || n < 0 || n > 1) return '';
+				return ` opacity: ${n};`;
+			})();
 			return {
 				id: e.id,
 				source: e.source,
@@ -340,10 +391,10 @@
 				targetHandle,
 				type: 'smart',
 				label: e.label || undefined,
-				style: edgeDimmed ? `${baseStyle} opacity: 0.2;` : baseStyle,
-				markerEnd: hasArrow(e.kind)
-					? { type: MarkerType.ArrowClosed, color: strokeOverride || edgeColor }
-					: undefined,
+				style:
+					(edgeDimmed ? `${baseStyle} opacity: 0.2;` : baseStyle) + opacityStyle,
+				markerEnd: endMarkerFor(e.kind, e.attrs?.end, edgeColour),
+				markerStart: startMarkerFor(e.attrs?.start, edgeColour),
 				data: {
 					obstacles,
 					labelFill: theme.text,

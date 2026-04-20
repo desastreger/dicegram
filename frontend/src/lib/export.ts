@@ -375,6 +375,27 @@ Connections (outside swimlane blocks):
     A -> B condition:"expr" weight:5
     A -> A : "retry"          self-loops are allowed
 
+    Explicit ports (optional — override the geometry-based auto-picker):
+        A@r -> B@l            source exits right, target enters left
+        A@top -> B@bottom     source exits top, target enters bottom
+        A@b -> B             only pin source side; target port auto
+        A -> B@t             only pin target side; source port auto
+        Accepted port values: t/top/n/north, b/bottom/s/south,
+                              l/left/w/west,  r/right/e/east.
+
+    Connector end decorations (optional — default is an arrow at the
+    target end for ->, -->, ==> and nothing for ---, -.-):
+        A -> B : "x" end:arrow       (default for -> )
+        A -> B end:circle             dot at target
+        A -> B end:diamond            filled diamond
+        A -> B end:open_arrow         outlined arrow
+        A -> B end:tee                perpendicular stop bar
+        A -> B end:square             square cap
+        A -> B end:none               no decoration at target
+        A -> B start:circle end:arrow dot at source, arrow at target
+        A -> B start:arrow            arrow at source too (bidirectional)
+        Opacity: `opacity:0.5` attr on the edge (0..1).
+
 ==============================
 ${settingsBlock()}
 
