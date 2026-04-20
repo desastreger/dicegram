@@ -1,0 +1,70 @@
+services:
+  dicegram:
+    build: .
+    image: dicegram:latest
+    container_name: dicegram
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # SECRET_KEY is required — compose refuses to start if unset/empty.
+      # Generate one with: python3 -c 'import secrets; print(secrets.token_urlsafe(48))'
+      SECRET_KEY: "${SECRET_KEY:?SECRET_KEY must be set in .env — see .env.example}"
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/dicegram.db}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-3}
+      PORT: "8000"
+    volumes:
+      - dicegram_data:/data
+    # Only expose to localhost. Caddy (below) or a host-level reverse proxy
+    # terminates TLS and forwards to this port.
+    ports:
+      - "127.0.0.1:8000:8000"
+    # Tuned for Hostinger KVM 4 (4 vCPU / 16GB RAM). Leaves headroom for Caddy
+    # and OS. Bump if you move to a bigger plan or drop Caddy.
+    deploy:
+      resources:
+        limits:
+          cpus: "3.0"
+          memory: 2G
+        reservations:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Optional reverse proxy with automatic Let's Encrypt TLS.
+  # Enable with:  docker compose --profile caddy up -d
+  # Requires DOMAIN (and optionally ACME_EMAIL) in .env.
+  caddy:
+    image: caddy:2-alpine
+    container_name: dicegram-caddy
+    restart: unless-stopped
+    profiles: ["caddy"]
+    depends_on:
+      dicegram:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  dicegram_data:
+  caddy_data:
+  caddy_config:

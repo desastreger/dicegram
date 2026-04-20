@@ -1,0 +1,19 @@
+{
+	email {$ACME_EMAIL:admin@example.com}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Trust X-Forwarded-* only from Caddy itself (private ranges).
+	reverse_proxy dicegram:8000 {
+		header_up X-Real-IP {remote_host}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}

@@ -1,0 +1,50 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Node
+frontend/node_modules
+frontend/build
+frontend/.svelte-kit
+frontend/.vite
+
+# Python
+backend/__pycache__
+backend/**/__pycache__
+backend/.venv
+backend/venv
+backend/*.db
+backend/dicegram.db
+**/*.pyc
+**/*.pyo
+
+# Editor / IDE
+.vscode
+.idea
+*.swp
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Legacy desktop app (not part of the web stack)
+diagram_app.py
+run.py
+
+# Docs and dev artifacts
+*.md
+examples/
+reset-dev.bat
+start-dev.bat
+
+# Docker/deploy artifacts (not needed inside the image).
+# Note: docker-entrypoint.sh is intentionally NOT ignored — the Dockerfile COPYs it.
+Dockerfile
+.dockerignore
+docker-compose.yml
+Caddyfile
+deploy.sh
+.env
+.env.example
+test-docker.bat

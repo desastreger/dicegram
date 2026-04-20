@@ -1,0 +1,6 @@
+# Shell scripts and Dockerfiles must stay LF-terminated, otherwise
+# `docker build` on Linux blows up with 'exec format error' on Windows checkouts.
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+docker-entrypoint.sh text eol=lf
+Caddyfile       text eol=lf
