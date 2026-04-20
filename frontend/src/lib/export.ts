@@ -244,10 +244,13 @@ export async function copySvg(source: string): Promise<void> {
 function paletteBlock(): string {
 	const p = palette.current;
 	const used = (k: string) => p[k] && p[k].length > 0;
-	const line = (label: string, key: string, fallback = '') =>
-		`  ${label.padEnd(24)} ${used(key) ? p[key] : fallback || '(inherit node_fill)'}`;
+	const line = (label: string, key: string) =>
+		`  ${label.padEnd(24)} ${used(key) ? p[key] : '(inherit node_fill)'}`;
+	const header = palette.locked
+		? "BRANDING PALETTE (LOCKED — don't emit style dicts; use the type: attr and let the palette colour the node):"
+		: 'BRANDING PALETTE (prefer the type: attr — inline style dicts only when the DSL needs an exception):';
 	return [
-		'BRANDING PALETTE (use these colours when styling — do not invent new ones):',
+		header,
 		line('node_fill', 'node_fill'),
 		line('node_stroke', 'node_stroke'),
 		line('node_text', 'node_text'),
@@ -270,7 +273,23 @@ function paletteBlock(): string {
 	].join('\n');
 }
 
+function settingsBlock(): string {
+	// Surfaces the app-level state that changes what valid DSL looks like
+	// for this user right now. Keep in sync with anything that alters how
+	// styles / attrs render.
+	const locked = palette.locked;
+	const activePreset = palette.presets.find((p) => p.active)?.name ?? '(unsaved)';
+	return [
+		'USER SETTINGS (current state — respect these when generating):',
+		`  palette lock:   ${locked ? 'ON — do NOT emit {fill:#…} / {stroke:#…} / {text:#…} style dicts. All colours must come from the palette via type:/status:/priority:.' : 'OFF — inline {fill:#…} overrides are allowed when you truly need an exception.'}`,
+		`  active preset:  ${activePreset}`
+	].join('\n');
+}
+
 function buildLlmPrompt(source: string): string {
+	const lockRule = palette.locked
+		? '3. BRAND LOCK IS ON: do not emit any style dict ({fill:#…}, {stroke:#…}, {text:#…}). Colour must come from the palette via the `type:` / `status:` / `priority:` attributes only. An inline style override will be visually ignored — the Inspector hides those fields.'
+		: '3. Prefer the `type:` attribute over inline `{fill:#…}` dicts — it lets the user re-brand the diagram just by changing their palette. Emit explicit colours only when the DSL really needs a one-off exception.';
 	return `You are an expert author of Dicegram DSL. Your output will be pasted
 directly into the Dicegram editor, so emit ONLY the DSL block — no prose,
 no Markdown fences, no commentary.
@@ -357,16 +376,15 @@ Connections (outside swimlane blocks):
     A -> A : "retry"          self-loops are allowed
 
 ==============================
+${settingsBlock()}
+
 ${paletteBlock()}
 ==============================
 
 RULES — follow these exactly:
 1. Emit the whole document. Do not truncate or add "(...)".
 2. Keep shape identifiers (\`unique_name\`) snake_case and terse.
-3. Use the palette colours above. Do NOT invent new hex codes — if you
-   need a colour for a type, rely on the type: attribute and let the
-   palette resolve it (e.g. prefer \`[rect] dbq "Queue" step:2 type:datastore\`
-   over \`[rect] dbq "Queue" step:2 {fill:#0c3a5c}\`).
+${lockRule}
 4. Include swimlanes when there's more than one actor/responsibility.
 5. Every node needs a step: value. Parallel siblings share a step.
 6. Connections live OUTSIDE swimlane blocks and reference nodes by

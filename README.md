@@ -89,6 +89,30 @@ Tuned out of the box for a 4 vCPU / 16 GB VPS. See
 [`docker-compose.yml`](./docker-compose.yml) for resource limits and the
 [`Caddyfile`](./Caddyfile) for the reverse-proxy config.
 
+### Running on Postgres instead of SQLite
+
+SQLite on a named Docker volume is the default and is fine for personal
+and small-team use. If you want multi-instance deploys, off-box backups,
+or encryption at rest, point the app at a Postgres server:
+
+1. `pip install psycopg[binary]>=3.1` (or add it to
+   `backend/requirements.txt` and rebuild).
+2. Edit `.env`:
+   ```
+   DATABASE_URL=postgresql+psycopg://user:pass@db-host:5432/dicegram
+   ```
+3. Restart the container. The app runs `SQLModel.metadata.create_all` on
+   startup, so a fresh database picks up the schema automatically. For
+   already-populated SQLite instances, dump and restore with
+   [pgloader](https://pgloader.readthedocs.io/en/latest/) or a bespoke
+   `sqlite3 .dump | psql` pipeline — the column types line up 1:1.
+4. The idempotent `_ensure_schema()` ALTER-TABLE pass in
+   [`backend/app/db.py`](./backend/app/db.py) also works on Postgres —
+   it only runs when a known column is missing.
+
+Once on Postgres, `WEB_CONCURRENCY` can safely scale past 3; SQLite's
+single-writer limit is the reason that's the recommended cap.
+
 ## Need it hosted for you?
 
 If you'd rather not run infrastructure, use the hosted instance at
