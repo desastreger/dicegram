@@ -3,25 +3,46 @@
 
 	let { node }: { node: RenderNode } = $props();
 
-	const padding = 6;
-	const width = $derived(Math.max(40, node.width));
-	const height = $derived(Math.max(30, node.height));
-	const vbW = $derived(width + padding * 2);
-	const vbH = $derived(height + padding * 2);
-	const x = padding;
-	const y = padding;
-	const w = $derived(width);
-	const h = $derived(height);
-	const cx = $derived(x + w / 2);
-	const cy = $derived(y + h / 2);
+	// Preview viewport bounds. Node is rendered at its natural pixel size and
+	// uniformly transform-scaled to fit — so border widths, clip paths, font
+	// sizes, and corner radii all scale together and the preview looks
+	// identical to the canvas render of the same node.
+	const MAX_W = 260;
+	const MAX_H = 140;
+	const MIN_W = 40;
+	const MIN_H = 30;
+
+	const natW = $derived(Math.max(MIN_W, node.width));
+	const natH = $derived(Math.max(MIN_H, node.height));
+	const scale = $derived(Math.min(MAX_W / natW, MAX_H / natH));
+	const boxW = $derived(natW * scale);
+	const boxH = $derived(natH * scale);
+
+	// — Same derivations as ShapeNode.svelte so preview matches the canvas.
+	const clipPaths: Record<string, string> = {
+		diamond: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
+		parallelogram: 'polygon(15% 0%, 100% 0%, 85% 100%, 0% 100%)',
+		hexagon: 'polygon(12% 0%, 88% 0%, 100% 50%, 88% 100%, 12% 100%, 0% 50%)'
+	};
+	const defaultRadius: Record<string, string> = {
+		rect: '4px',
+		rounded: '14px',
+		circle: '50% / 50%',
+		stadium: '9999px',
+		cylinder: '18px / 40%'
+	};
 
 	const typeAttr = $derived(node.attrs?.type ?? '');
 	const status = $derived(node.attrs?.status ?? '');
 	const priority = $derived(node.attrs?.priority ?? '');
+	const owner = $derived(node.attrs?.owner ?? '');
+	const tags = $derived(
+		(node.attrs?.tags ?? '')
+			.split(',')
+			.map((t) => t.trim())
+			.filter(Boolean)
+	);
 
-	// Use the same theme variable cascade as ShapeNode so preview and canvas
-	// render with identical colours. Type-specific fills still take priority
-	// over the theme default — mirrors the backend SVG exporter.
 	const fill = $derived(
 		node.style?.fill ??
 			(typeAttr === 'start'
@@ -32,7 +53,7 @@
 						? '#3a2f0b'
 						: typeAttr === 'datastore'
 							? '#0c3a5c'
-							: 'var(--th-node-fill)')
+							: 'var(--th-node-fill, #1f2937)')
 	);
 	const stroke = $derived(
 		node.style?.stroke ??
@@ -44,7 +65,7 @@
 						? '#ef4444'
 						: status === 'complete'
 							? '#10b981'
-							: 'var(--th-node-stroke)')
+							: 'var(--th-node-stroke, #64748b)')
 	);
 	const strokeWidth = $derived(
 		node.style?.stroke_width && Number.isFinite(Number(node.style.stroke_width))
@@ -56,16 +77,14 @@
 					: 1.5
 	);
 	const textColor = $derived(
-		node.style?.text ?? (status === 'deprecated' ? '#71717a' : 'var(--th-node-text)')
+		node.style?.text ?? (status === 'deprecated' ? '#71717a' : 'var(--th-node-text, #e5e7eb)')
 	);
 	const fontSize = $derived(
 		node.style?.font_size && Number.isFinite(Number(node.style.font_size))
-			? Number(node.style.font_size)
-			: 13
+			? `${Number(node.style.font_size)}px`
+			: '13px'
 	);
-	const fontFamily = $derived(
-		node.style?.font_family ?? '-apple-system, Segoe UI, sans-serif'
-	);
+	const fontFamily = $derived(node.style?.font_family ?? 'inherit');
 	const opacity = $derived(
 		node.style?.opacity && Number.isFinite(Number(node.style.opacity))
 			? Number(node.style.opacity)
@@ -73,97 +92,181 @@
 				? 0.7
 				: 1
 	);
-	const dasharray = $derived(status === 'draft' ? '6 4' : '');
+	const textDecoration = $derived(status === 'deprecated' ? 'line-through' : 'none');
+	const borderStyle = $derived(status === 'draft' ? 'dashed' : 'solid');
+	const clip = $derived(clipPaths[node.shape] ?? 'none');
+	const clipped = $derived(node.shape in clipPaths);
+	const radius = $derived(
+		node.style?.rx && `${node.style.rx}`.length
+			? /[0-9]+$/.test(`${node.style.rx}`)
+				? `${node.style.rx}px`
+				: `${node.style.rx}`
+			: (defaultRadius[node.shape] ?? '4px')
+	);
 
-	function rectRx(): number {
-		if (node.style?.rx && Number.isFinite(Number(node.style.rx))) return Number(node.style.rx);
-		if (node.shape === 'rounded') return 14;
-		if (node.shape === 'stadium') return h / 2;
-		return 4;
-	}
-
-	function diamondPts() {
-		return `${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}`;
-	}
-	function parallelogramPts() {
-		const skew = w * 0.15;
-		return `${x + skew},${y} ${x + w},${y} ${x + w - skew},${y + h} ${x},${y + h}`;
-	}
-	function hexagonPts() {
-		const side = w * 0.12;
-		return (
-			`${x + side},${y} ${x + w - side},${y} ${x + w},${cy} ` +
-			`${x + w - side},${y + h} ${x + side},${y + h} ${x},${cy}`
-		);
-	}
-
-	const labelLines = $derived(node.label.split('\n'));
+	const statusBadge = $derived(
+		status === 'active'
+			? { bg: '#10b981', label: '●' }
+			: status === 'complete'
+				? { bg: '#10b981', label: '✓' }
+				: status === 'blocked'
+					? { bg: '#ef4444', label: '!' }
+					: status === 'deprecated'
+						? { bg: '#71717a', label: '×' }
+						: null
+	);
 </script>
 
 <div class="preview-wrap">
-	<svg
-		viewBox="0 0 {vbW} {vbH}"
-		preserveAspectRatio="xMidYMid meet"
-		xmlns="http://www.w3.org/2000/svg"
-	>
-		<g
-			fill={fill}
-			stroke={stroke}
-			stroke-width={strokeWidth}
-			stroke-dasharray={dasharray || undefined}
-			opacity={opacity}
+	<div class="preview-frame" style:width="{boxW}px" style:height="{boxH}px">
+		<div
+			class="preview-inner"
+			style:width="{natW}px"
+			style:height="{natH}px"
+			style:transform="scale({scale})"
 		>
-			{#if node.shape === 'rect' || node.shape === 'rounded' || node.shape === 'stadium'}
-				<rect {x} {y} width={w} height={h} rx={rectRx()} />
-			{:else if node.shape === 'circle'}
-				<ellipse {cx} {cy} rx={w / 2} ry={h / 2} />
-			{:else if node.shape === 'diamond'}
-				<polygon points={diamondPts()} />
-			{:else if node.shape === 'parallelogram'}
-				<polygon points={parallelogramPts()} />
-			{:else if node.shape === 'hexagon'}
-				<polygon points={hexagonPts()} />
-			{:else if node.shape === 'cylinder'}
-				{@const cap = h * 0.15}
-				<g>
-					<ellipse {cx} cy={y + cap} rx={w / 2} ry={cap} />
-					<rect {x} y={y + cap} width={w} height={h - 2 * cap} />
-					<path
-						d={`M ${x} ${y + cap} L ${x} ${y + h - cap} A ${w / 2} ${cap} 0 0 0 ${x + w} ${y + h - cap} L ${x + w} ${y + cap}`}
-					/>
-				</g>
-			{:else}
-				<rect {x} {y} width={w} height={h} />
-			{/if}
-		</g>
-		{#each labelLines as line, i}
-			<text
-				x={cx}
-				y={cy - ((labelLines.length - 1) * (fontSize * 1.25)) / 2 + i * (fontSize * 1.25) + fontSize * 0.38}
-				text-anchor="middle"
-				fill={textColor}
-				font-size={fontSize}
-				font-family={fontFamily}
-				text-decoration={status === 'deprecated' ? 'line-through' : undefined}>{line}</text
+			<div
+				class="shape"
+				class:clipped
+				style:width="{natW}px"
+				style:height="{natH}px"
+				style:--fill={fill}
+				style:--stroke={stroke}
+				style:--stroke-width="{strokeWidth}px"
+				style:--text={textColor}
+				style:--clip={clip}
+				style:--radius={radius}
+				style:--opacity={opacity}
+				style:--border-style={borderStyle}
+				style:--font-size={fontSize}
+				style:--font-family={fontFamily}
 			>
-		{/each}
-	</svg>
+				<div class="bg"></div>
+				<div class="label" style:text-decoration={textDecoration}>{node.label}</div>
+				{#if owner}<div class="owner" title="owner">{owner}</div>{/if}
+				{#if tags.length}
+					<div class="tags" title={tags.join(', ')}>
+						{#each tags.slice(0, 3) as tag}
+							<span class="tag">#{tag}</span>
+						{/each}
+						{#if tags.length > 3}<span class="tag">+{tags.length - 3}</span>{/if}
+					</div>
+				{/if}
+				{#if statusBadge}
+					<div class="badge" style:background={statusBadge.bg}>{statusBadge.label}</div>
+				{/if}
+			</div>
+		</div>
+	</div>
 </div>
 
 <style>
+	/* Layout for the preview pane itself. */
 	.preview-wrap {
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		max-height: calc((100vh - var(--header-h, 40px)) * 0.3);
-		padding: 10px 14px;
+		padding: 18px 14px;
 		border-bottom: 1px solid var(--th-panel-border, #262626);
 		background: var(--th-canvas, #0a0a0a);
 	}
-	.preview-wrap svg {
-		max-width: 100%;
-		max-height: 100%;
-		width: auto;
-		height: auto;
+	.preview-frame {
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		overflow: visible;
+	}
+	.preview-inner {
+		transform-origin: top left;
+	}
+
+	/* Shape visuals — kept in lockstep with ShapeNode.svelte. */
+	.shape {
+		position: relative;
+		color: var(--text);
+		font-size: var(--font-size);
+		font-family: var(--font-family);
+		line-height: 1.25;
+		opacity: var(--opacity);
+	}
+
+	.bg {
+		position: absolute;
+		inset: 0;
+		background: var(--fill);
+		border: var(--stroke-width) var(--border-style) var(--stroke);
+		border-radius: var(--radius);
+	}
+
+	.shape.clipped .bg {
+		clip-path: var(--clip);
+		border: none;
+		padding: var(--stroke-width);
+		background:
+			linear-gradient(var(--fill), var(--fill)) padding-box,
+			var(--stroke);
+	}
+
+	.label {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 8px 14px;
+		text-align: center;
+		white-space: pre-wrap;
+		pointer-events: none;
+	}
+
+	.owner {
+		position: absolute;
+		bottom: -7px;
+		right: 8px;
+		background: #0f172a;
+		border: 1px solid #334155;
+		color: #cbd5e1;
+		font-size: 10px;
+		padding: 1px 6px;
+		border-radius: 9999px;
+		pointer-events: none;
+	}
+
+	.tags {
+		position: absolute;
+		bottom: -7px;
+		left: 8px;
+		display: flex;
+		gap: 3px;
+		pointer-events: none;
+	}
+
+	.tag {
+		background: var(--th-panel, #1e293b);
+		border: 1px solid var(--th-panel-border, #334155);
+		color: var(--th-muted, #94a3b8);
+		font-size: 9px;
+		padding: 0 5px;
+		border-radius: 9999px;
+		line-height: 14px;
+	}
+
+	.badge {
+		position: absolute;
+		top: -8px;
+		left: -8px;
+		width: 18px;
+		height: 18px;
+		border-radius: 9999px;
+		color: white;
+		font-size: 11px;
+		font-weight: bold;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: 2px solid #0a0a0a;
+		pointer-events: none;
 	}
 </style>
