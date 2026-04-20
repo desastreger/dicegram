@@ -18,6 +18,7 @@
   import EdgePanel from './EdgePanel.svelte';
   import ObjectPanel, { type ObjectKind } from './ObjectPanel.svelte';
   import type { RenderNode, RenderResult } from '$lib/render';
+  import { palette } from '$lib/palette.svelte';
 
   let {
     source = $bindable(''),
@@ -93,9 +94,33 @@
   const currentStatus = $derived(selected?.attrs?.status ?? '');
   const currentPriority = $derived(selected?.attrs?.priority ?? '');
   const currentTags = $derived(selected?.attrs?.tags ?? '');
-  const currentFill = $derived(selected?.style?.fill ?? '#1f2937');
-  const currentStroke = $derived(selected?.style?.stroke ?? '#4b5563');
-  const currentText = $derived(selected?.style?.text ?? '#e5e7eb');
+  // When a colour has no inline DSL value, fall back to the palette-
+  // resolved colour (type-fill + node defaults) so the inspector swatch
+  // matches what the canvas actually renders.
+  const typeAttrForPal = $derived(selected?.attrs?.type ?? '');
+  const statusForPal = $derived(selected?.attrs?.status ?? '');
+  const priorityForPal = $derived(selected?.attrs?.priority ?? '');
+  const paletteFill = $derived(palette.typeFill(typeAttrForPal));
+  const paletteStroke = $derived(
+    priorityForPal === 'critical'
+      ? palette.current.priority_critical
+      : priorityForPal === 'high'
+        ? palette.current.priority_high
+        : statusForPal === 'blocked'
+          ? palette.current.status_blocked
+          : statusForPal === 'complete'
+            ? palette.current.status_complete
+            : palette.current.node_stroke
+  );
+  const paletteText = $derived(
+    statusForPal === 'deprecated' ? palette.current.status_deprecated_text : palette.current.node_text
+  );
+  const fillFromPalette = $derived(!selected?.style?.fill);
+  const strokeFromPalette = $derived(!selected?.style?.stroke);
+  const textFromPalette = $derived(!selected?.style?.text);
+  const currentFill = $derived(selected?.style?.fill ?? paletteFill);
+  const currentStroke = $derived(selected?.style?.stroke ?? paletteStroke);
+  const currentText = $derived(selected?.style?.text ?? paletteText);
   const currentRx = $derived(selected?.style?.rx ?? '');
   const currentFontSize = $derived(selected?.style?.font_size ?? '');
   const currentOpacity = $derived(selected?.style?.opacity ?? '');

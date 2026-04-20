@@ -408,22 +408,68 @@
 	}
 
 	// Silent debounced autosave for logged-in users with an existing dicegram.
-	// New (unsaved) dicegrams stay dirty until the user hits Ctrl+S — we avoid
-	// creating junk rows on every new-draft keystroke.
+	// For users WITHOUT an id yet, the first real edit auto-creates a
+	// diegram so refresh lands on a stable URL and autosave takes over.
 	let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
 	let autosaveStatus = $state<'idle' | 'saving' | 'saved'>('idle');
 	let autosaveStatusTimer: ReturnType<typeof setTimeout> | null = null;
+	let autoCreating = false;
 
 	$effect(() => {
 		const _deps = source + '\u0000' + name;
 		void _deps;
 		if (demoMode) return;
 		if (!auth.user) return;
-		if (currentId == null) return;
-		if (!dirty) return;
+		// Logged-in & saved diegram → classic autosave.
+		if (currentId != null) {
+			if (!dirty) return;
+			clearTimeout(autosaveTimer);
+			autosaveTimer = setTimeout(runAutosave, 2000);
+			return;
+		}
+		// Logged-in but nothing saved yet → auto-create once the source
+		// differs from the shipped default template. Guard against a
+		// double-create race with `autoCreating`.
+		if (autoCreating) return;
+		if (source === DEFAULT_TEMPLATE.source) return;
 		clearTimeout(autosaveTimer);
-		autosaveTimer = setTimeout(runAutosave, 2000);
+		autosaveTimer = setTimeout(autoCreateDiegram, 1500);
 	});
+
+	async function autoCreateDiegram() {
+		if (demoMode || !auth.user || currentId != null || autoCreating) return;
+		if (source === DEFAULT_TEMPLATE.source) return;
+		autoCreating = true;
+		autosaveStatus = 'saving';
+		try {
+			const defaultName =
+				name && name !== 'Untitled dicegram' ? name : 'Untitled diegram';
+			const d = await api.create({ name: defaultName, source });
+			currentId = d.id;
+			name = d.name;
+			savedSourceSnapshot = d.source;
+			autosaveStatus = 'saved';
+			// Stabilize the URL so refresh lands back on this diegram.
+			try {
+				const url = new URL(window.location.href);
+				url.searchParams.set('id', String(d.id));
+				history.replaceState(null, '', url.toString());
+			} catch {
+				/* history API unavailable — autosave still works */
+			}
+			try {
+				localStorage.removeItem(DRAFT_STORAGE_KEY);
+			} catch {
+				/* ignore */
+			}
+			if (autosaveStatusTimer) clearTimeout(autosaveStatusTimer);
+			autosaveStatusTimer = setTimeout(() => (autosaveStatus = 'idle'), 1500);
+		} catch {
+			autosaveStatus = 'idle';
+		} finally {
+			autoCreating = false;
+		}
+	}
 
 	async function runAutosave() {
 		if (!auth.user || currentId == null || !dirty) return;
