@@ -12,6 +12,7 @@
 	let draft = $state<Record<string, string>>({ ...palette.current });
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let status = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+	let newPresetName = $state('');
 
 	// Redirect anon visitors to login — palette is account-level.
 	onMount(() => {
@@ -24,6 +25,23 @@
 	$effect(() => {
 		if (palette.loaded) draft = { ...palette.current };
 	});
+
+	async function savePreset() {
+		const n = newPresetName.trim();
+		if (!n) return;
+		await palette.savePreset(n);
+		newPresetName = '';
+	}
+
+	async function activatePreset(name: string) {
+		await palette.activatePreset(name);
+		draft = { ...palette.current };
+	}
+
+	async function deletePreset(name: string) {
+		if (!confirm(`Delete preset "${name}"?`)) return;
+		await palette.deletePreset(name);
+	}
 
 	function onColorInput(key: string, value: string) {
 		draft = { ...draft, [key]: value };
@@ -87,6 +105,74 @@
 			</button>
 		</div>
 	</header>
+
+	<!-- Preset switcher -->
+	<div class="mb-8 rounded border border-neutral-800 bg-neutral-950 p-4">
+		<div class="mb-3 flex items-end justify-between gap-3">
+			<div>
+				<h2 class="text-sm font-semibold text-neutral-200">Brand presets</h2>
+				<p class="mt-1 text-xs text-neutral-500">
+					Save your current colours as a named preset, then switch between presets with one click.
+				</p>
+			</div>
+			<form
+				class="flex items-center gap-2"
+				onsubmit={(e) => {
+					e.preventDefault();
+					savePreset();
+				}}
+			>
+				<input
+					type="text"
+					bind:value={newPresetName}
+					placeholder="e.g. Enterprise Blue"
+					maxlength="60"
+					class="w-44 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-100 focus:border-neutral-600 focus:outline-none"
+				/>
+				<button
+					type="submit"
+					disabled={!newPresetName.trim()}
+					class="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					Save current as…
+				</button>
+			</form>
+		</div>
+		{#if palette.presets.length === 0}
+			<p class="text-xs text-neutral-500">No presets yet. Type a name and click "Save current as…" to create one.</p>
+		{:else}
+			<ul class="flex flex-wrap gap-2">
+				{#each palette.presets as p (p.name)}
+					<li
+						class="flex items-center gap-2 rounded border px-2 py-1 text-xs {p.active
+							? 'border-blue-500 bg-blue-950/40 text-blue-200'
+							: 'border-neutral-800 bg-neutral-900 text-neutral-200'}"
+					>
+						<span class="font-medium">{p.name}</span>
+						{#if p.active}
+							<span class="text-[10px] uppercase tracking-wider text-blue-400">active</span>
+						{:else}
+							<button
+								type="button"
+								onclick={() => activatePreset(p.name)}
+								class="text-neutral-400 hover:text-white"
+							>
+								Activate
+							</button>
+						{/if}
+						<button
+							type="button"
+							onclick={() => deletePreset(p.name)}
+							title="Delete preset"
+							class="text-neutral-500 hover:text-red-400"
+						>
+							×
+						</button>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</div>
 
 	{#each PALETTE_SECTIONS as section}
 		<div class="mb-8">

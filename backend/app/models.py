@@ -13,10 +13,15 @@ class User(SQLModel, table=True):
     email: str = Field(index=True, unique=True)
     password_hash: str
     created_at: datetime = Field(default_factory=utcnow)
-    # Per-user branding palette (see app/palette.py). Stored as JSON; only
-    # keys in ALLOWED_KEYS survive a PUT. Empty string values mean "inherit
-    # the shipped default".
+    # Currently applied per-user branding palette (see app/palette.py).
+    # Stored as JSON; only keys in ALLOWED_KEYS survive a PUT. Empty-string
+    # values mean "inherit the shipped default".
     branding_palette: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    # Named palette presets. `{name: overrides}` — the name the user
+    # chose for the preset mapped to the same override shape as
+    # branding_palette. Empty by default; "Activating" a preset copies its
+    # overrides into branding_palette.
+    palette_presets: dict = Field(default_factory=dict, sa_column=Column(JSON))
 
 
 class Dicegram(SQLModel, table=True):

@@ -37,6 +37,10 @@ def _ensure_schema() -> None:
             # encoded strings either way. Default to an empty JSON object.
             conn.execute(text("ALTER TABLE user ADD COLUMN branding_palette JSON"))
             conn.execute(text("UPDATE user SET branding_palette = '{}' WHERE branding_palette IS NULL"))
+    if "palette_presets" not in user_cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE user ADD COLUMN palette_presets JSON"))
+            conn.execute(text("UPDATE user SET palette_presets = '{}' WHERE palette_presets IS NULL"))
 
 
 def init_db() -> None:

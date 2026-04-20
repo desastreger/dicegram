@@ -92,8 +92,15 @@ function sanitize(raw: Record<string, unknown>): Record<string, string> {
 	return out;
 }
 
+export type Preset = {
+	name: string;
+	overrides: Record<string, string>;
+	active: boolean;
+};
+
 class PaletteStore {
 	current: Record<string, string> = $state({ ...DEFAULTS });
+	presets: Preset[] = $state([]);
 	loaded = $state(false);
 	saving = $state(false);
 
@@ -104,10 +111,23 @@ class PaletteStore {
 				const j = await res.json();
 				this.current = sanitize(j.palette ?? {});
 			}
+			await this.loadPresets();
 		} catch {
 			// Offline or anon — keep defaults.
 		} finally {
 			this.loaded = true;
+		}
+	}
+
+	async loadPresets(): Promise<void> {
+		try {
+			const res = await fetch('/api/auth/me/palettes', { credentials: 'include' });
+			if (res.ok) {
+				const j = await res.json();
+				this.presets = Array.isArray(j.presets) ? j.presets : [];
+			}
+		} catch {
+			this.presets = [];
 		}
 	}
 
@@ -134,11 +154,51 @@ class PaletteStore {
 			}
 		} finally {
 			this.saving = false;
+			// Recompute active preset after overrides changed.
+			await this.loadPresets();
 		}
 	}
 
 	async reset(): Promise<void> {
 		await this.save({});
+	}
+
+	async savePreset(name: string): Promise<void> {
+		// Save the current active overrides under this name (backend will
+		// read branding_palette when `overrides` is omitted).
+		const res = await fetch('/api/auth/me/palettes', {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name })
+		});
+		if (res.ok) {
+			const j = await res.json();
+			this.presets = Array.isArray(j.presets) ? j.presets : [];
+		}
+	}
+
+	async activatePreset(name: string): Promise<void> {
+		const res = await fetch(
+			`/api/auth/me/palettes/${encodeURIComponent(name)}/activate`,
+			{ method: 'PATCH', credentials: 'include' }
+		);
+		if (res.ok) {
+			const j = await res.json();
+			this.current = sanitize(j.palette ?? {});
+			await this.loadPresets();
+		}
+	}
+
+	async deletePreset(name: string): Promise<void> {
+		const res = await fetch(
+			`/api/auth/me/palettes/${encodeURIComponent(name)}`,
+			{ method: 'DELETE', credentials: 'include' }
+		);
+		if (res.ok || res.status === 204) {
+			this.presets = this.presets.filter((p) => p.name !== name);
+			await this.loadPresets();
+		}
 	}
 
 	typeFill(type: string | undefined): string {
