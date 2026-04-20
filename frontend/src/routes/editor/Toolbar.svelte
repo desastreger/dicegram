@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Icon from '$lib/Icon.svelte';
-	import { addNode, addSwimlane, getDirection, setDirection } from '$lib/patch';
+	import { getDirection, setDirection } from '$lib/patch';
 	import {
 		copyDsl,
 		copyLlmPrompt,
@@ -15,7 +15,6 @@
 	import { TEMPLATES, type DicegramTemplate } from '$lib/templates';
 	import { dicegrams as dicegramsApi } from '$lib/dicegrams';
 	import { ApiError } from '$lib/api';
-	import { getViewportCenter } from '$lib/viewport-state';
 
 	let {
 		source = $bindable(''),
@@ -178,56 +177,9 @@
 		{ id: 'right-to-left', icon: 'arrow-left', label: 'Right to Left' }
 	];
 
-	const SHAPES: { id: string; label: string }[] = [
-		{ id: 'rect', label: 'Rectangle' },
-		{ id: 'rounded', label: 'Rounded' },
-		{ id: 'diamond', label: 'Diamond' },
-		{ id: 'circle', label: 'Circle' },
-		{ id: 'parallelogram', label: 'Parallelogram' },
-		{ id: 'hexagon', label: 'Hexagon' },
-		{ id: 'cylinder', label: 'Cylinder' },
-		{ id: 'stadium', label: 'Stadium' }
-	];
-
-	let insertOpen = $state(false);
-	let insertRoot: HTMLDivElement | undefined = $state();
-
 	const activeDirection = $derived(result?.direction ?? getDirection(source));
 	const nodeCount = $derived(result?.nodes.length ?? 0);
 	const errorCount = $derived(result?.errors.length ?? 0);
-
-	function nextNodeName(): string {
-		const ids = new Set((result?.nodes ?? []).map((n) => n.id));
-		let n = 1;
-		while (ids.has(`node${n}`)) n++;
-		return `node${n}`;
-	}
-
-	function nextStep(): number {
-		const steps = (result?.nodes ?? []).map((n) => {
-			const s = n.attrs?.step;
-			return s != null ? Number(s) : 0;
-		});
-		return Math.max(0, ...steps) + 1;
-	}
-
-	function pickShape(shape: string) {
-		insertOpen = false;
-		const name = nextNodeName();
-		const position = getViewportCenter();
-		source = addNode(source, { name, shape, step: nextStep(), position });
-	}
-
-	function promptSwimlane() {
-		const existing = new Set((result?.lanes ?? []).map((l) => l.name));
-		let n = 1;
-		let name = `Swimlane ${n}`;
-		while (existing.has(name)) {
-			n += 1;
-			name = `Swimlane ${n}`;
-		}
-		source = addSwimlane(source, name);
-	}
 
 	function pickDirection(dir: string) {
 		if (dir === activeDirection) return;
@@ -237,16 +189,6 @@
 		// direction flip, not just when pins were stripped.
 		onDirectionChange?.(prev);
 	}
-
-	function handleDocClick(e: MouseEvent) {
-		if (!insertOpen) return;
-		if (insertRoot && !insertRoot.contains(e.target as Node)) insertOpen = false;
-	}
-
-	$effect(() => {
-		document.addEventListener('click', handleDocClick);
-		return () => document.removeEventListener('click', handleDocClick);
-	});
 </script>
 
 <div
@@ -309,47 +251,6 @@
 			{/if}
 		</div>
 	</div>
-
-	<span class="h-4 w-px bg-neutral-800"></span>
-
-	<div class="relative" bind:this={insertRoot}>
-		<button
-			type="button"
-			onclick={() => (insertOpen = !insertOpen)}
-			aria-expanded={insertOpen}
-			title="Insert shape"
-			class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800"
-		>
-			<Icon name="shapes" size={13} />
-			<span class="hidden md:inline">Insert</span>
-			<Icon name="chevron-down" size={11} />
-		</button>
-		{#if insertOpen}
-			<div
-				class="absolute left-0 top-full z-20 mt-1 w-44 overflow-hidden rounded border border-neutral-800 bg-neutral-900 shadow-lg"
-			>
-				{#each SHAPES as s (s.id)}
-					<button
-						type="button"
-						onclick={() => pickShape(s.id)}
-						class="block w-full px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
-					>
-						{s.label}
-					</button>
-				{/each}
-			</div>
-		{/if}
-	</div>
-
-	<button
-		type="button"
-		onclick={promptSwimlane}
-		title="Add swimlane"
-		class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800"
-	>
-		<Icon name="columns" size={13} />
-		<span class="hidden lg:inline">Swimlane</span>
-	</button>
 
 	<span class="h-4 w-px bg-neutral-800"></span>
 

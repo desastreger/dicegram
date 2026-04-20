@@ -23,15 +23,34 @@
 		positionFor?: () => Position;
 	} = $props();
 
-	const SHAPES: { id: string; icon: string; title: string }[] = [
-		{ id: 'rect', icon: 'shape-rect', title: 'Rectangle (process)' },
-		{ id: 'rounded', icon: 'shape-rounded', title: 'Rounded (sub-process)' },
-		{ id: 'diamond', icon: 'shape-diamond', title: 'Diamond (decision)' },
-		{ id: 'circle', icon: 'shape-circle', title: 'Circle (start / end)' },
-		{ id: 'parallelogram', icon: 'shape-parallelogram', title: 'Parallelogram (data)' },
-		{ id: 'hexagon', icon: 'shape-hexagon', title: 'Hexagon (preparation)' },
-		{ id: 'cylinder', icon: 'shape-cylinder', title: 'Cylinder (datastore)' },
-		{ id: 'stadium', icon: 'shape-stadium', title: 'Stadium (boundary)' }
+	// Semantic groups — each renders as its own cluster so the shape menu
+	// reads as "here are the flow-control primitives, here are the work
+	// shapes, here are the data shapes" instead of an undifferentiated
+	// strip of eight icons.
+	const SHAPE_GROUPS: { key: string; shapes: { id: string; icon: string; title: string }[] }[] = [
+		{
+			key: 'flow',
+			shapes: [
+				{ id: 'circle', icon: 'shape-circle', title: 'Circle — start / end' },
+				{ id: 'diamond', icon: 'shape-diamond', title: 'Diamond — decision' },
+				{ id: 'stadium', icon: 'shape-stadium', title: 'Stadium — terminal / boundary' }
+			]
+		},
+		{
+			key: 'process',
+			shapes: [
+				{ id: 'rect', icon: 'shape-rect', title: 'Rectangle — process / task' },
+				{ id: 'rounded', icon: 'shape-rounded', title: 'Rounded — sub-process' },
+				{ id: 'hexagon', icon: 'shape-hexagon', title: 'Hexagon — preparation' }
+			]
+		},
+		{
+			key: 'data',
+			shapes: [
+				{ id: 'parallelogram', icon: 'shape-parallelogram', title: 'Parallelogram — data i/o' },
+				{ id: 'cylinder', icon: 'shape-cylinder', title: 'Cylinder — datastore' }
+			]
+		}
 	];
 
 	function insertShape(shape: string) {
@@ -46,8 +65,7 @@
 	}
 
 	function insertEdge() {
-		// Pick the last two shape identifiers so the new edge reads as
-		// "penultimate -> last" — the most common authoring pattern.
+		// Connect the last two shapes — the most common follow-up to adding a shape.
 		const ids: string[] = [];
 		const re = /^\s*\[\w+\]\s+(\w+)\s+"/gm;
 		for (const m of source.matchAll(re)) ids.push(m[1]);
@@ -68,7 +86,6 @@
 	}
 
 	function insertNote() {
-		// Attach to the most recent node if there is one.
 		const re = /^\s*\[\w+\]\s+(\w+)\s+"/gm;
 		const ids: string[] = [];
 		for (const m of source.matchAll(re)) ids.push(m[1]);
@@ -77,62 +94,75 @@
 	}
 </script>
 
-<div class="flex flex-wrap items-center gap-0.5 border-b border-neutral-800 bg-neutral-950 px-2 py-1">
-	{#each SHAPES as s}
+<div class="border-b border-neutral-800 bg-neutral-950 px-2 py-1">
+	<!-- Row 1: shape primitives, grouped by semantic cluster. -->
+	<div class="flex flex-wrap items-center gap-0.5" aria-label="Insert shape">
+		{#each SHAPE_GROUPS as group, gi (group.key)}
+			{#if gi > 0}
+				<span class="mx-1 h-4 w-px bg-neutral-800" aria-hidden="true"></span>
+			{/if}
+			{#each group.shapes as s (s.id)}
+				<button
+					type="button"
+					onclick={() => insertShape(s.id)}
+					title={s.title}
+					aria-label={s.title}
+					class="rounded p-1 text-neutral-400 hover:bg-neutral-900 hover:text-white"
+				>
+					<Icon name={s.icon} size={16} />
+				</button>
+			{/each}
+		{/each}
+	</div>
+
+	<!-- Row 2: connectors + containers — the meta stuff that wraps or connects shapes. -->
+	<div class="mt-0.5 flex flex-wrap items-center gap-0.5" aria-label="Insert connector or container">
 		<button
 			type="button"
-			onclick={() => insertShape(s.id)}
-			title={s.title}
-			aria-label={s.title}
-			class="rounded p-1 text-neutral-400 hover:bg-neutral-900 hover:text-white"
+			onclick={insertEdge}
+			title="Connect the last two shapes"
+			aria-label="Insert connection between the last two shapes"
+			class="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
 		>
-			<Icon name={s.icon} size={16} />
+			<Icon name="arrow-right" size={14} />
+			<span>Connect</span>
 		</button>
-	{/each}
-	<span class="mx-1 h-4 w-px bg-neutral-800" aria-hidden="true"></span>
-	<button
-		type="button"
-		onclick={insertEdge}
-		title="Connect the last two shapes"
-		aria-label="Insert edge between last two shapes"
-		class="rounded p-1 text-neutral-400 hover:bg-neutral-900 hover:text-white"
-	>
-		<Icon name="arrow-right" size={16} />
-	</button>
-	<button
-		type="button"
-		onclick={insertSwimlane}
-		title="Insert swimlane"
-		aria-label="Insert swimlane"
-		class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
-	>
-		+ Lane
-	</button>
-	<button
-		type="button"
-		onclick={insertBox}
-		title="Insert box"
-		aria-label="Insert box"
-		class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
-	>
-		+ Box
-	</button>
-	<button
-		type="button"
-		onclick={insertGroup}
-		title="Insert group"
-		aria-label="Insert group"
-		class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
-	>
-		+ Group
-	</button>
-	<button
-		type="button"
-		onclick={insertNote}
-		title="Insert note"
-		aria-label="Insert note"
-		class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
-	>
-		+ Note
-	</button>
+		<span class="mx-1 h-4 w-px bg-neutral-800" aria-hidden="true"></span>
+		<button
+			type="button"
+			onclick={insertSwimlane}
+			title="Insert swimlane"
+			aria-label="Insert swimlane"
+			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
+		>
+			+ Lane
+		</button>
+		<button
+			type="button"
+			onclick={insertBox}
+			title="Insert box inside the nearest swimlane"
+			aria-label="Insert box"
+			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
+		>
+			+ Box
+		</button>
+		<button
+			type="button"
+			onclick={insertGroup}
+			title="Insert group overlay"
+			aria-label="Insert group"
+			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
+		>
+			+ Group
+		</button>
+		<button
+			type="button"
+			onclick={insertNote}
+			title="Insert sticky note attached to the last shape"
+			aria-label="Insert note"
+			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
+		>
+			+ Note
+		</button>
+	</div>
 </div>

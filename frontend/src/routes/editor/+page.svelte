@@ -759,7 +759,6 @@
 			style:padding-right={rightPaneOpen ? '340px' : '0'}
 			style:background-color={theme.canvas}
 		>
-			<QuickInsert bind:source />
 			<Canvas
 				{result}
 				{theme}
