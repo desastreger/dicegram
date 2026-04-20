@@ -35,6 +35,30 @@ The hosted instance at **https://dicegram.desastreger.cloud** is patched from
 `master` on the same day a fix lands. If you report an issue that affects the
 hosted service, we'll note the patch time in our response.
 
+## Credential and data storage
+
+- **Passwords**: hashed with [argon2-cffi](https://github.com/hynek/argon2-cffi)
+  using the library's default parameters. Plain-text passwords are never
+  written to disk, and login requests compare hashes in constant time.
+- **Session cookies**: `httpOnly`, `sameSite=lax`, `secure` (in production —
+  toggled by `SESSION_COOKIE_SECURE=true`), signed with `SECRET_KEY` via
+  `itsdangerous`. Sessions last 14 days by default.
+- **Verification / reset tokens**: signed with `SECRET_KEY` + a purpose salt
+  (distinct salts for verification and reset so tokens can't be swapped
+  between flows). Verification expires after 48 h, reset after 1 h. Tokens
+  are stateless — the server only checks the signature + expiry, so there's
+  nothing to leak from a compromised DB except the `SECRET_KEY` itself.
+- **`SECRET_KEY`**: read from `.env`, which `deploy.sh` `chmod 0600`s on
+  creation. Never logged, never sent in responses. Rotate by editing `.env`
+  and restarting the container — all existing sessions and unused tokens
+  become invalid instantly.
+- **Database**: SQLite on a named Docker volume by default — not encrypted
+  at rest. For regulated-data deployments, point `DATABASE_URL` at a
+  Postgres instance with TDE / encrypted storage; the app code is agnostic.
+- **Email outbound**: SMTP over TLS (STARTTLS on 587 or SMTPS on 465). No
+  email content is stored server-side beyond the audit line in the logs
+  when the "console" transport is active.
+
 ## Scope
 
 In scope:
