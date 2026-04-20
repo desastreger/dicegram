@@ -368,7 +368,12 @@ note "Sticky text" [target_object]
     @(x,y) (optional): pins the node to an absolute position, overriding
     auto-layout. Omit unless you really need a fixed pin.
 
-Connections (outside swimlane blocks):
+Connections — the editor auto-rewrites every inline connector into the
+verbose bracket form (R8 self-heal). You can AUTHOR either way, but the
+compiler will expand inline shorthand into the explicit form on every
+render. Emit either — the output stays consistent.
+
+Inline shorthand (author-friendly, auto-expanded):
     A -> B                    solid arrow             (sequence)
     A --> B                   dashed arrow            (message / conditional)
     A ==> B                   thick arrow             (critical path)
@@ -378,6 +383,27 @@ Connections (outside swimlane blocks):
     A -> B : "label" [above|below|center]
     A -> B condition:"expr" weight:5
     A -> A : "retry"          self-loops are allowed
+
+Verbose bracket form (what the editor actually stores after normalize):
+    [arrow]         c1 from:A from_anchor:bottom to:B to_anchor:top tip:arrow back:none
+    [dashed_arrow]  c2 from:A to:B kind-preset: dashed + arrow
+    [thick_arrow]   c3 from:A to:B kind-preset: thick + arrow
+    [line]          c4 from:A to:B kind-preset: solid_line + no tip
+    [dotted_line]   c5 from:A to:B kind-preset: dotted_line + no tip
+    [connector]     c6 from:A to:B kind:dashed tip:diamond back:circle
+      (generic — use when you need a non-standard kind/tip combo)
+
+Every bracket-form line surfaces the same six visible fields so the
+inspector, the code view, and the renderer stay in lockstep:
+    from:           source node ref (with optional \`@port\`)
+    from_anchor:    source anchor side — top, bottom, left, right
+    to:             target node ref (with optional \`@port\`)
+    to_anchor:      target anchor side
+    tip:            terminator at the target end (arrow, open_arrow,
+                    circle, diamond, tee, square, none)
+    back:           terminator at the source end (same values)
+Optional: \`label:"…"\`, \`opacity:\`, \`color:\`, \`condition:\`,
+\`weight:\`, any custom key. The connector name (c1, c2…) is also optional.
 
     Explicit ports (optional — override the geometry-based auto-picker):
         A@r -> B@l            source exits right, target enters left
@@ -422,38 +448,10 @@ Connections (outside swimlane blocks):
     compose with any \`from_anchor:\` / \`to_anchor:\` inside the block — the
     block wins when both are given.
 
-    Object-style bracket form — the preferred form when you want a
-    connector to surface in the inspector and be clicked as a single
-    unit. One line, named fields, no trailing colon tail:
-
-        [connector] c1 from:decide@r to:issue@l kind:dashed tip:arrow back:none label:"yes"
-
-    Bracket-form keys (all optional unless marked):
-        from:           source node — REQUIRED. \`from:A@right\` splits
-                        into node "A" + anchor "right". \`from:A\` alone
-                        lets the picker choose the anchor.
-        to:             target node — REQUIRED. Same grammar as \`from:\`.
-        from_anchor:    explicit source anchor (top/bottom/left/right).
-                        Separated from \`from:\` for the self-healer: a
-                        visible anchor field means the compiler can fix
-                        bad routing without guessing user intent.
-        to_anchor:      explicit target anchor.
-        kind:           line style (default solid).
-        tip:            terminator at the target end (default arrow for
-                        solid/dashed/thick; none for solid_line/dotted_line).
-                        Values: arrow, open_arrow, circle, diamond, tee,
-                        square, none.
-        back:           terminator at the source end. Same values as tip.
-        label:          quoted label. Multi-line: use \`[linebreak]\`
-                        between quoted segments.
-        opacity:        0..1.
-        color:          #rrggbb edge colour override.
-        condition / weight / <custom>: pass through unchanged.
-
-    Prefer inline \`A -> B\` for terse sequence diagrams; use \`[connector]\`
-    when you want the edge to behave like a first-class object (named,
-    inspector-editable, autocomplete-friendly) or when the connector
-    carries a bundle of attrs.
+    The verbose bracket form IS the canonical storage — see the
+    Connections section above. Use it directly when you want fine
+    control over every field up front, or author inline shorthand and
+    let the compiler expand it.
 
 ==============================
 ${settingsBlock()}

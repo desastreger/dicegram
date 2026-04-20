@@ -43,9 +43,19 @@ const SHAPES = [
 	'cylinder',
 	'stadium'
 ];
-// Keywords that live inside `[ … ]` but aren't shapes: `[connector]` opens
-// a bracket-form edge; `[linebreak]` inside a label sequence splits lines.
-const BRACKET_KEYWORDS = ['connector', 'linebreak'];
+// Keywords that live inside `[ … ]` but aren't shapes. Kind-keyword
+// forms (`[arrow]`, `[dashed_arrow]`, etc.) parse identically to
+// `[connector]` but the bracket itself names the line style — the
+// preferred form for readability.
+const BRACKET_KEYWORDS = [
+	'arrow',
+	'dashed_arrow',
+	'thick_arrow',
+	'line',
+	'dotted_line',
+	'connector',
+	'linebreak'
+];
 const TIP_KINDS = ['arrow', 'open_arrow', 'circle', 'diamond', 'tee', 'square', 'none'];
 const EDGE_KINDS = ['solid', 'dashed', 'thick', 'solid_line', 'dotted_line'];
 const ANCHORS = ['top', 'bottom', 'left', 'right'];
@@ -178,8 +188,13 @@ function dslCompletion(ctx: CompletionContext): CompletionResult | null {
 		};
 	}
 
-	// inside a `[connector] …` line, surface the connector-specific keys.
-	if (/^\s*\[connector\]\s/.test(textBefore)) {
+	// inside a `[connector]` / `[arrow]` / `[dashed_arrow]` / `[thick_arrow]`
+	// / `[line]` / `[dotted_line]` line, surface the connector-specific keys.
+	if (
+		/^\s*\[(connector|arrow|solid_arrow|dashed_arrow|thick_arrow|line|solid_line|dotted_line)\]\s/.test(
+			textBefore
+		)
+	) {
 		const connectorKeys = [
 			'from:',
 			'to:',

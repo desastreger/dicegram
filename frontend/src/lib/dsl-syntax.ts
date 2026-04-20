@@ -16,7 +16,17 @@ const SHAPE_SET = new Set([
 
 const KEYWORD_RE = /^(direction|setting|swimlane|box|group|note)\b/;
 const SHAPE_RE = /\[(\w+)\]/g;
-const BRACKET_KEYWORDS = new Set(['connector', 'linebreak']);
+const BRACKET_KEYWORDS = new Set([
+	'connector',
+	'linebreak',
+	'arrow',
+	'solid_arrow',
+	'dashed_arrow',
+	'thick_arrow',
+	'line',
+	'solid_line',
+	'dotted_line'
+]);
 const ARROW_RE = /(==>|-->|-\.-|---|->)/g;
 const POS_RE = /@\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/g;
 const ATTR_RE = /\b(\w+):(?=("[^"]*"|\S+))/g;

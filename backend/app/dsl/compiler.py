@@ -281,8 +281,151 @@ def normalize(source: str) -> NormalizeResult:
             )
             changed = True
 
+    # R8: auto-verbose connectors — rewrite inline `A -> B : "x"` lines as
+    #     the `[arrow]` / `[dashed_arrow]` / `[thick_arrow]` / `[line]` /
+    #     `[dotted_line]` bracket form so every connector on screen shows
+    #     origin, destination, both anchors, tip and back just like nodes
+    #     show name/shape/label/step/type. The self-heal invariant: no
+    #     inline edge survives normalize, every connector is explicit.
+    direction = _current_direction(lines)
+    lines, rewrote = _materialize_inline_edges(lines, direction)
+    if rewrote:
+        notices.append(
+            Notice(
+                "fix",
+                f"rewrote {rewrote} inline connector{'s' if rewrote != 1 else ''} "
+                "to the verbose bracket form",
+                None,
+            )
+        )
+        changed = True
+
     new_source = "\n".join(lines)
     return NormalizeResult(source=new_source, notices=notices, changed=changed)
+
+
+# R8 helpers -------------------------------------------------------------
+
+_R8_EDGE_RE = re.compile(
+    r"^(?P<indent>\s*)"
+    r"(?P<src>\w+)"
+    r"(?:@(?P<src_port>\w+))?"
+    r"\s*(?P<sym>==>|-->|-\.-|---|->)\s*"
+    r"(?P<dst>\w+)"
+    r"(?:@(?P<dst_port>\w+))?"
+    r"(?P<tail>\s*:\s*.*)?"
+    r"\s*$"
+)
+_R8_LABEL_SEQ = re.compile(
+    r'"(?:[^"\\]|\\.)*"(?:\s*\[linebreak\]\s*"(?:[^"\\]|\\.)*")*'
+)
+_R8_ATTR_RE = re.compile(r'(\w+):((?:"[^"]*"|\S+))')
+
+_KIND_TO_KEYWORD = {
+    "->": "arrow",
+    "-->": "dashed_arrow",
+    "==>": "thick_arrow",
+    "---": "line",
+    "-.-": "dotted_line",
+}
+_KIND_TO_DEFAULT_TIP = {
+    "->": "arrow",
+    "-->": "arrow",
+    "==>": "arrow",
+    "---": "none",
+    "-.-": "none",
+}
+_DIR_TO_ANCHORS = {
+    "top-to-bottom": ("bottom", "top"),
+    "left-to-right": ("right", "left"),
+    "bottom-to-top": ("top", "bottom"),
+    "right-to-left": ("left", "right"),
+    "TB": ("bottom", "top"),
+    "LR": ("right", "left"),
+    "BT": ("top", "bottom"),
+    "RL": ("left", "right"),
+}
+_ANCHOR_ALIAS = {
+    "t": "top", "top": "top", "n": "top", "north": "top",
+    "b": "bottom", "bottom": "bottom", "s": "bottom", "south": "bottom",
+    "l": "left", "left": "left", "w": "left", "west": "left",
+    "r": "right", "right": "right", "e": "right", "east": "right",
+}
+
+
+def _current_direction(lines: list[str]) -> str:
+    for line in lines:
+        m = re.match(r"^\s*direction\s+(\S+)", line)
+        if m:
+            return m.group(1).strip()
+    return "top-to-bottom"
+
+
+def _materialize_inline_edges(lines: list[str], direction: str) -> tuple[list[str], int]:
+    """Turn every inline `A -> B` line into a `[arrow]`-style bracket
+    line. `[connector]`, `[arrow]`, etc. lines pass through untouched;
+    so do block-form headers (`A -> B {`). Returns the new lines and a
+    count of how many inline lines were rewritten."""
+    default_anchors = _DIR_TO_ANCHORS.get(direction, ("bottom", "top"))
+    rewritten = 0
+    out: list[str] = []
+    for line in lines:
+        m = _R8_EDGE_RE.match(line)
+        if not m:
+            out.append(line)
+            continue
+        tail = m.group("tail") or ""
+        # Block-form header: `A -> B { …`. Let it through unchanged.
+        stripped_tail = tail.lstrip(" \t:")
+        if stripped_tail.rstrip().endswith("{") or stripped_tail.startswith("{"):
+            out.append(line)
+            continue
+        sym = m.group("sym")
+        keyword = _KIND_TO_KEYWORD.get(sym)
+        if not keyword:
+            out.append(line)
+            continue
+
+        src = m.group("src")
+        dst = m.group("dst")
+        src_port = (m.group("src_port") or "").lower() or None
+        dst_port = (m.group("dst_port") or "").lower() or None
+        from_anchor = _ANCHOR_ALIAS.get(src_port, default_anchors[0]) if src_port else default_anchors[0]
+        to_anchor = _ANCHOR_ALIAS.get(dst_port, default_anchors[1]) if dst_port else default_anchors[1]
+
+        label: str | None = None
+        attrs: dict[str, str] = {}
+        rest_after_colon = tail.lstrip()
+        if rest_after_colon.startswith(":"):
+            rest_after_colon = rest_after_colon[1:].lstrip()
+            lm = _R8_LABEL_SEQ.match(rest_after_colon)
+            if lm:
+                label = lm.group(0)
+                rest_after_colon = rest_after_colon[lm.end():]
+            for am in _R8_ATTR_RE.finditer(rest_after_colon):
+                attrs[am.group(1).lower()] = am.group(2)
+
+        # Resolve tip / back from the `end:` / `start:` attrs (both names
+        # are accepted inline), falling back to the kind's default tip.
+        tip = attrs.pop("end", None) or attrs.pop("tip", None) or _KIND_TO_DEFAULT_TIP.get(sym, "arrow")
+        back = attrs.pop("start", None) or attrs.pop("back", None) or "none"
+        tip = tip.strip('"').lower()
+        back = back.strip('"').lower()
+
+        bits: list[str] = [f"{m.group('indent')}[{keyword}]"]
+        bits.append(f"from:{src}")
+        bits.append(f"from_anchor:{from_anchor}")
+        bits.append(f"to:{dst}")
+        bits.append(f"to_anchor:{to_anchor}")
+        bits.append(f"tip:{tip}")
+        bits.append(f"back:{back}")
+        if label:
+            bits.append(f"label:{label}")
+        for k, v in attrs.items():
+            bits.append(f"{k}:{v}")
+        out.append(" ".join(bits))
+        rewritten += 1
+    return out, rewritten
 
 
 def _is_horizontal(source: str) -> bool:

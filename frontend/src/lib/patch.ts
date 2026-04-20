@@ -631,10 +631,44 @@ const EDGE_BLOCK_HEADER_RE =
 	/^(\s*)(?:edge\s+)?(\w+)(?:@\w+)?\s*(->|-->|==>|---|-\.-)\s*(\w+)(?:@\w+)?\s*\{/;
 
 // Object-style connector: `[connector] name? from:A@r to:B@l kind:dashed
-// tip:arrow back:none label:"x"`. Counts as an edge line for ordinal
-// purposes and is round-trip editable (inspector rewrites preserve the
-// bracket form).
-const CONNECTOR_LINE_RE = /^(\s*)\[connector\]\s+(?:(\w+)\s+)?(.*)$/;
+// tip:arrow back:none label:"x"`. Also the kind-keyword form
+// `[arrow] …` / `[dashed_arrow] …` / `[thick_arrow] …` / `[line] …` /
+// `[dotted_line] …` where the bracket names the line style. All parse
+// through the same helper and round-trip with the original bracket
+// keyword preserved.
+const CONNECTOR_KEYWORDS = [
+	'connector',
+	'arrow',
+	'solid_arrow',
+	'dashed_arrow',
+	'thick_arrow',
+	'line',
+	'solid_line',
+	'dotted_line'
+] as const;
+type ConnectorKeyword = (typeof CONNECTOR_KEYWORDS)[number];
+const CONNECTOR_LINE_RE = new RegExp(
+	'^(\\s*)\\[(' + CONNECTOR_KEYWORDS.join('|') + ')\\]\\s+(?:(\\w+)\\s+)?(.*)$'
+);
+const CONNECTOR_KEYWORD_PRESETS: Record<ConnectorKeyword, { kind: string; tip: string }> = {
+	connector: { kind: 'solid', tip: 'arrow' },
+	arrow: { kind: 'solid', tip: 'arrow' },
+	solid_arrow: { kind: 'solid', tip: 'arrow' },
+	dashed_arrow: { kind: 'dashed', tip: 'arrow' },
+	thick_arrow: { kind: 'thick', tip: 'arrow' },
+	line: { kind: 'solid_line', tip: 'none' },
+	solid_line: { kind: 'solid_line', tip: 'none' },
+	dotted_line: { kind: 'dotted_line', tip: 'none' }
+};
+// Map a kind name back to the canonical bracket keyword for
+// round-trip emission.
+const KIND_TO_KEYWORD: Record<string, ConnectorKeyword> = {
+	solid: 'arrow',
+	dashed: 'dashed_arrow',
+	thick: 'thick_arrow',
+	solid_line: 'line',
+	dotted_line: 'dotted_line'
+};
 
 function isEdgeLine(line: string): boolean {
 	return (
@@ -726,16 +760,18 @@ function parseConnectorLineEdge(line: string): EdgeParts | null {
 	const m = line.match(CONNECTOR_LINE_RE);
 	if (!m) return null;
 	const indent = m[1];
-	const connectorName = m[2] ?? undefined;
-	const body = m[3] ?? '';
+	const keyword = m[2] as ConnectorKeyword;
+	const connectorName = m[3] ?? undefined;
+	const body = m[4] ?? '';
 
+	const preset = CONNECTOR_KEYWORD_PRESETS[keyword];
 	let src = '';
 	let srcPort: string | null = null;
 	let dst = '';
 	let dstPort: string | null = null;
 	let label: string | null = null;
-	let kindName = 'solid';
-	const attrs: Record<string, string> = {};
+	let kindName = preset.kind;
+	const attrs: Record<string, string> = { end: preset.tip };
 
 	EDGE_CONNECTOR_ATTR_RE.lastIndex = 0;
 	let am: RegExpExecArray | null;
@@ -819,13 +855,18 @@ function parseEdgeLine(line: string): EdgeParts | null {
 
 function rebuildConnectorLine(p: EdgeParts): string {
 	const kindName = EDGE_SYM_KIND[p.sym] ?? 'solid';
-	const bits: string[] = [`[connector]`];
+	// Prefer the kind-keyword bracket form (`[arrow]`, `[dashed_arrow]`,
+	// `[line]`, `[dotted_line]`) — the keyword itself names the line
+	// style, which reads more naturally than a redundant `kind:` field.
+	const keyword = KIND_TO_KEYWORD[kindName] ?? 'connector';
+	const bits: string[] = [`[${keyword}]`];
 	if (p.connectorName) bits.push(p.connectorName);
-	bits.push(`from:${p.srcPort ? `${p.src}@${p.srcPort}` : p.src}`);
-	bits.push(`to:${p.dstPort ? `${p.dst}@${p.dstPort}` : p.dst}`);
-	if (kindName !== 'solid') bits.push(`kind:${kindName}`);
-	if (p.attrs.end) bits.push(`tip:${p.attrs.end}`);
-	if (p.attrs.start) bits.push(`back:${p.attrs.start}`);
+	bits.push(`from:${p.src}`);
+	bits.push(`from_anchor:${ANCHOR_LONG[p.srcPort ?? ''] ?? 'bottom'}`);
+	bits.push(`to:${p.dst}`);
+	bits.push(`to_anchor:${ANCHOR_LONG[p.dstPort ?? ''] ?? 'top'}`);
+	bits.push(`tip:${p.attrs.end || 'none'}`);
+	bits.push(`back:${p.attrs.start || 'none'}`);
 	for (const [k, v] of Object.entries(p.attrs)) {
 		if (k === 'end' || k === 'start' || k === 'name') continue;
 		if (v === '' || v == null) continue;
@@ -835,6 +876,11 @@ function rebuildConnectorLine(p: EdgeParts): string {
 	if (p.label && p.label.length > 0) bits.push(`label:${formatLabel(p.label)}`);
 	return `${p.indent}${bits.join(' ')}`;
 }
+
+// Short port name → long anchor word used in the verbose bracket form.
+const ANCHOR_LONG: Record<string, string> = {
+	t: 'top', b: 'bottom', l: 'left', r: 'right'
+};
 
 function rebuildEdgeLine(p: EdgeParts): string {
 	if (p.form === 'connector') return rebuildConnectorLine(p);

@@ -36,6 +36,27 @@ OBJECT_RE = re.compile(
 )
 ATTR_RE = re.compile(r'(\w+):((?:"[^"]*"|\S+))')
 CONNECTOR_RE = re.compile(r'^\[connector\]\s+(?:(\w+)\s+)?(.*?)\s*$')
+# Kind-keyword bracket forms — the bracket names the line style, so the
+# most common connectors don't need a redundant `kind:` field. They all
+# parse through the same machinery as `[connector]`.
+#   [arrow]        → kind=solid       default tip=arrow
+#   [solid_arrow]  → kind=solid       default tip=arrow   (alias of [arrow])
+#   [dashed_arrow] → kind=dashed      default tip=arrow
+#   [thick_arrow]  → kind=thick       default tip=arrow
+#   [line]         → kind=solid_line  default tip=none
+#   [dotted_line]  → kind=dotted_line default tip=none
+_KIND_KEYWORD_PRESETS: dict[str, tuple[str, str]] = {
+    "arrow": ("solid", "arrow"),
+    "solid_arrow": ("solid", "arrow"),
+    "dashed_arrow": ("dashed", "arrow"),
+    "thick_arrow": ("thick", "arrow"),
+    "line": ("solid_line", "none"),
+    "solid_line": ("solid_line", "none"),
+    "dotted_line": ("dotted_line", "none"),
+}
+KIND_KEYWORD_RE = re.compile(
+    r'^\[(' + "|".join(_KIND_KEYWORD_PRESETS) + r')\]\s+(?:(\w+)\s+)?(.*?)\s*$'
+)
 STYLE_BLOCK_RE = re.compile(r"\{([^{}]*)\}")
 POSITION_RE = re.compile(r"@\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)")
 SETTING_RE = re.compile(r"^setting\s+(\w+)\s+(.+)$")
@@ -360,7 +381,9 @@ def _finalize_block_edge_body(edge: Edge, body: str) -> None:
 
 
 def _parse_connector(line: str) -> Edge | None:
-    """`[connector] c1 from:decide@r to:issue@l kind:dashed tip:arrow`.
+    """`[connector] c1 from:decide@r to:issue@l kind:dashed tip:arrow`
+    OR the kind-keyword form `[arrow] c1 from:… to:…` where the bracket
+    names the line style (and implies a sensible default tip).
 
     A single-line object-style connector. `from:`/`to:` carry the node
     reference (with optional `@port` shorthand); `from_anchor:` /
@@ -369,12 +392,25 @@ def _parse_connector(line: str) -> Edge | None:
     drift. `tip:` / `back:` are user-friendly aliases for `end:` / `start:`.
     """
     m = CONNECTOR_RE.match(line)
+    preset_kind: str | None = None
+    preset_tip: str | None = None
     if not m:
-        return None
-    body = m.group(2) or ""
-    edge = Edge(source="", target="", kind="solid")
-    if m.group(1):
-        edge.attrs["name"] = m.group(1)
+        m = KIND_KEYWORD_RE.match(line)
+        if not m:
+            return None
+        keyword = m.group(1).lower()
+        preset_kind, preset_tip = _KIND_KEYWORD_PRESETS[keyword]
+        connector_name = m.group(2)
+        body = m.group(3) or ""
+    else:
+        connector_name = m.group(1)
+        body = m.group(2) or ""
+
+    edge = Edge(source="", target="", kind=preset_kind or "solid")
+    if preset_tip:
+        edge.attrs["end"] = preset_tip
+    if connector_name:
+        edge.attrs["name"] = connector_name
     _finalize_block_edge_body(edge, body)
     if not edge.source or not edge.target:
         return None

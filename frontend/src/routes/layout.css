@@ -167,6 +167,8 @@ body {
 :root[data-theme='light'] [class*='text-red-'],
 :root[data-theme='light'] [class*='text-emerald-'],
 :root[data-theme='light'] [class*='text-amber-'],
+:root[data-theme='light'] [class*='text-purple-'],
+:root[data-theme='light'] [class*='text-green-'],
 :root[data-theme='light'] [class*='text-blue-']:not([class*='bg-blue-6']):not([class*='bg-blue-5']) {
 	color: var(--app-text);
 }
@@ -176,12 +178,48 @@ body {
 :root[data-theme='light'] [class*='bg-red-9'],
 :root[data-theme='light'] [class*='bg-emerald-9'],
 :root[data-theme='light'] [class*='bg-amber-9'],
+:root[data-theme='light'] [class*='bg-purple-9'],
+:root[data-theme='light'] [class*='bg-green-9'],
 :root[data-theme='light'] [class*='bg-blue-9'] {
 	background-color: var(--app-surface-2);
 }
 :root[data-theme='light'] [class*='border-red-9'],
 :root[data-theme='light'] [class*='border-emerald-9'],
 :root[data-theme='light'] [class*='border-amber-'],
+:root[data-theme='light'] [class*='border-purple-'],
+:root[data-theme='light'] [class*='border-green-'],
 :root[data-theme='light'] [class*='border-blue-9'] {
 	border-color: var(--app-border);
+}
+
+/* Cards and panels using `bg-neutral-950/<opacity>` get caught here —
+   the opacity suffix slips past the plain `bg-neutral-950` selector
+   earlier. Flatten them to the regular surface. */
+:root[data-theme='light'] [class*='bg-neutral-950'] {
+	background-color: var(--app-bg);
+}
+:root[data-theme='light'] [class*='bg-neutral-900'] {
+	background-color: var(--app-surface);
+}
+:root[data-theme='light'] [class*='bg-neutral-800'] {
+	background-color: var(--app-surface-2);
+}
+
+/* Deep-coloured shadows (`shadow-blue-900/40`) render as heavy dark
+   glows in light mode — neutralise them. */
+:root[data-theme='light'] [class*='shadow-blue-9'],
+:root[data-theme='light'] [class*='shadow-purple-9'],
+:root[data-theme='light'] [class*='shadow-neutral-9'] {
+	--tw-shadow-color: color-mix(in oklab, #000 10%, transparent);
+}
+
+/* Landing-page gradient title — neutral-50 → neutral-400 looks great on
+   black but goes near-invisible on white. In light mode, drop the
+   gradient clip altogether so the title renders as solid dark text. */
+:root[data-theme='light'] .bg-clip-text.text-transparent {
+	background: none !important;
+	-webkit-background-clip: initial;
+	background-clip: initial;
+	color: var(--app-text);
+	-webkit-text-fill-color: var(--app-text);
 }
