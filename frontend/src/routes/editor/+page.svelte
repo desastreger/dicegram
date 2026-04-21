@@ -775,7 +775,7 @@
 </script>
 
 <div
-	class="flex min-h-0 flex-1 flex-col"
+	class="flex min-h-0 flex-1 flex-col overflow-hidden"
 	style={showChrome
 		? themeVars
 		: `${themeVars} height: 100vh;`}

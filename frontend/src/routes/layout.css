@@ -192,6 +192,17 @@ body {
 	border-color: var(--app-border);
 }
 
+/* Scroll isolation — each editor pane contains its own scroll momentum
+   so reaching the end in the inspector doesn't bubble up and start
+   scrolling the code pane or the page. Applied globally so every
+   overflow region in the app gets it without per-site boilerplate. */
+.cm-scroller,
+[data-editor-scroll],
+aside.inspector-scroll,
+.svelte-flow {
+	overscroll-behavior: contain;
+}
+
 /* Cards and panels using `bg-neutral-950/<opacity>` get caught here —
    the opacity suffix slips past the plain `bg-neutral-950` selector
    earlier. Flatten them to the regular surface. */

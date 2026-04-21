@@ -409,7 +409,7 @@
     </header>
 
     {#if selectedObjectKind}
-      <div class="min-h-0 flex-1 overflow-y-auto">
+      <div class="min-h-0 flex-1 overflow-y-auto" data-editor-scroll>
         <ObjectPanel
           bind:source
           kind={selectedObjectKind}
@@ -419,7 +419,7 @@
         />
       </div>
     {:else if selectedEdgeId}
-      <div class="min-h-0 flex-1 overflow-y-auto">
+      <div class="min-h-0 flex-1 overflow-y-auto" data-editor-scroll>
         <EdgePanel
           bind:source
           {selectedEdgeId}
@@ -437,7 +437,7 @@
       <div class="shrink-0 border-b border-neutral-800">
         <ShapePreview node={selected} />
       </div>
-      <div class="min-h-0 flex-1 overflow-y-auto">
+      <div class="min-h-0 flex-1 overflow-y-auto" data-editor-scroll>
       <!-- Shape selector is the primary "type" control for a node — it
            sits above everything else so the user can change what the
            thing *is* before tweaking details. -->

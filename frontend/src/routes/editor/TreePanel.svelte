@@ -128,7 +128,13 @@
 		</button>
 	</div>
 
-	<div role="tree" tabindex="-1" aria-label="Dicetree" class="flex-1 overflow-auto py-1">
+	<div
+		role="tree"
+		tabindex="-1"
+		aria-label="Dicetree"
+		class="flex-1 overflow-auto py-1"
+		data-editor-scroll
+	>
 		{#each flatTree as { entry, depth } (entry.id)}
 			{@const selectable = entry.kind === 'shape'}
 			{@const isSelected = selectable && entry.id === selectedId}

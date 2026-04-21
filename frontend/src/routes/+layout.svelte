@@ -60,7 +60,7 @@
 
 <a href="#main-content" class="skip-link">Skip to main content</a>
 
-<div class="flex min-h-screen flex-col">
+<div class="flex h-screen flex-col overflow-hidden">
 {#if !chromeless}
 <header
 	role="banner"
@@ -151,7 +151,7 @@
 </header>
 {/if}
 
-<main id="main-content" role="main" class="flex min-h-0 flex-1 flex-col">
+<main id="main-content" role="main" class="flex min-h-0 flex-1 flex-col overflow-auto">
 	{@render children()}
 </main>
 
