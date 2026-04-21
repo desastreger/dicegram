@@ -382,7 +382,10 @@
 
 {#if open}
   <aside
-    class="fixed top-[var(--header-h)] right-0 bottom-0 z-40 flex w-[340px] flex-col border-l border-neutral-800 bg-neutral-950 text-xs text-neutral-100"
+    class="flex h-full min-h-0 w-full flex-col border-l text-xs"
+    style:background-color="var(--th-panel, #0a0a0a)"
+    style:border-color="var(--th-panel-border, #262626)"
+    style:color="var(--th-text, #e5e7eb)"
   >
     <header
       class="flex shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-950 px-3 py-2"

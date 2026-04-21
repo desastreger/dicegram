@@ -60,15 +60,16 @@
 
 <a href="#main-content" class="skip-link">Skip to main content</a>
 
+<div class="flex min-h-screen flex-col">
 {#if !chromeless}
 <header
 	role="banner"
-	class="border-b backdrop-blur"
+	class="sticky top-0 z-40 shrink-0 border-b backdrop-blur"
 	style="background:color-mix(in oklab, var(--app-bg) 85%, transparent); border-color: var(--app-border);"
 >
 	<nav
 		aria-label="Primary"
-		class="mx-auto flex max-w-6xl items-center justify-between px-4 py-1.5"
+		class="flex w-full items-center justify-between px-4 py-1.5"
 	>
 		<a
 			href="/"
@@ -150,7 +151,7 @@
 </header>
 {/if}
 
-<main id="main-content" role="main">
+<main id="main-content" role="main" class="flex min-h-0 flex-1 flex-col">
 	{@render children()}
 </main>
 
@@ -191,10 +192,10 @@
 {#if !chromeless}
 <footer
 	role="contentinfo"
-	class="mt-12 border-t px-4 py-4 text-[11px]"
+	class="sticky bottom-0 z-40 shrink-0 border-t px-4 py-2 text-[11px]"
 	style="background: var(--app-surface); border-color: var(--app-border); color: var(--app-text-muted);"
 >
-	<div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 sm:flex-row">
+	<div class="flex w-full flex-col items-center justify-between gap-2 sm:flex-row">
 		<p>
 			Built and maintained by
 			<a
@@ -221,6 +222,7 @@
 	</div>
 </footer>
 {/if}
+</div>
 
 <style>
 	:global(.nav-link) {

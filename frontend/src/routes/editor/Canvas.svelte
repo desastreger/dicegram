@@ -18,6 +18,7 @@
 	import NoteNode from './NoteNode.svelte';
 	import SmartEdge from './SmartEdge.svelte';
 	import CanvasFocus from './CanvasFocus.svelte';
+	import CanvasDropZone from './CanvasDropZone.svelte';
 	import ViewportRegister from './ViewportRegister.svelte';
 	import type { RenderResult, RenderNode } from '$lib/render';
 	import type { Theme } from '$lib/themes';
@@ -40,7 +41,8 @@
 		onEdgeSelect,
 		onObjectSelect,
 		onConnect,
-		onReparent
+		onReparent,
+		onDropShape
 	}: {
 		result: RenderResult | null;
 		theme: Theme;
@@ -60,6 +62,7 @@
 		) => void;
 		onConnect?: (source: string, target: string) => void;
 		onReparent?: (id: string, target: ParentTarget) => void;
+		onDropShape?: (shape: string, flow: { x: number; y: number }) => void;
 	} = $props();
 
 	function tokenMatches(n: RenderNode, t: string): boolean {
@@ -573,9 +576,15 @@
 		if (connection.source.startsWith('__') || connection.target.startsWith('__')) return;
 		onConnect?.(connection.source, connection.target);
 	}
+
 </script>
 
-<div class="h-full w-full" style:background-color={theme.canvas} ondblclick={handleCanvasDblClick} role="presentation">
+<div
+	class="h-full w-full"
+	style:background-color={theme.canvas}
+	ondblclick={handleCanvasDblClick}
+	role="presentation"
+>
 	<SvelteFlow
 		bind:nodes
 		bind:edges
@@ -598,6 +607,7 @@
 		<Controls position="top-right" />
 		<MiniMap pannable zoomable />
 		<CanvasFocus {focusId} trigger={focusTrigger} {fitAllTrigger} />
+		<CanvasDropZone {onDropShape} />
 		<ViewportRegister />
 	</SvelteFlow>
 </div>

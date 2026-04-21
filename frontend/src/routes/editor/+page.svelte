@@ -6,9 +6,11 @@
 	import { dicegrams as api, type Dicegram } from '$lib/dicegrams';
 	import {
 		addEdge,
+		addNode,
 		findNodeLineIndex,
 		getSetting,
 		moveNodeAmongSiblings,
+		nextNodeName,
 		removeNode,
 		reparentNode,
 		setNodePosition,
@@ -23,6 +25,7 @@
 	import { TEMPLATES, DEFAULT_TEMPLATE_ID, type DicegramTemplate } from '$lib/templates';
 	import { buildTreeFallback } from '$lib/tree-fallback';
 	import Canvas from './Canvas.svelte';
+	import CanvasInsertBar from './CanvasInsertBar.svelte';
 	import CodeEditor from './CodeEditor.svelte';
 	import EdgeMarkers from './EdgeMarkers.svelte';
 	import QuickInsert from './QuickInsert.svelte';
@@ -655,6 +658,50 @@
 	let canvasFocusTrigger = $state(0);
 	let canvasFitAllTrigger = $state(0);
 
+	// Code / canvas split width (percentage of the code-plus-canvas region).
+	// Clamped to [15, 85] so neither pane can collapse the other out of
+	// usable range. Persisted so the editor opens in the user's last layout.
+	const SPLIT_KEY = 'dicegram:editor:code-split';
+	let codeSplitPct = $state(40);
+	$effect(() => {
+		try {
+			const v = localStorage.getItem(SPLIT_KEY);
+			if (v) {
+				const n = Number(v);
+				if (Number.isFinite(n) && n >= 15 && n <= 85) codeSplitPct = n;
+			}
+		} catch {
+			/* ignore */
+		}
+	});
+	let editorGrid: HTMLDivElement | undefined = $state();
+	function startSplitResize(e: MouseEvent) {
+		e.preventDefault();
+		const grid = editorGrid;
+		if (!grid) return;
+		const rect = grid.getBoundingClientRect();
+		const treeW = leftTreeOpen ? 220 : 0;
+		const inspectorW = inspectorOpen ? 340 : 0;
+		const handleW = 4;
+		const avail = rect.width - treeW - inspectorW - handleW;
+		const onMove = (ev: MouseEvent) => {
+			const x = ev.clientX - rect.left - treeW;
+			const pct = (x / avail) * 100;
+			codeSplitPct = Math.min(85, Math.max(15, pct));
+		};
+		const onUp = () => {
+			document.removeEventListener('mousemove', onMove);
+			document.removeEventListener('mouseup', onUp);
+			try {
+				localStorage.setItem(SPLIT_KEY, String(Math.round(codeSplitPct)));
+			} catch {
+				/* ignore */
+			}
+		};
+		document.addEventListener('mousemove', onMove);
+		document.addEventListener('mouseup', onUp);
+	}
+
 	function handleTreeSelect(id: string) {
 		handleNodeSelect(id);
 		canvasFocusId = id;
@@ -728,8 +775,10 @@
 </script>
 
 <div
-	class="flex flex-col"
-	style={`${themeVars} height: ${showChrome ? 'calc(100vh - var(--header-h))' : '100vh'};`}
+	class="flex min-h-0 flex-1 flex-col"
+	style={showChrome
+		? themeVars
+		: `${themeVars} height: 100vh;`}
 >
 	<EdgeMarkers />
 	{#if demoMode}
@@ -794,10 +843,13 @@
 	{/if}
 
 	<div
-		class="grid flex-1 overflow-hidden"
-		style:grid-template-columns={leftTreeOpen
-			? '220px minmax(320px,2fr) minmax(0,3fr)'
-			: 'minmax(320px,2fr) minmax(0,3fr)'}
+		bind:this={editorGrid}
+		class="grid min-h-0 flex-1 overflow-hidden"
+		style:grid-template-columns={
+			(leftTreeOpen && showChrome ? '220px ' : '') +
+			`minmax(180px, ${codeSplitPct}fr) 4px minmax(180px, ${100 - codeSplitPct}fr)` +
+			(inspectorOpen && showChrome ? ' 340px' : '')
+		}
 	>
 		{#if leftTreeOpen && showChrome}
 			<TreePanel
@@ -809,7 +861,7 @@
 			/>
 		{/if}
 		<section
-			class="relative flex flex-col border-r"
+			class="relative flex min-w-0 flex-col border-r"
 			style:background-color={theme.codeBg}
 			style:border-color={theme.panelBorder}
 		>
@@ -836,11 +888,23 @@
 				</div>
 			{/if}
 		</section>
+		<!-- Draggable vertical divider between code and canvas. -->
+		<div
+			class="split-handle"
+			role="separator"
+			aria-orientation="vertical"
+			aria-label="Resize code / preview"
+			tabindex="0"
+			onmousedown={startSplitResize}
+		></div>
 		<section
-			class="relative flex min-w-0 flex-col transition-[padding-right]"
-			style:padding-right={rightPaneOpen ? '340px' : '0'}
+			class="relative flex min-w-0 flex-col"
 			style:background-color={theme.canvas}
 		>
+			{#if showChrome}
+				<CanvasInsertBar />
+			{/if}
+			<div class="relative min-h-0 flex-1">
 			<Canvas
 				{result}
 				{theme}
@@ -857,7 +921,20 @@
 				onObjectSelect={handleObjectSelect}
 				onConnect={handleConnect}
 				onReparent={handleReparent}
+				onDropShape={(shape, pos) => {
+					const name = nextNodeName(source, shape);
+					const label = shape.charAt(0).toUpperCase() + shape.slice(1);
+					source = addNode(source, {
+						name,
+						shape,
+						label,
+						position: { x: pos.x, y: pos.y }
+					});
+					canvasFocusId = name;
+					canvasFocusTrigger += 1;
+				}}
 			/>
+			</div>
 			{#if renderError}
 				<div
 					class="pointer-events-none absolute left-4 top-4 rounded bg-red-900/80 px-3 py-2 text-sm text-red-100 shadow"
@@ -866,12 +943,34 @@
 				</div>
 			{/if}
 		</section>
+		{#if inspectorOpen && showChrome}
+			<Inspector
+				bind:source
+				bind:open={inspectorOpen}
+				selected={selectedNode}
+				{selectedEdgeId}
+				{selectedObjectKind}
+				{selectedObjectIndex}
+				{result}
+				{labelFocusTrigger}
+				onClose={() => (inspectorOpen = false)}
+				onSelectionChange={handleSelectionChange}
+				onEdgeSelectionChange={(id) => (selectedEdgeId = id)}
+				onObjectSelectionChange={handleObjectSelect}
+				onReparent={handleReparent}
+				onSiblingMove={handleSiblingMove}
+			/>
+		{/if}
 	</div>
 </div>
 
 {#if showChrome}
 	<SettingsPane bind:source bind:open={settingsOpen} {result} onClose={() => (settingsOpen = false)} />
 
+	<!-- Second (hidden) copy only used as a fallback trap so the old
+	     Inspector remount isn't triggered. The in-grid Inspector above is
+	     what users see. -->
+	{#if false}
 	<Inspector
 		bind:source
 		bind:open={inspectorOpen}
@@ -888,6 +987,7 @@
 		onReparent={handleReparent}
 		onSiblingMove={handleSiblingMove}
 	/>
+	{/if}
 {/if}
 
 <!-- Dialog mounts unconditionally and content-gates on its own `open`
@@ -981,3 +1081,16 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	.split-handle {
+		cursor: col-resize;
+		background: color-mix(in oklab, var(--th-panel-border, #262626) 80%, transparent);
+		transition: background-color 0.12s;
+	}
+	.split-handle:hover,
+	.split-handle:focus-visible {
+		background: var(--th-accent, #3b82f6);
+		outline: none;
+	}
+</style>
