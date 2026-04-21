@@ -441,15 +441,10 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
             f"{escape(n['text'].splitlines()[0] if n['text'] else '')}</text>"
         )
 
-    for name, r in layout["group_rects"].items():
-        parts.append(
-            f'<rect x="{r["x"]:.1f}" y="{r["y"]:.1f}" width="{r["w"]:.1f}" height="{r["h"]:.1f}" '
-            f'rx="12" fill="none" stroke="{th["group_border"]}" stroke-width="1.5" stroke-dasharray="6 4" />'
-            f'<rect x="{r["x"]+12:.1f}" y="{r["y"]-8:.1f}" width="{len(name)*7+12:.1f}" height="14" rx="4" '
-            f'fill="{th["bg"]}" />'
-            f'<text x="{r["x"]+18:.1f}" y="{r["y"]+2:.1f}" font-size="10" fill="{th["group_label"]}" '
-            f'style="text-transform:uppercase; letter-spacing: 0.05em">{escape(name)}</text>'
-        )
+    # Groups are temporarily disabled end-to-end: the parser still accepts
+    # the syntax (for legacy files) and layout still computes rects, but
+    # neither canvas nor SVG export renders them. Dropped until a cleaner
+    # overlay that doesn't clash with box/lane borders.
 
     parts.append("</svg>")
     return "".join(parts)

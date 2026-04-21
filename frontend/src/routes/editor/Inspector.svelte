@@ -435,6 +435,14 @@
         <ShapePreview node={selected} />
       </div>
       <div class="min-h-0 flex-1 overflow-y-auto">
+      <!-- Shape selector is the primary "type" control for a node — it
+           sits above everything else so the user can change what the
+           thing *is* before tweaking details. -->
+      <div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Shape</div>
+      <div class="px-3">
+        <Dropdown value={currentShape} options={shapeOptions} onchange={commitShape} />
+      </div>
+
       <div class="mt-3 mb-1 flex items-center justify-between px-3 text-[10px] uppercase tracking-wide text-neutral-500">
         <span>Hierarchy</span>
         <div class="flex items-center gap-0.5">
@@ -475,12 +483,6 @@
             onblur={commitName}
             onkeydown={(e) => onTextKey(e, commitName)}
           />
-        </div>
-        <div class="flex items-center gap-2">
-          <label class="w-14 text-[11px] text-neutral-400">Shape</label>
-          <div class="flex-1">
-            <Dropdown value={currentShape} options={shapeOptions} onchange={commitShape} />
-          </div>
         </div>
         <div class="flex items-start gap-2">
           <label class="w-14 pt-1 text-[11px] text-neutral-400">Label</label>

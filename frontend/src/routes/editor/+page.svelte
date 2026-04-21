@@ -195,9 +195,20 @@
 			rendering = true;
 			try {
 				const res = await renderDsl(src, wantNormalize);
+				// Always update the rendered canvas with the latest layout
+				// we got back. But only overwrite the editor buffer with a
+				// normalize rewrite if `source` hasn't moved on since we
+				// sent the request — otherwise those in-flight keystrokes
+				// would be clobbered. The next debounced render catches up.
 				result = res;
 				renderError = null;
-				if (wantNormalize && res.source_changed && res.normalized_source !== src) {
+				const stillCurrent = source === src;
+				if (
+					stillCurrent &&
+					wantNormalize &&
+					res.source_changed &&
+					res.normalized_source !== src
+				) {
 					preNormalizeSource = src;
 					const count = res.notices.length;
 					normalizeToast =
@@ -877,9 +888,13 @@
 		onReparent={handleReparent}
 		onSiblingMove={handleSiblingMove}
 	/>
-
-	<LlmPromptDialog bind:open={llmDialogOpen} promptText={llmPromptText} />
 {/if}
+
+<!-- Dialog mounts unconditionally and content-gates on its own `open`
+     flag. Keeping it outside `{#if showChrome}` avoids a class of bug
+     where a re-render of the wrapper remounts the dialog and blows away
+     its open=true state right after the button sets it. -->
+<LlmPromptDialog bind:open={llmDialogOpen} promptText={llmPromptText} />
 
 {#if normalizeToast}
 	<div

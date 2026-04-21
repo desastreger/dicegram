@@ -5,7 +5,6 @@
 		addEdge,
 		addSwimlane,
 		addBox,
-		addGroup,
 		addNote,
 		nextNodeName,
 		nextLabel
@@ -107,9 +106,6 @@
 	function insertBox() {
 		source = addBox(source, { label: nextLabel(source, 'box', 'Box') });
 	}
-	function insertGroup() {
-		source = addGroup(source, nextLabel(source, 'group', 'Group'));
-	}
 	function insertNote() {
 		const re = /^\s*\[\w+\]\s+(\w+)\s+"/gm;
 		const ids: string[] = [];
@@ -138,14 +134,6 @@
 			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
 		>
 			+ Box
-		</button>
-		<button
-			type="button"
-			onclick={insertGroup}
-			title="Insert group overlay"
-			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
-		>
-			+ Group
 		</button>
 		<button
 			type="button"

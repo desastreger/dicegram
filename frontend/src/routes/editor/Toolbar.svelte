@@ -32,7 +32,8 @@
 		onSave,
 		onOpen,
 		onNew,
-		onDirectionChange
+		onDirectionChange,
+		onLlmOpen
 	}: {
 		source: string;
 		name: string;

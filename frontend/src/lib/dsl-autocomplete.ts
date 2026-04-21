@@ -52,6 +52,7 @@ const BRACKET_KEYWORDS = [
 	'dashed_line',
 	'thick_line',
 	'dotted_line',
+	'note',
 	'connector',
 	'linebreak'
 ];

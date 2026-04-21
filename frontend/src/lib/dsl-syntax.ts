@@ -19,6 +19,7 @@ const SHAPE_RE = /\[(\w+)\]/g;
 const BRACKET_KEYWORDS = new Set([
 	'connector',
 	'linebreak',
+	'note',
 	'solid_line',
 	'dashed_line',
 	'thick_line',

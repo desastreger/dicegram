@@ -155,7 +155,17 @@
 		Edge not found — it may have been removed.
 	</div>
 {:else}
+	<!-- Line style is the primary "type" control for a connector — same
+	     logical slot nodes reserve for Shape, so users always find the
+	     type selector at the top of the panel. -->
 	<div class="mt-2 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">
+		Line style
+	</div>
+	<div class="px-3">
+		<Dropdown value={currentKind} options={kindOptions} onchange={commitKind} />
+	</div>
+
+	<div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">
 		Edge
 	</div>
 	<div class="space-y-1 px-3">
@@ -166,12 +176,6 @@
 		<div class="flex items-center gap-2">
 			<label class="w-14 text-[11px] text-neutral-400">To</label>
 			<span class="flex-1 truncate font-mono text-[11px] text-neutral-200">{edge.target}</span>
-		</div>
-		<div class="flex items-center gap-2">
-			<label class="w-14 text-[11px] text-neutral-400">Kind</label>
-			<div class="flex-1">
-				<Dropdown value={currentKind} options={kindOptions} onchange={commitKind} />
-			</div>
 		</div>
 		<div class="flex items-start gap-2">
 			<label class="w-14 pt-1 text-[11px] text-neutral-400">Label</label>

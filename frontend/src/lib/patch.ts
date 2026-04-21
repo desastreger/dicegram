@@ -440,7 +440,18 @@ export function addGroup(source: string, name: string, members: string[] = []): 
 }
 
 export function addNote(source: string, text: string, target: string): string {
-	return source.trimEnd() + `\nnote ${formatLabel(text)} [${target}]\n`;
+	// Find a non-colliding name. The bracket form uses an identifier so
+	// the note surfaces alongside shapes/connectors in the tree panel.
+	const used = new Set<string>();
+	const re = /^\s*\[note\]\s+(\w+)\s+"/gm;
+	for (const m of source.matchAll(re)) used.add(m[1]);
+	let i = 1;
+	while (used.has(`note_${i}`)) i++;
+	const name = `note_${i}`;
+	return (
+		source.trimEnd() +
+		`\n[note] ${name} ${formatLabel(text)} target:${target}\n`
+	);
 }
 
 /** Produce a node name that isn't already used in `source`. */
@@ -991,8 +1002,14 @@ const SWIMLANE_OPEN_RE = /^(\s*)swimlane\s+"([^"]+)"\s*\{\s*$/;
 // Captures: 1=indent 2=label 3=optional-style-block-contents (inside {})
 const BOX_OPEN_RE = /^(\s*)box\s+"([^"]+)"\s*(?:\{([^{}]*)\})?\s*\{\s*$/;
 const GROUP_LINE_RE = /^(\s*)group\s+"([^"]+)"\s*\{(.*)\}\s*$/;
-const NOTE_LINE_RE = new RegExp(
+// Legacy note syntax: `note "text" [target]`.
+const NOTE_LEGACY_LINE_RE = new RegExp(
 	'^(\\s*)note\\s+(' + LABEL_SEQ_SRC + ')\\s+\\[(\\w+)\\]\\s*$'
+);
+// Bracket-form note: `[note] name? "text" target:other_node`. Matches
+// whether the optional identifier is present or not.
+const NOTE_BRACKET_LINE_RE = new RegExp(
+	'^(\\s*)\\[note\\]\\s+(?:(\\w+)\\s+)?(' + LABEL_SEQ_SRC + ')\\s*(.*?)\\s*$'
 );
 
 function findSwimlaneHeaderIndex(source: string, name: string): number {
@@ -1146,11 +1163,15 @@ export function removeGroup(source: string, name: string): string {
 	return lines.join('\n');
 }
 
+function isNoteLine(line: string): boolean {
+	return NOTE_LEGACY_LINE_RE.test(line) || NOTE_BRACKET_LINE_RE.test(line);
+}
+
 function findNoteLineIndexByOrdinal(source: string, ordinal: number): number {
 	const lines = source.split('\n');
 	let seen = 0;
 	for (let i = 0; i < lines.length; i++) {
-		if (NOTE_LINE_RE.test(lines[i])) {
+		if (isNoteLine(lines[i])) {
 			if (seen === ordinal) return i;
 			seen += 1;
 		}
@@ -1158,18 +1179,57 @@ function findNoteLineIndexByOrdinal(source: string, ordinal: number): number {
 	return -1;
 }
 
-function escapeDslString(s: string): string {
-	return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+function parseNoteAttrs(body: string): { target: string; others: Record<string, string> } {
+	let target = '';
+	const others: Record<string, string> = {};
+	ATTR_FIND_RE.lastIndex = 0;
+	let m: RegExpExecArray | null;
+	while ((m = ATTR_FIND_RE.exec(body)) !== null) {
+		let v = m[2];
+		if (v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
+		const k = m[1].toLowerCase();
+		if (k === 'target' || k === 'to' || k === 'for') target = v;
+		else others[k] = v;
+	}
+	return { target, others };
+}
+
+function rebuildBracketNote(
+	indent: string,
+	name: string | undefined,
+	text: string,
+	target: string,
+	others: Record<string, string>
+): string {
+	const bits = [`${indent}[note]`];
+	if (name) bits.push(name);
+	bits.push(formatLabel(text));
+	if (target) bits.push(`target:${target}`);
+	for (const [k, v] of Object.entries(others)) {
+		if (v === '' || v == null) continue;
+		const needs = /\s|,/.test(v);
+		bits.push(`${k}:${needs ? `"${v}"` : v}`);
+	}
+	return bits.join(' ');
 }
 
 export function setNoteText(source: string, ordinal: number, text: string): string {
 	const lines = source.split('\n');
 	const idx = findNoteLineIndexByOrdinal(source, ordinal);
 	if (idx < 0) return source;
-	const m = lines[idx].match(NOTE_LINE_RE);
-	if (!m) return source;
-	lines[idx] = `${m[1]}note ${formatLabel(text)} [${m[3]}]`;
-	return lines.join('\n');
+	const bm = lines[idx].match(NOTE_BRACKET_LINE_RE);
+	if (bm) {
+		const [, indent, nm, , rest] = bm;
+		const { target, others } = parseNoteAttrs(rest ?? '');
+		lines[idx] = rebuildBracketNote(indent, nm, text, target, others);
+		return lines.join('\n');
+	}
+	const lm = lines[idx].match(NOTE_LEGACY_LINE_RE);
+	if (lm) {
+		lines[idx] = `${lm[1]}note ${formatLabel(text)} [${lm[3]}]`;
+		return lines.join('\n');
+	}
+	return source;
 }
 
 export function setNoteTarget(source: string, ordinal: number, target: string): string {
@@ -1178,10 +1238,19 @@ export function setNoteTarget(source: string, ordinal: number, target: string): 
 	const lines = source.split('\n');
 	const idx = findNoteLineIndexByOrdinal(source, ordinal);
 	if (idx < 0) return source;
-	const m = lines[idx].match(NOTE_LINE_RE);
-	if (!m) return source;
-	lines[idx] = `${m[1]}note ${m[2]} [${t}]`;
-	return lines.join('\n');
+	const bm = lines[idx].match(NOTE_BRACKET_LINE_RE);
+	if (bm) {
+		const [, indent, nm, raw, rest] = bm;
+		const { others } = parseNoteAttrs(rest ?? '');
+		lines[idx] = rebuildBracketNote(indent, nm, joinLabelParts(raw), t, others);
+		return lines.join('\n');
+	}
+	const lm = lines[idx].match(NOTE_LEGACY_LINE_RE);
+	if (lm) {
+		lines[idx] = `${lm[1]}note ${lm[2]} [${t}]`;
+		return lines.join('\n');
+	}
+	return source;
 }
 
 export function removeNote(source: string, ordinal: number): string {

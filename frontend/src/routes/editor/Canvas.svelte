@@ -337,7 +337,12 @@
 			};
 		});
 
-		nodes = [...laneNodes, ...boxNodes, ...shapeNodes, ...noteNodes, ...groupNodes];
+		// Groups are temporarily disabled — they produce visual artifacts
+		// around nested shapes and the semantics overlap with boxes. The
+		// parser still accepts legacy group syntax so old files don't
+		// break; we just skip rendering the overlay.
+		void groupNodes;
+		nodes = [...laneNodes, ...boxNodes, ...shapeNodes, ...noteNodes];
 
 		const edgeColor = theme.edge;
 		const styleFor = (kind: string, override?: string) => {
@@ -590,7 +595,7 @@
 		onconnect={handleConnect}
 	>
 		<Background patternColor={theme.gridDot} />
-		<Controls />
+		<Controls position="top-right" />
 		<MiniMap pannable zoomable />
 		<CanvasFocus {focusId} trigger={focusTrigger} {fitAllTrigger} />
 		<ViewportRegister />

@@ -80,6 +80,14 @@ NOTE_RE = re.compile(
     r'("(?:[^"\\]|\\.)*"(?:\s*\[linebreak\]\s*"(?:[^"\\]|\\.)*")*)'
     r'\s+\[(\w+)\]$'
 )
+# Bracket-form note: `[note] name? "text" target:other_node`. Same shape
+# as `[solid_line] name? from:A to:B …` so notes surface as first-class
+# objects in the inspector alongside shapes and connectors.
+NOTE_BRACKET_RE = re.compile(
+    r'^\[note\]\s+(?:(\w+)\s+)?'
+    r'("(?:[^"\\]|\\.)*"(?:\s*\[linebreak\]\s*"(?:[^"\\]|\\.)*")*)'
+    r'\s*(.*?)\s*$'
+)
 IDENT_RE = re.compile(r"\w+")
 
 # Verbose block-form edge:  A@r -> B@l {
@@ -593,6 +601,24 @@ def parse(source: str) -> Parsed:
         if m:
             parsed.notes.append(Note(text=_join_label_parts(m.group(1)), target=m.group(2)))
             continue
+
+        # Bracket-form note.
+        m = NOTE_BRACKET_RE.match(stripped)
+        if m:
+            text = _join_label_parts(m.group(2))
+            rest = m.group(3) or ""
+            target = ""
+            for am in ATTR_RE.finditer(rest):
+                k = am.group(1).lower()
+                v = am.group(2)
+                if v.startswith('"') and v.endswith('"'):
+                    v = v[1:-1]
+                if k in ("target", "to", "for"):
+                    target = v
+            if target:
+                parsed.notes.append(Note(text=text, target=target))
+                continue
+            # Missing target → let this fall through to the error branch.
 
         # bracket-form connector:  [connector] name? from:A to:B kind:… tip:…
         connector = _parse_connector(stripped)

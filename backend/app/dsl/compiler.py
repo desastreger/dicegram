@@ -282,7 +282,7 @@ def normalize(source: str) -> NormalizeResult:
             changed = True
 
     # R8: auto-verbose connectors — rewrite inline `A -> B : "x"` lines as
-    #     the `[arrow]` / `[dashed_arrow]` / `[thick_arrow]` / `[line]` /
+    #     the `[solid_line]` / `[dashed_line]` / `[thick_line]` /
     #     `[dotted_line]` bracket form so every connector on screen shows
     #     origin, destination, both anchors, tip and back just like nodes
     #     show name/shape/label/step/type. The self-heal invariant: no
@@ -295,6 +295,20 @@ def normalize(source: str) -> NormalizeResult:
                 "fix",
                 f"rewrote {rewrote} inline connector{'s' if rewrote != 1 else ''} "
                 "to the verbose bracket form",
+                None,
+            )
+        )
+        changed = True
+
+    # R9: auto-verbose notes — `note "text" [target]` becomes
+    #     `[note] note_N "text" target:target` so notes surface as
+    #     first-class objects next to shapes and connectors.
+    lines, note_rewrote = _materialize_notes(lines)
+    if note_rewrote:
+        notices.append(
+            Notice(
+                "fix",
+                f"rewrote {note_rewrote} note{'s' if note_rewrote != 1 else ''} to bracket form",
                 None,
             )
         )
@@ -424,6 +438,44 @@ def _materialize_inline_edges(lines: list[str], direction: str) -> tuple[list[st
         for k, v in attrs.items():
             bits.append(f"{k}:{v}")
         out.append(" ".join(bits))
+        rewritten += 1
+    return out, rewritten
+
+
+_NOTE_INLINE_RE = re.compile(
+    r'^(?P<indent>\s*)note\s+'
+    r'(?P<text>"(?:[^"\\]|\\.)*"(?:\s*\[linebreak\]\s*"(?:[^"\\]|\\.)*")*)'
+    r'\s+\[(?P<target>\w+)\]\s*$'
+)
+
+
+def _materialize_notes(lines: list[str]) -> tuple[list[str], int]:
+    """Rewrite legacy `note "…" [target]` lines into the `[note] name "…"
+    target:X` bracket form. Already-bracketed notes pass through."""
+    rewritten = 0
+    counter = 1
+    # Collect existing bracket-note names so we don't collide.
+    used: set[str] = set()
+    bracket_name_re = re.compile(r'^\s*\[note\]\s+(\w+)\s+"')
+    for line in lines:
+        m = bracket_name_re.match(line)
+        if m:
+            used.add(m.group(1))
+    out: list[str] = []
+    for line in lines:
+        m = _NOTE_INLINE_RE.match(line)
+        if not m:
+            out.append(line)
+            continue
+        while f"note_{counter}" in used:
+            counter += 1
+        name = f"note_{counter}"
+        used.add(name)
+        counter += 1
+        out.append(
+            f"{m.group('indent')}[note] {name} {m.group('text')} "
+            f"target:{m.group('target')}"
+        )
         rewritten += 1
     return out, rewritten
 

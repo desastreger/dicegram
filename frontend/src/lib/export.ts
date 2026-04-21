@@ -317,12 +317,21 @@ box "Label" {fill:#hex, stroke:#hex} { <objects> }
     A tinted sub-container. Lives INSIDE a swimlane block. The style dict
     is OPTIONAL and comes BEFORE the body block.
 
-group "Name" { obj1 obj2 obj3 }
-    Dashed visual overlay around referenced objects. Can span swimlanes.
-    Does not own layout — it just draws a dashed border.
+[note] name "Sticky text" target:object_id
+    A sticky note attached to an existing object. Same bracket-object
+    shape as shapes and connectors — surfaces in the inspector as a
+    first-class object.
 
-note "Sticky text" [target_object]
-    A sticky note attached to an existing object by name.
+    Legacy form \`note "text" [target]\` is accepted on parse but gets
+    rewritten to the \`[note]\` bracket form on normalize; always emit
+    the bracket form in new content.
+
+    Multi-line note text uses \`[linebreak]\` between quoted segments:
+        [note] n1 "Runs nightly" [linebreak] "via cron" target:service
+
+(Groups are temporarily disabled — do NOT emit \`group "Name" { … }\`
+lines. They still parse for back-compat with old files but are not
+rendered. Use swimlanes + boxes for grouping until groups return.)
 
 [shape] unique_name "Display Label" step:N [attrs] [{style}] [@(x,y)]
     The ONLY way to declare an object. Every field after the label is
