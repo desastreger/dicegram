@@ -1,8 +1,11 @@
-// Branding palette — user-tunable default colours. DSL-inline styles always
-// win; the palette fills in defaults the DSL didn't specify. Backend is the
-// source of truth (see backend/app/palette.py); this store mirrors it.
+// Branding palette — Dicegram-tunable default colours. Layer order from
+// lowest precedence to highest: theme baseline → user brand overrides
+// (stored on the user row) → per-Dicegram overrides (in the DSL header) →
+// inline DSL `style:` keys on a single node. Inline styles always win;
+// the palette fills in the rest. Backend is the source of truth — see
+// backend/app/palette.py.
 
-const DEFAULTS: Record<string, string> = {
+const DEFAULT_DARK_PALETTE: Record<string, string> = {
 	type_start: '#064e3b',
 	type_end: '#3f1d1d',
 	type_decision: '#3a2f0b',
@@ -25,6 +28,72 @@ const DEFAULTS: Record<string, string> = {
 	edge: '#94a3b8',
 	edge_label: '#e5e7eb'
 };
+
+const ANTHROPIC_PALETTE: Record<string, string> = {
+	type_start: '#fce4d6',
+	type_end: '#fce4d6',
+	type_decision: '#e6e3f7',
+	type_datastore: '#dde6f0',
+	type_process: '#dceadb',
+	type_input: '#fce4d6',
+	type_output: '#fce4d6',
+	type_manual: '#dceadb',
+	type_automated: '#dceadb',
+	type_approval: '#e6e3f7',
+	type_external: '#fce4d6',
+	node_fill: '#dceadb',
+	node_stroke: '#a8c2a3',
+	node_text: '#3d5c3a',
+	priority_critical: '#c44536',
+	priority_high: '#d4863b',
+	status_blocked: '#c44536',
+	status_complete: '#5b8060',
+	status_deprecated_text: '#8a8780',
+	edge: '#8a8a82',
+	edge_label: '#3d3d35'
+};
+
+const LIGHT_PALETTE: Record<string, string> = {
+	type_start: '#bbf7d0',
+	type_end: '#fecaca',
+	type_decision: '#fde68a',
+	type_datastore: '#bfdbfe',
+	type_process: '',
+	type_input: '',
+	type_output: '',
+	type_manual: '',
+	type_automated: '',
+	type_approval: '',
+	type_external: '',
+	node_fill: '#f8fafc',
+	node_stroke: '#475569',
+	node_text: '#0f172a',
+	priority_critical: '#dc2626',
+	priority_high: '#d97706',
+	status_blocked: '#dc2626',
+	status_complete: '#059669',
+	status_deprecated_text: '#9ca3af',
+	edge: '#475569',
+	edge_label: '#0f172a'
+};
+
+const THEME_PRESETS: Record<string, Record<string, string>> = {
+	anthropic: ANTHROPIC_PALETTE,
+	'default-dark': DEFAULT_DARK_PALETTE,
+	light: LIGHT_PALETTE
+};
+
+const DEFAULT_THEME_ID = 'default-dark';
+
+// Back-compat: callers that referenced PALETTE_DEFAULTS directly get the
+// historical default-dark palette so behaviour matches the pre-theme code.
+export const PALETTE_DEFAULTS = DEFAULT_DARK_PALETTE;
+export const PALETTE_THEME_IDS = Object.keys(THEME_PRESETS);
+
+export function themePalette(themeId: string | null | undefined): Record<string, string> {
+	const id = (themeId ?? '').trim().toLowerCase();
+	return { ...(THEME_PRESETS[id] ?? DEFAULT_DARK_PALETTE) };
+}
 
 // Human-readable order and grouping for the settings UI.
 export const PALETTE_SECTIONS: {
@@ -79,15 +148,30 @@ export const PALETTE_SECTIONS: {
 	}
 ];
 
+const ALLOWED_KEYS = new Set(Object.keys(DEFAULT_DARK_PALETTE));
+
 function sanitize(raw: Record<string, unknown>): Record<string, string> {
-	const out: Record<string, string> = { ...DEFAULTS };
+	const out: Record<string, string> = {};
 	for (const [k, v] of Object.entries(raw)) {
-		if (!(k in DEFAULTS)) continue;
+		if (!ALLOWED_KEYS.has(k)) continue;
 		if (typeof v !== 'string') continue;
 		const s = v.trim();
 		if (s === '') continue;
 		if (!/^(#|rgb|hsl)/.test(s)) continue;
 		out[k] = s;
+	}
+	return out;
+}
+
+function applyOverrides(
+	base: Record<string, string>,
+	overrides: Record<string, string>
+): Record<string, string> {
+	const out = { ...base };
+	for (const [k, v] of Object.entries(overrides)) {
+		if (!ALLOWED_KEYS.has(k)) continue;
+		if (typeof v !== 'string' || v === '') continue;
+		out[k] = v;
 	}
 	return out;
 }
@@ -99,18 +183,50 @@ export type Preset = {
 };
 
 class PaletteStore {
-	current: Record<string, string> = $state({ ...DEFAULTS });
+	// What the API gave us — the user's saved brand palette overrides
+	// (sanitized, sparse map: only keys the user actually overrode).
+	userOverrides: Record<string, string> = $state({});
+	// Per-Dicegram overrides scraped from `setting palette_<key> <color>`
+	// in the DSL. Cleared when the user opens a different Dicegram.
+	dicegramOverrides: Record<string, string> = $state({});
+	// Active theme id, picked by the Dicegram via `setting color_scheme`.
+	activeThemeId: string = $state(DEFAULT_THEME_ID);
 	presets: Preset[] = $state([]);
 	locked = $state(false);
 	loaded = $state(false);
 	saving = $state(false);
+
+	// `current` is the resolved palette every consumer reads. Layered:
+	// theme baseline → user brand overrides → per-Dicegram overrides.
+	get current(): Record<string, string> {
+		return applyOverrides(
+			applyOverrides(themePalette(this.activeThemeId), this.userOverrides),
+			this.dicegramOverrides
+		);
+	}
+
+	setActiveTheme(themeId: string | null | undefined) {
+		const id = (themeId ?? '').trim().toLowerCase() || DEFAULT_THEME_ID;
+		if (id !== this.activeThemeId) this.activeThemeId = id;
+	}
+
+	setDicegramOverrides(overrides: Record<string, string>) {
+		this.dicegramOverrides = sanitize(overrides as Record<string, unknown>);
+	}
 
 	async load(): Promise<void> {
 		try {
 			const res = await fetch('/api/auth/me/palette', { credentials: 'include' });
 			if (res.ok) {
 				const j = await res.json();
-				this.current = sanitize(j.palette ?? {});
+				// The API returns the merged palette — convert it back into a
+				// sparse user-overrides map by diffing against the dark default.
+				const merged = sanitize(j.palette ?? {});
+				const sparse: Record<string, string> = {};
+				for (const [k, v] of Object.entries(merged)) {
+					if (DEFAULT_DARK_PALETTE[k] !== v) sparse[k] = v;
+				}
+				this.userOverrides = sparse;
 				this.locked = Boolean(j.locked);
 			}
 			await this.loadPresets();
@@ -134,12 +250,12 @@ class PaletteStore {
 	}
 
 	async save(overrides: Record<string, string>, locked?: boolean): Promise<void> {
-		// Strip values equal to the default; backend stores overrides only.
+		// Strip values equal to the dark default; backend stores overrides only.
 		const payload: Record<string, string> = {};
 		for (const [k, v] of Object.entries(overrides)) {
-			if (!(k in DEFAULTS)) continue;
+			if (!ALLOWED_KEYS.has(k)) continue;
 			const s = (v ?? '').trim();
-			if (s === '' || s === DEFAULTS[k]) continue;
+			if (s === '' || s === DEFAULT_DARK_PALETTE[k]) continue;
 			payload[k] = s;
 		}
 		this.saving = true;
@@ -154,23 +270,22 @@ class PaletteStore {
 			});
 			if (res.ok) {
 				const j = await res.json();
-				this.current = sanitize(j.palette ?? {});
+				const merged = sanitize(j.palette ?? {});
+				const sparse: Record<string, string> = {};
+				for (const [k, v] of Object.entries(merged)) {
+					if (DEFAULT_DARK_PALETTE[k] !== v) sparse[k] = v;
+				}
+				this.userOverrides = sparse;
 				this.locked = Boolean(j.locked);
 			}
 		} finally {
 			this.saving = false;
-			// Recompute active preset after overrides changed.
 			await this.loadPresets();
 		}
 	}
 
 	async setLocked(locked: boolean): Promise<void> {
-		// Keep current overrides; just flip the lock.
-		const current: Record<string, string> = {};
-		for (const [k, v] of Object.entries(this.current)) {
-			if (v !== DEFAULTS[k]) current[k] = v;
-		}
-		await this.save(current, locked);
+		await this.save(this.userOverrides, locked);
 	}
 
 	async reset(): Promise<void> {
@@ -178,8 +293,6 @@ class PaletteStore {
 	}
 
 	async savePreset(name: string): Promise<void> {
-		// Save the current active overrides under this name (backend will
-		// read branding_palette when `overrides` is omitted).
 		const res = await fetch('/api/auth/me/palettes', {
 			method: 'POST',
 			credentials: 'include',
@@ -199,7 +312,12 @@ class PaletteStore {
 		);
 		if (res.ok) {
 			const j = await res.json();
-			this.current = sanitize(j.palette ?? {});
+			const merged = sanitize(j.palette ?? {});
+			const sparse: Record<string, string> = {};
+			for (const [k, v] of Object.entries(merged)) {
+				if (DEFAULT_DARK_PALETTE[k] !== v) sparse[k] = v;
+			}
+			this.userOverrides = sparse;
 			await this.loadPresets();
 		}
 	}
@@ -216,11 +334,11 @@ class PaletteStore {
 	}
 
 	typeFill(type: string | undefined): string {
-		if (!type) return this.current.node_fill;
-		const v = this.current[`type_${type}`];
-		return v && v.length ? v : this.current.node_fill;
+		const cur = this.current;
+		if (!type) return cur.node_fill;
+		const v = cur[`type_${type}`];
+		return v && v.length ? v : cur.node_fill;
 	}
 }
 
 export const palette = new PaletteStore();
-export { DEFAULTS as PALETTE_DEFAULTS };

@@ -333,7 +333,8 @@
 					opacity: n.style.opacity,
 					stroke_width: n.style.stroke_width,
 					attrs: n.attrs,
-					dimmed: !matched
+					dimmed: !matched,
+					unique: n.style && Object.keys(n.style).length > 0
 				},
 				draggable: true,
 				selectable: true

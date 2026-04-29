@@ -189,6 +189,15 @@
     }
   }
 
+  function clearStyleNum(key: 'rx' | 'font_size' | 'opacity' | 'stroke_width') {
+    if (!selected) return;
+    source = removeNodeStyle(source, selected.id, key);
+    if (key === 'rx') rxDraft = '';
+    else if (key === 'font_size') fontSizeDraft = '';
+    else if (key === 'opacity') opacityDraft = '';
+    else if (key === 'stroke_width') strokeWidthDraft = '';
+  }
+
   function commitFontFamily() {
     if (!selected) return;
     const v = fontFamilyDraft.trim();
@@ -197,6 +206,52 @@
     } else {
       source = setNodeStyle(source, selected.id, 'font_family', v);
     }
+  }
+
+  function clearFontFamily() {
+    if (!selected) return;
+    source = removeNodeStyle(source, selected.id, 'font_family');
+    fontFamilyDraft = '';
+  }
+
+  // PowerPoint Slide Master + Godot "Make Unique" — a node tracks the
+  // active theme by default. Make Unique snapshots every currently-
+  // resolved color/typography token into inline `style:` keys so future
+  // theme swaps don't touch this node. Snap to Master clears every inline
+  // override and the node re-skins to the master theme on the next render.
+  const isUnique = $derived(
+    !!selected && selected.style && Object.keys(selected.style).length > 0
+  );
+
+  function makeUnique() {
+    if (!selected || palette.locked) return;
+    let next = source;
+    const captures: Array<[string, string]> = [
+      ['fill', currentFill],
+      ['stroke', currentStroke],
+      ['text', currentText],
+    ];
+    // Only capture typography that has a resolved value the master would
+    // otherwise own. We don't capture font_size etc. because there's no
+    // theme-level value for them today — they default at the renderer.
+    for (const [k, v] of captures) {
+      if (v) next = setNodeStyle(next, selected.id, k, v);
+    }
+    source = next;
+  }
+
+  function snapToMaster() {
+    if (!selected) return;
+    let next = source;
+    for (const k of ['fill', 'stroke', 'text', 'rx', 'font_size', 'opacity', 'stroke_width', 'font_family']) {
+      next = removeNodeStyle(next, selected.id, k);
+    }
+    source = next;
+    rxDraft = '';
+    fontSizeDraft = '';
+    opacityDraft = '';
+    strokeWidthDraft = '';
+    fontFamilyDraft = '';
   }
 
   type ContainerOption = {
@@ -605,13 +660,51 @@
       </div>
 
       <div class="mt-3 mb-1 flex items-center justify-between px-3 text-[10px] uppercase tracking-wide text-neutral-500">
-        <span>Style</span>
+        <span class="flex items-center gap-1.5">
+          Style
+          {#if isUnique}
+            <span
+              class="inline-flex items-center gap-1 rounded-full border border-amber-700/60 bg-amber-950/40 px-1.5 py-0.5 text-[9px] font-medium normal-case tracking-normal text-amber-300"
+              title="Detached from the master theme — overrides survive theme swaps"
+            >
+              <span class="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+              Unique
+            </span>
+          {/if}
+        </span>
         {#if palette.locked}
           <span title="Brand palette is locked in Settings" class="normal-case tracking-normal text-[10px] text-blue-400">
             Palette locked
           </span>
         {/if}
       </div>
+
+      <!-- Master / Unique toggle row. Make Unique captures the resolved
+           colours so a later theme change won't repaint this node; Snap to
+           Master clears every inline override so the node re-skins. -->
+      {#if !palette.locked}
+        <div class="mb-2 flex items-center gap-1 px-3">
+          {#if isUnique}
+            <button
+              type="button"
+              class="flex flex-1 items-center justify-center gap-1 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-200 hover:bg-neutral-800"
+              title="Drop every inline override and re-skin from the active theme"
+              onclick={snapToMaster}
+            >
+              <Icon name="unlock" size={11} /> Snap to master
+            </button>
+          {:else}
+            <button
+              type="button"
+              class="flex flex-1 items-center justify-center gap-1 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-200 hover:bg-neutral-800"
+              title="Pin the current resolved colours so future theme swaps don't touch this node"
+              onclick={makeUnique}
+            >
+              <Icon name="lock" size={11} /> Make unique
+            </button>
+          {/if}
+        </div>
+      {/if}
       {#if palette.locked}
         <p class="mx-3 mb-2 rounded border border-blue-900/50 bg-blue-950/30 px-2 py-1.5 text-[11px] text-blue-200">
           Colour overrides are disabled. Edit the active palette in
@@ -704,45 +797,72 @@
         Typography &amp; shape
       </div>
       <div class="grid grid-cols-2 gap-1 px-3">
-        <label class="flex items-center gap-1">
+        <div class="flex items-center gap-1">
           <span class="w-14 text-[11px] text-neutral-400">Font</span>
           <input
             type="number"
             placeholder="13"
             min="6"
-            class="h-6 w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="h-6 w-full min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
             bind:value={fontSizeDraft}
             onblur={() => commitStyleNum('font_size', fontSizeDraft)}
             onkeydown={(e) => onTextKey(e, () => commitStyleNum('font_size', fontSizeDraft))}
           />
-        </label>
-        <label class="flex items-center gap-1">
+          <button
+            type="button"
+            class="rounded border border-neutral-800 px-1 py-0.5 text-[9px] uppercase tracking-wide text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
+            disabled={!selected?.style?.font_size}
+            onclick={() => clearStyleNum('font_size')}
+            title="Clear override (revert to master)"
+          >
+            <Icon name="x" size={9} />
+          </button>
+        </div>
+        <div class="flex items-center gap-1">
           <span class="w-14 text-[11px] text-neutral-400">Radius</span>
           <input
             type="number"
             placeholder="auto"
             min="0"
-            class="h-6 w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="h-6 w-full min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
             bind:value={rxDraft}
             onblur={() => commitStyleNum('rx', rxDraft)}
             onkeydown={(e) => onTextKey(e, () => commitStyleNum('rx', rxDraft))}
           />
-        </label>
-        <label class="flex items-center gap-1">
+          <button
+            type="button"
+            class="rounded border border-neutral-800 px-1 py-0.5 text-[9px] uppercase tracking-wide text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
+            disabled={!selected?.style?.rx}
+            onclick={() => clearStyleNum('rx')}
+            title="Clear override (revert to master)"
+          >
+            <Icon name="x" size={9} />
+          </button>
+        </div>
+        <div class="flex items-center gap-1">
           <span class="w-14 text-[11px] text-neutral-400">Stroke</span>
           <input
             type="number"
             placeholder="auto"
             min="0"
             step="0.25"
-            class="h-6 w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="h-6 w-full min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
             bind:value={strokeWidthDraft}
             onblur={() => commitStyleNum('stroke_width', strokeWidthDraft)}
             onkeydown={(e) =>
               onTextKey(e, () => commitStyleNum('stroke_width', strokeWidthDraft))}
           />
-        </label>
-        <label class="flex items-center gap-1">
+          <button
+            type="button"
+            class="rounded border border-neutral-800 px-1 py-0.5 text-[9px] uppercase tracking-wide text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
+            disabled={!selected?.style?.stroke_width}
+            onclick={() => clearStyleNum('stroke_width')}
+            title="Clear override (revert to master)"
+          >
+            <Icon name="x" size={9} />
+          </button>
+        </div>
+        <div class="flex items-center gap-1">
           <span class="w-14 text-[11px] text-neutral-400">Opacity</span>
           <input
             type="number"
@@ -750,23 +870,41 @@
             min="0"
             max="1"
             step="0.05"
-            class="h-6 w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="h-6 w-full min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
             bind:value={opacityDraft}
             onblur={() => commitStyleNum('opacity', opacityDraft)}
             onkeydown={(e) => onTextKey(e, () => commitStyleNum('opacity', opacityDraft))}
           />
-        </label>
-        <label class="col-span-2 flex items-center gap-2">
+          <button
+            type="button"
+            class="rounded border border-neutral-800 px-1 py-0.5 text-[9px] uppercase tracking-wide text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
+            disabled={!selected?.style?.opacity}
+            onclick={() => clearStyleNum('opacity')}
+            title="Clear override (revert to master)"
+          >
+            <Icon name="x" size={9} />
+          </button>
+        </div>
+        <div class="col-span-2 flex items-center gap-2">
           <span class="w-14 text-[11px] text-neutral-400">Font family</span>
           <input
             type="text"
             placeholder="inherit"
-            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="h-6 flex-1 min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
             bind:value={fontFamilyDraft}
             onblur={commitFontFamily}
             onkeydown={(e) => onTextKey(e, commitFontFamily)}
           />
-        </label>
+          <button
+            type="button"
+            class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100 disabled:opacity-30"
+            disabled={!selected?.style?.font_family}
+            onclick={clearFontFamily}
+            title="Clear override (revert to master)"
+          >
+            Reset
+          </button>
+        </div>
       </div>
 
       <button

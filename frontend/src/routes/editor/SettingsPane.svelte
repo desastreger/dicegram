@@ -3,6 +3,7 @@
 	import Icon from '$lib/Icon.svelte';
 	import Dropdown from '$lib/Dropdown.svelte';
 	import { THEMES, THEME_IDS, DEFAULT_THEME_ID } from '$lib/themes';
+	import { palette, PALETTE_SECTIONS, themePalette } from '$lib/palette.svelte';
 	import type { RenderResult } from '$lib/render';
 
 	type Props = {
@@ -53,16 +54,81 @@
 	];
 	const DEFAULT_LINE_STYLE = 'orthogonal';
 
+	// Palette tokens stored as `setting palette_<key> <color>` so a single
+	// Dicegram can deviate from its theme without touching the user's
+	// global brand palette.
+	const PALETTE_OVERRIDE_KEYS = PALETTE_SECTIONS.flatMap((s) => s.keys.map((k) => `palette_${k.key}`));
+
 	const ALL_SETTING_KEYS = [
 		'color_scheme',
 		'line_style',
+		'font_family',
 		...NUMBER_KEYS.map((n) => n.key),
-		...TOGGLE_KEYS.map((t) => t.key)
+		...TOGGLE_KEYS.map((t) => t.key),
+		...PALETTE_OVERRIDE_KEYS
 	];
 
 	const themeId = $derived(patch.getSetting(source, 'color_scheme') ?? DEFAULT_THEME_ID);
 	const lineStyleId = $derived(patch.getSetting(source, 'line_style') ?? DEFAULT_LINE_STYLE);
+	const fontFamilyValue = $derived(patch.getSetting(source, 'font_family') ?? '');
 	const direction = $derived(patch.getDirection(source));
+
+	// Resolved baseline for the active theme — shown as the "default" swatch
+	// in the palette-override pickers so the user can see what they're
+	// deviating from.
+	const themeBaseline = $derived(themePalette(themeId));
+	const userBaseline = $derived(palette.userOverrides);
+
+	function paletteOverride(key: string): string {
+		return patch.getSetting(source, `palette_${key}`) ?? '';
+	}
+
+	function effectivePaletteValue(key: string): string {
+		const override = paletteOverride(key);
+		if (override) return override;
+		const userVal = userBaseline[key];
+		if (userVal) return userVal;
+		return themeBaseline[key] || '#000000';
+	}
+
+	function commitPaletteOverride(key: string, raw: string) {
+		const v = (raw ?? '').trim();
+		if (!v) {
+			source = patch.removeSetting(source, `palette_${key}`);
+			return;
+		}
+		// Permissive: accept #abc, #aabbcc, rgb(...), hsl(...)
+		const isHex = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(v);
+		if (isHex) {
+			source = patch.setSetting(source, `palette_${key}`, v.startsWith('#') ? v : `#${v}`);
+		} else if (/^(rgb|hsl)/.test(v)) {
+			source = patch.setSetting(source, `palette_${key}`, v);
+		}
+	}
+
+	function clearPaletteOverride(key: string) {
+		source = patch.removeSetting(source, `palette_${key}`);
+	}
+
+	function commitFontFamily(raw: string) {
+		const v = (raw ?? '').trim();
+		if (!v) source = patch.removeSetting(source, 'font_family');
+		else source = patch.setSetting(source, 'font_family', v);
+	}
+
+	function clearAllPaletteOverrides() {
+		let next = source;
+		for (const k of PALETTE_OVERRIDE_KEYS) {
+			next = patch.removeSetting(next, k);
+		}
+		source = next;
+	}
+
+	const hasAnyPaletteOverride = $derived(
+		PALETTE_OVERRIDE_KEYS.some((k) => patch.getSetting(source, k) != null)
+	);
+
+	let paletteOpen = $state(false);
 	const numberValues = $derived(
 		Object.fromEntries(
 			NUMBER_KEYS.map((n) => {
@@ -133,7 +199,7 @@
 			class="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-800 bg-neutral-950 px-3 py-2"
 		>
 			<h2 class="flex items-center gap-1.5 text-xs font-medium text-neutral-100">
-				<Icon name="settings" size={13} /> Settings
+				<Icon name="settings" size={13} /> Dicegram settings
 			</h2>
 			<button
 				type="button"
@@ -152,7 +218,99 @@
 				options={THEME_IDS.map((id) => ({ value: id, label: THEMES[id].label }))}
 				onchange={setTheme}
 			/>
+			<p class="mt-1 text-[10px] leading-snug text-neutral-500">
+				The theme is the master. Non-unique nodes re-skin instantly when you swap it.
+			</p>
 		</div>
+
+		<div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">
+			Font family
+		</div>
+		<div class="px-3">
+			<input
+				type="text"
+				placeholder="(theme default)"
+				class="h-7 w-full rounded border border-neutral-800 bg-neutral-900 px-2 text-xs text-neutral-100"
+				value={fontFamilyValue}
+				onchange={(e) => commitFontFamily((e.currentTarget as HTMLInputElement).value)}
+			/>
+			<p class="mt-1 text-[10px] leading-snug text-neutral-500">
+				Applies to every node label without an inline font_family override.
+			</p>
+		</div>
+
+		<!-- Per-Dicegram palette overrides — these stack on top of the
+		     theme baseline + the user's brand palette, so a single Dicegram
+		     can deviate without leaving the theme or touching their saved
+		     brand colors. -->
+		<div class="mt-3 mb-1 flex items-center justify-between px-3 text-[10px] uppercase tracking-wide text-neutral-500">
+			<button
+				type="button"
+				class="flex items-center gap-1 hover:text-neutral-200"
+				onclick={() => (paletteOpen = !paletteOpen)}
+			>
+				<Icon name={paletteOpen ? 'chevron-down' : 'chevron-right'} size={11} />
+				Palette overrides
+			</button>
+			{#if hasAnyPaletteOverride}
+				<button
+					type="button"
+					class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-neutral-400 hover:text-neutral-100"
+					title="Clear every per-Dicegram palette override"
+					onclick={clearAllPaletteOverrides}
+				>
+					Clear all
+				</button>
+			{/if}
+		</div>
+		{#if paletteOpen}
+			<div class="px-3">
+				{#each PALETTE_SECTIONS as section (section.title)}
+					<div class="mt-2 mb-1 text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+						{section.title}
+					</div>
+					<div class="space-y-1">
+						{#each section.keys as item (item.key)}
+							{@const overrideVal = paletteOverride(item.key)}
+							{@const effective = effectivePaletteValue(item.key)}
+							<div class="flex items-center gap-2">
+								<label
+									class="w-24 truncate text-[11px] text-neutral-300"
+									title={item.hint ?? item.label}
+								>
+									{item.label}
+								</label>
+								<input
+									type="color"
+									class="h-6 w-8 cursor-pointer rounded border border-neutral-800 bg-neutral-900"
+									value={effective}
+									onchange={(e) =>
+										commitPaletteOverride(item.key, (e.currentTarget as HTMLInputElement).value)}
+									aria-label="{item.label} colour"
+								/>
+								<input
+									type="text"
+									placeholder="auto"
+									class="h-6 flex-1 min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
+									value={overrideVal}
+									onchange={(e) =>
+										commitPaletteOverride(item.key, (e.currentTarget as HTMLInputElement).value)}
+								/>
+								<button
+									type="button"
+									class="rounded border border-neutral-800 px-1 py-0.5 text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
+									disabled={!overrideVal}
+									onclick={() => clearPaletteOverride(item.key)}
+									title="Drop this override (revert to theme + user brand)"
+								>
+									<Icon name="x" size={10} />
+								</button>
+							</div>
+						{/each}
+					</div>
+				{/each}
+			</div>
+		{/if}
 
 		<div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Direction</div>
 		<div class="px-3">

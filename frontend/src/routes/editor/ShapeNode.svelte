@@ -15,6 +15,10 @@
 		stroke_width?: string;
 		attrs?: Record<string, string>;
 		dimmed?: boolean;
+		// Set when the renderer detects any inline DSL `style:` keys on
+		// this node — surfaced as a tiny "unique" indicator so authors can
+		// spot which nodes have been detached from the active theme master.
+		unique?: boolean;
 	};
 
 	let { data, width, height }: { data: ShapeData; width?: number; height?: number } = $props();
@@ -144,6 +148,9 @@
 	{#if statusBadge}
 		<div class="badge" style:background={statusBadge.bg}>{statusBadge.label}</div>
 	{/if}
+	{#if data.unique}
+		<div class="unique-dot" title="Unique — overrides survive theme swaps"></div>
+	{/if}
 
 	<Handle type="source" position={Position.Top} id="t" class="handle" />
 	<Handle type="source" position={Position.Bottom} id="b" class="handle" />
@@ -236,6 +243,22 @@
 		align-items: center;
 		justify-content: center;
 		border: 2px solid #0a0a0a;
+		pointer-events: none;
+	}
+
+	/* Tiny amber dot in the top-right corner indicating that this node has
+	   inline style overrides — i.e. it has been "Made Unique" and won't
+	   re-skin when the master theme changes. Sized so it's visible at low
+	   zoom but doesn't crowd the label. */
+	.unique-dot {
+		position: absolute;
+		top: -4px;
+		right: -4px;
+		width: 8px;
+		height: 8px;
+		border-radius: 9999px;
+		background: #f59e0b;
+		border: 1.5px solid var(--th-bg, #fbf7f2);
 		pointer-events: none;
 	}
 

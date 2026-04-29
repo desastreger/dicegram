@@ -22,6 +22,7 @@
 	import { renderDsl, type RenderResult, type RenderNode } from '$lib/render';
 	import { getTheme, type Theme } from '$lib/themes';
 	import { theme as appTheme } from '$lib/theme.svelte';
+	import { palette } from '$lib/palette.svelte';
 	import { TEMPLATES, DEFAULT_TEMPLATE_ID, type DicegramTemplate } from '$lib/templates';
 	import { buildTreeFallback } from '$lib/tree-fallback';
 	import Canvas from './Canvas.svelte';
@@ -253,13 +254,32 @@
 
 	// An explicit `setting color_scheme <id>` in the DSL wins; otherwise the
 	// editor canvas follows the app-wide light/dark toggle in the top nav.
-	const theme = $derived<Theme>(
-		(() => {
-			const explicit = getSetting(source, 'color_scheme');
-			if (explicit) return getTheme(explicit);
-			return getTheme(appTheme.current === 'light' ? 'light' : 'default-dark');
-		})()
+	const explicitThemeId = $derived(getSetting(source, 'color_scheme'));
+	const themeId = $derived(
+		explicitThemeId ?? (appTheme.current === 'light' ? 'light' : 'default-dark')
 	);
+	const theme = $derived<Theme>(getTheme(themeId));
+
+	// The Dicegram's theme drives the palette baseline (type fills, node
+	// defaults, edges) — non-Unique nodes reskin automatically when the user
+	// swaps themes. Per-Dicegram `setting palette_<key> <color>` entries
+	// stack on top so the author can deviate without leaving the theme.
+	$effect(() => {
+		palette.setActiveTheme(themeId);
+	});
+
+	$effect(() => {
+		// Scrape `setting palette_<key> <color>` directives. Cheap regex —
+		// avoids re-parsing the DSL just to read settings.
+		const overrides: Record<string, string> = {};
+		const re = /^\s*setting\s+palette_(\w+)\s+(.+?)\s*$/gm;
+		let m: RegExpExecArray | null;
+		while ((m = re.exec(source)) !== null) {
+			const v = m[2].trim();
+			if (v) overrides[m[1]] = v;
+		}
+		palette.setDicegramOverrides(overrides);
+	});
 
 	const lineStyle = $derived<'orthogonal' | 'curved' | 'straight'>(
 		(() => {
@@ -268,13 +288,18 @@
 		})()
 	);
 
+	// Per-Dicegram font family — propagated as a CSS variable on the editor
+	// wrapper so node labels inherit it unless they have an inline override.
+	const dicegramFontFamily = $derived(getSetting(source, 'font_family') ?? '');
+
 	const themeVars = $derived(
 		`--th-bg:${theme.bg};--th-panel:${theme.panel};--th-panel-border:${theme.panelBorder};` +
 			`--th-text:${theme.text};--th-muted:${theme.muted};--th-accent:${theme.accent};` +
 			`--th-canvas:${theme.canvas};--th-grid-dot:${theme.gridDot};` +
 			`--th-node-fill:${theme.nodeFill};--th-node-stroke:${theme.nodeStroke};--th-node-text:${theme.nodeText};` +
 			`--th-edge:${theme.edge};` +
-			`--th-code-bg:${theme.codeBg};--th-code-text:${theme.codeText};--th-code-gutter:${theme.codeGutter};--th-code-active:${theme.codeActiveLine};`
+			`--th-code-bg:${theme.codeBg};--th-code-text:${theme.codeText};--th-code-gutter:${theme.codeGutter};--th-code-active:${theme.codeActiveLine};` +
+			(dicegramFontFamily ? `font-family:${dicegramFontFamily};` : '')
 	);
 
 	const revealLine = $derived(

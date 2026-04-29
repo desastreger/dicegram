@@ -107,11 +107,15 @@ def get_shared_svg(slug: str, session: Session = Depends(get_session)) -> Respon
     dicegram = session.get(Dicegram, share.dicegram_id)
     if not dicegram:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
-    # Shared views use the share owner's palette so the brand travels with the diagram.
+    # Shared views use the share owner's palette so the brand travels with the Dicegram.
     owner = session.get(User, dicegram.owner_id)
-    theme = build_theme(owner.branding_palette) if owner else build_theme(None)
+    parsed = parse(dicegram.source)
+    theme_id = parsed.settings.get("color_scheme") if isinstance(parsed.settings, dict) else None
+    overrides = _palette_overrides_from_settings(parsed.settings)
+    owner_palette = owner.branding_palette if owner else None
+    theme = build_theme(owner_palette, theme_id=theme_id, dicegram_overrides=overrides)
     return Response(
-        content=render_svg(parse(dicegram.source), theme=theme),
+        content=render_svg(parsed, theme=theme),
         media_type="image/svg+xml",
     )
 
@@ -125,8 +129,27 @@ def get_dicegram_svg(
     dicegram = session.get(Dicegram, dicegram_id)
     if not dicegram or dicegram.owner_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
-    theme = build_theme(user.branding_palette)
+    parsed = parse(dicegram.source)
+    theme_id = parsed.settings.get("color_scheme") if isinstance(parsed.settings, dict) else None
+    overrides = _palette_overrides_from_settings(parsed.settings)
+    theme = build_theme(user.branding_palette, theme_id=theme_id, dicegram_overrides=overrides)
     return Response(
-        content=render_svg(parse(dicegram.source), theme=theme),
+        content=render_svg(parsed, theme=theme),
         media_type="image/svg+xml",
     )
+
+
+def _palette_overrides_from_settings(parsed_settings: dict) -> dict[str, str]:
+    """Pluck `setting palette_<key> <color>` entries from Parsed.settings.
+    Mirrors the helper in routers/export.py — kept private here so the two
+    SVG paths stay in lockstep without an explicit shared module."""
+    if not isinstance(parsed_settings, dict):
+        return {}
+    out: dict[str, str] = {}
+    for k, v in parsed_settings.items():
+        if not isinstance(k, str) or not k.startswith("palette_"):
+            continue
+        key = k[len("palette_"):]
+        if isinstance(v, str):
+            out[key] = v
+    return out

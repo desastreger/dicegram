@@ -20,6 +20,26 @@ export type Theme = {
 };
 
 export const THEMES: Record<string, Theme> = {
+	anthropic: {
+		id: 'anthropic',
+		label: 'Anthropic',
+		bg: '#fbf7f2',
+		panel: '#fbf7f2',
+		panelBorder: '#e3d9cf',
+		text: '#3d3530',
+		muted: '#8a7a6a',
+		accent: '#d97757',
+		canvas: '#fbf7f2',
+		gridDot: '#e3d9cf',
+		nodeFill: '#dceadb',
+		nodeStroke: '#a8c2a3',
+		nodeText: '#3d5c3a',
+		edge: '#8a8a82',
+		codeBg: '#fbf7f2',
+		codeText: '#3d3530',
+		codeGutter: '#a8a39a',
+		codeActiveLine: '#f1ece4'
+	},
 	'default-dark': {
 		id: 'default-dark',
 		label: 'Default Dark',
