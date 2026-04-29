@@ -6,6 +6,9 @@ REM nukes orphan uvicorn / vite-node processes, then restarts both.
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
+set "VENV_DIR=%LOCALAPPDATA%\dicegram-venv"
+set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
+
 echo [reset] Closing existing dev servers...
 
 REM --- kill by listening port ---
@@ -24,8 +27,8 @@ wmic process where "commandline like '%%node_modules\\@esbuild%%'" call terminat
 REM small settle so Windows releases sockets
 timeout /t 2 /nobreak >nul
 
-if not exist "backend\.venv\Scripts\python.exe" (
-    echo [reset] Backend venv missing — run start-dev.bat once to bootstrap it.
+if not exist "%VENV_PY%" (
+    echo [reset] Backend venv missing at %VENV_DIR% — run start-dev.bat once to bootstrap it.
     exit /b 1
 )
 
@@ -42,7 +45,7 @@ if not exist "frontend\node_modules" (
 )
 
 echo [run] Backend  -> http://localhost:8000
-start "Dicegram API (:8000)" cmd /k "cd /d %~dp0backend && .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000"
+start "Dicegram API (:8000)" cmd /k "cd /d %~dp0backend && "%VENV_PY%" -m uvicorn app.main:app --reload --port 8000"
 
 echo [run] Frontend -> http://localhost:5173
 start "Dicegram UI (:5173)" cmd /k "cd /d %~dp0frontend && npm run dev -- --host 127.0.0.1 --port 5173 --strictPort"

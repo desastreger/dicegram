@@ -4,11 +4,15 @@ REM Opens two terminal windows (backend + frontend) and the browser.
 
 cd /d "%~dp0"
 
-if not exist "backend\.venv\Scripts\python.exe" (
-    echo [setup] Creating Python venv and installing backend dependencies...
-    python -m venv backend\.venv || goto :err
-    backend\.venv\Scripts\python.exe -m pip install --upgrade pip --quiet || goto :err
-    backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt || goto :err
+REM Venv lives outside OneDrive — Files-On-Demand corrupts platform binaries.
+set "VENV_DIR=%LOCALAPPDATA%\dicegram-venv"
+set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
+
+if not exist "%VENV_PY%" (
+    echo [setup] Creating Python venv at %VENV_DIR% ...
+    python -m venv "%VENV_DIR%" || goto :err
+    "%VENV_PY%" -m pip install --upgrade pip --quiet || goto :err
+    "%VENV_PY%" -m pip install -r backend\requirements.txt || goto :err
 )
 
 if not exist "backend\.env" (
@@ -24,7 +28,7 @@ if not exist "frontend\node_modules" (
 )
 
 echo [run] Starting backend on http://localhost:8000 ...
-start "Dicegram API (backend :8000)" cmd /k "cd /d %~dp0backend && .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000"
+start "Dicegram API (backend :8000)" cmd /k "cd /d %~dp0backend && "%VENV_PY%" -m uvicorn app.main:app --reload --port 8000"
 
 echo [run] Starting frontend on http://localhost:5173 ...
 start "Dicegram UI (frontend :5173)" cmd /k "cd /d %~dp0frontend && npm run dev -- --port 5173"
