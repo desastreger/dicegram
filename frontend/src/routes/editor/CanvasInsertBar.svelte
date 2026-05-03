@@ -25,12 +25,12 @@
 
 <div
 	class="flex items-center gap-1 border-b px-2 py-1 text-xs"
-	style:background-color="var(--th-panel, #0a0a0a)"
-	style:border-color="var(--th-panel-border, #262626)"
+	style:background-color="var(--th-panel, var(--app-surface))"
+	style:border-color="var(--th-panel-border, var(--app-border))"
 >
 	<span
 		class="mr-2 text-[10px] uppercase tracking-wider"
-		style:color="var(--th-muted, #737373)"
+		style:color="var(--th-muted, var(--app-text-dim))"
 	>
 		Drag onto canvas
 	</span>
@@ -40,8 +40,8 @@
 			draggable="true"
 			title={s.title}
 			ondragstart={(e) => onDragStart(e, s.id)}
-			class="flex h-6 w-6 items-center justify-center rounded hover:bg-neutral-800"
-			style:color="var(--th-muted, #9ca3af)"
+			class="btn-icon"
+			style:color="var(--th-muted, var(--app-text-muted))"
 		>
 			<Icon name={s.icon} size={14} />
 		</button>

@@ -27,41 +27,42 @@
 	}
 </script>
 
-<section class="mx-auto max-w-sm px-6 py-16 text-neutral-100">
+<svelte:head><title>Sign up · Dicegram</title></svelte:head>
+
+<section class="mx-auto w-full max-w-sm px-6 py-16 text-app">
 	<h1 class="mb-6 text-2xl font-semibold">Create your account</h1>
-	<form onsubmit={submit} class="flex flex-col gap-4">
+	<form onsubmit={submit} class="flex w-full flex-col gap-4">
 		<label class="flex flex-col gap-1">
-			<span class="text-sm font-medium text-neutral-300">Email</span>
+			<span class="field-label">Email</span>
 			<input
 				type="email"
 				required
+				autocomplete="username"
 				bind:value={email}
-				class="rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-neutral-100 focus:border-neutral-600 focus:outline-none"
+				class="input-themed"
 			/>
 		</label>
 		<label class="flex flex-col gap-1">
-			<span class="text-sm font-medium text-neutral-300">Password</span>
+			<span class="field-label">Password</span>
 			<input
 				type="password"
 				required
 				minlength="8"
+				autocomplete="new-password"
 				bind:value={password}
-				class="rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-neutral-100 focus:border-neutral-600 focus:outline-none"
+				aria-describedby="signup-pw-hint"
+				class="input-themed"
 			/>
-			<span class="text-xs text-neutral-500">At least 8 characters.</span>
+			<span id="signup-pw-hint" class="text-xs text-dim">At least 8 characters.</span>
 		</label>
 		{#if error}
-			<p class="text-sm text-red-400">{error}</p>
+			<p role="alert" class="text-sm text-danger">{error}</p>
 		{/if}
-		<button
-			type="submit"
-			disabled={submitting}
-			class="rounded-md bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-		>
+		<button type="submit" disabled={submitting} class="btn-primary">
 			{submitting ? 'Creating…' : 'Create account'}
 		</button>
-		<p class="text-center text-sm text-neutral-400">
-			Already have one? <a href="/login" class="text-blue-400 hover:underline">Log in</a>
+		<p class="text-center text-sm text-muted">
+			Already have one? <a href="/login" class="link">Log in</a>
 		</p>
 	</form>
 </section>

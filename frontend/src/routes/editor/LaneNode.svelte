@@ -8,12 +8,14 @@
 </div>
 
 <style>
+	/* Swimlane backdrop. Theme-driven so the half-opaque panel-muted reads
+	   correctly on both warm-cream and slate-dark canvases. */
 	.lane {
 		position: relative;
-		background: var(--th-panel, rgba(30, 41, 59, 0.35));
+		background: var(--th-panel-muted, var(--th-panel, var(--app-surface-2)));
 		opacity: 0.5;
-		border: 1px dashed var(--th-panel-border, #334155);
-		border-radius: 10px;
+		border: 1px dashed var(--th-panel-border, var(--app-border));
+		border-radius: var(--th-radius-md, var(--app-radius));
 		pointer-events: none;
 	}
 	.label {
@@ -23,6 +25,6 @@
 		font-size: 11px;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		color: var(--th-muted, #94a3b8);
+		color: var(--th-muted, var(--app-text-muted));
 	}
 </style>

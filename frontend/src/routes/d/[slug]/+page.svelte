@@ -77,29 +77,23 @@
 	}
 </script>
 
-<section class="mx-auto max-w-6xl px-4 py-6 text-neutral-100">
+<svelte:head>
+	<title>{data?.name ? `${data.name} · Dicegram` : 'Shared dicegram · Dicegram'}</title>
+</svelte:head>
+
+<section class="mx-auto max-w-6xl px-4 py-6 text-app">
 	{#if loading}
-		<p class="text-xs text-neutral-500">Loading…</p>
+		<p role="status" aria-live="polite" class="text-xs text-dim">Loading…</p>
 	{:else if error}
-		<div class="rounded border border-red-900 bg-red-950/50 p-4 text-xs text-red-300">
-			<p class="font-medium">Could not load shared dicegram</p>
-			<p class="mt-1 text-red-400">{error}</p>
-			<p class="mt-2 text-neutral-400">
+		<div role="alert" class="toast toast-error p-4 text-xs">
+			<p class="font-medium text-app">Could not load shared dicegram</p>
+			<p class="mt-1 text-danger">{error}</p>
+			<p class="mt-2 text-muted">
 				The owner may have revoked the link, or the URL is wrong.
 			</p>
 			<div class="mt-3 flex gap-2">
-				<a
-					href="/"
-					class="rounded border border-neutral-700 px-3 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
-				>
-					Go to Dicegram home
-				</a>
-				<a
-					href="/signup"
-					class="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500"
-				>
-					Create your own
-				</a>
+				<a href="/" class="btn-secondary text-xs">Go to Dicegram home</a>
+				<a href="/signup" class="btn-primary text-xs">Create your own</a>
 			</div>
 		</div>
 	{:else if data}
@@ -109,7 +103,7 @@
 					<Icon name="eye" size={16} />
 					{data.name}
 				</h1>
-				<p class="mt-0.5 text-[11px] text-neutral-500">
+				<p class="mt-0.5 text-[11px] text-dim">
 					Shared dicegram — updated {formatDate(data.updated_at)}
 				</p>
 			</div>
@@ -118,7 +112,7 @@
 					type="button"
 					onclick={copyLink}
 					title="Copy link"
-					class="flex items-center gap-1 rounded border border-neutral-800 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
+					class="btn-secondary flex items-center gap-1 text-xs"
 				>
 					<Icon name={copied ? 'check' : 'link'} size={13} />
 					{copied ? 'Copied' : 'Copy link'}
@@ -127,7 +121,7 @@
 					type="button"
 					onclick={copyDsl}
 					title="Copy DSL source"
-					class="flex items-center gap-1 rounded border border-neutral-800 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
+					class="btn-secondary flex items-center gap-1 text-xs"
 				>
 					<Icon name={dslCopied ? 'check' : 'copy'} size={13} />
 					{dslCopied ? 'Copied' : 'Copy DSL'}
@@ -136,7 +130,7 @@
 					type="button"
 					onclick={download}
 					title="Download SVG"
-					class="flex items-center gap-1 rounded border border-neutral-800 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
+					class="btn-secondary flex items-center gap-1 text-xs"
 				>
 					<Icon name="download" size={13} /> SVG
 				</button>
@@ -144,7 +138,7 @@
 		</div>
 
 		<div
-			class="overflow-auto rounded-lg border border-neutral-800 bg-neutral-950 p-2"
+			class="panel overflow-auto p-2"
 			style="max-height: calc(100vh - var(--header-h) - 140px)"
 		>
 			<img
@@ -154,12 +148,12 @@
 			/>
 		</div>
 
-		<details class="mt-4 rounded border border-neutral-800 bg-neutral-950 p-3 text-xs">
-			<summary class="cursor-pointer text-neutral-400 hover:text-neutral-200">
+		<details class="panel mt-4 p-3 text-xs">
+			<summary class="cursor-pointer text-muted hover:text-app">
 				View DSL source
 			</summary>
 			<pre
-				class="mt-2 overflow-auto rounded bg-neutral-900 p-3 font-mono text-[11px] text-neutral-200">{data.source}</pre>
+				class="mt-2 overflow-auto rounded bg-surface-2 p-3 font-mono text-[11px] text-app">{data.source}</pre>
 		</details>
 	{/if}
 </section>

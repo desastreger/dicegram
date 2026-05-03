@@ -591,7 +591,7 @@
 		bind:edges
 		{nodeTypes}
 		{edgeTypes}
-		colorMode={theme.bg === '#ffffff' || theme.bg === '#fdf6e3' ? 'light' : 'dark'}
+		colorMode={theme.mode}
 		fitView
 		fitViewOptions={{ padding: 0.2 }}
 		minZoom={0.1}

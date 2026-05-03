@@ -13,6 +13,7 @@
 	import { dslSyntaxExtension } from '$lib/dsl-syntax';
 	import { dslAutocomplete } from '$lib/dsl-autocomplete';
 	import type { Theme } from '$lib/themes';
+	import { theme as appTheme } from '$lib/theme.svelte';
 
 	let {
 		value = $bindable(''),
@@ -57,8 +58,23 @@
 	let syncing = false;
 	const themeCompartment = new Compartment();
 
-	function palette(t: Theme) {
-		const isLight = t.bg === '#ffffff' || t.bg === '#fdf6e3';
+	// Effective light/dark for syntax highlighting. When the dicegram has
+	// pinned a canvas style (warm, dracula, …) the theme's declared `mode`
+	// drives the palette. When on `auto` (the chrome-tracking default),
+	// we read the chrome store at render time so toggling sun/moon
+	// immediately reskins syntax tokens. No mid-tier comparisons —
+	// `appTheme.isLight` is the canonical answer.
+	function effectiveIsLight(t: Theme): boolean {
+		if (t.id === 'auto') return appTheme.isLight;
+		return t.mode === 'light';
+	}
+
+	// Syntax-token palette pairs. Two columns — one tuned for light surfaces,
+	// one for dark. This is the only spot in the editor where we maintain
+	// hand-picked colours per mode rather than deriving from theme tokens;
+	// readable syntax highlighting is too perceptual to fold into a single
+	// accent ramp.
+	function palette(isLight: boolean) {
 		return isLight
 			? {
 					keyword: '#7e22ce',
@@ -83,8 +99,8 @@
 	}
 
 	function buildTheme(t: Theme) {
-		const p = palette(t);
-		const isLight = t.bg === '#ffffff' || t.bg === '#fdf6e3';
+		const isLight = effectiveIsLight(t);
+		const p = palette(isLight);
 		return EditorView.theme(
 			{
 				'&': {
@@ -106,8 +122,12 @@
 				},
 				'.cm-activeLine': { backgroundColor: t.codeActiveLine },
 				'.cm-activeLineGutter': { backgroundColor: t.codeActiveLine, color: t.text },
+				// Selection: 20% accent overlay. Built with color-mix so it
+				// works whether `t.accent` is a hex string (named themes) or
+				// a `var(--app-accent)` reference (the `auto` theme) — plain
+				// `${t.accent}33` only works for hex.
 				'.cm-selectionBackground, ::selection': {
-					backgroundColor: `${t.accent}33 !important`
+					backgroundColor: `color-mix(in srgb, ${t.accent} 22%, transparent) !important`
 				},
 				'.cm-foldGutter': { color: t.codeGutter, paddingRight: '2px' },
 				'.cm-foldGutter .cm-gutterElement': { cursor: 'pointer' },
@@ -246,6 +266,10 @@
 
 	$effect(() => {
 		const t = theme;
+		// Re-read chrome on every flip — the dep makes the effect rerun
+		// even when the dicegram's own theme prop hasn't changed (the
+		// `auto` case where chrome is the source of truth).
+		appTheme.isLight; // tracked
 		if (!view) return;
 		view.dispatch({ effects: themeCompartment.reconfigure(buildTheme(t)) });
 	});

@@ -62,8 +62,15 @@
 		const onDoc = (e: MouseEvent) => {
 			if (newRoot && !newRoot.contains(e.target as Node)) newOpen = false;
 		};
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') newOpen = false;
+		};
 		document.addEventListener('click', onDoc);
-		return () => document.removeEventListener('click', onDoc);
+		document.addEventListener('keydown', onKey);
+		return () => {
+			document.removeEventListener('click', onDoc);
+			document.removeEventListener('keydown', onKey);
+		};
 	});
 
 	function pickNew(template: DicegramTemplate | null) {
@@ -79,8 +86,15 @@
 		const onDocClick = (e: MouseEvent) => {
 			if (exportRoot && !exportRoot.contains(e.target as Node)) exportOpen = false;
 		};
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') exportOpen = false;
+		};
 		document.addEventListener('click', onDocClick);
-		return () => document.removeEventListener('click', onDocClick);
+		document.addEventListener('keydown', onKey);
+		return () => {
+			document.removeEventListener('click', onDocClick);
+			document.removeEventListener('keydown', onKey);
+		};
 	});
 
 	let shareOpen = $state(false);
@@ -106,8 +120,15 @@
 		const onDocClick = (e: MouseEvent) => {
 			if (shareRoot && !shareRoot.contains(e.target as Node)) shareOpen = false;
 		};
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') shareOpen = false;
+		};
 		document.addEventListener('click', onDocClick);
-		return () => document.removeEventListener('click', onDocClick);
+		document.addEventListener('keydown', onKey);
+		return () => {
+			document.removeEventListener('click', onDocClick);
+			document.removeEventListener('keydown', onKey);
+		};
 	});
 
 	async function openShare() {
@@ -212,6 +233,8 @@
 		type="text"
 		bind:value={name}
 		placeholder="Untitled dicegram"
+		aria-label="Dicegram name"
+		title="Dicegram name"
 		class="h-6 w-44 rounded border border-neutral-800 bg-neutral-900 px-2 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-blue-600 focus:outline-none"
 	/>
 
@@ -268,13 +291,18 @@
 
 	<span class="h-4 w-px bg-neutral-800"></span>
 
-	<div class="flex overflow-hidden rounded border border-neutral-800">
+	<div
+		role="group"
+		aria-label="Layout direction"
+		class="flex overflow-hidden rounded border border-neutral-800"
+	>
 		{#each DIRECTIONS as d (d.id)}
 			{@const active = d.id === activeDirection}
 			<button
 				type="button"
 				onclick={() => pickDirection(d.id)}
 				aria-pressed={active}
+				aria-label={`Layout direction: ${d.label.toLowerCase()}`}
 				title={d.label}
 				class="flex h-6 items-center justify-center border-r border-neutral-800 px-1.5 last:border-r-0 hover:bg-neutral-800 {active
 					? 'bg-blue-700 text-white'
@@ -291,7 +319,8 @@
 		type="button"
 		onclick={() => (treeOpen = !treeOpen)}
 		aria-pressed={treeOpen}
-		title="Dicetree"
+		aria-label="Toggle dicetree"
+		title="Dicetree (Ctrl+B)"
 		class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800 {treeOpen
 			? 'bg-neutral-800'
 			: ''}"
@@ -302,7 +331,8 @@
 		type="button"
 		onclick={() => (settingsOpen = !settingsOpen)}
 		aria-pressed={settingsOpen}
-		title="Settings"
+		aria-label="Toggle dicegram settings"
+		title="Dicegram settings"
 		class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800 {settingsOpen
 			? 'bg-neutral-800'
 			: ''}"
@@ -313,7 +343,8 @@
 		type="button"
 		onclick={() => (inspectorOpen = !inspectorOpen)}
 		aria-pressed={inspectorOpen}
-		title="Inspector"
+		aria-label="Toggle inspector"
+		title="Inspector (Ctrl+.)"
 		class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800 {inspectorOpen
 			? 'bg-neutral-800'
 			: ''}"
@@ -469,9 +500,10 @@
 
 	<div class="ml-auto flex items-center gap-2 text-[11px]">
 		<input
-			type="text"
+			type="search"
 			bind:value={filter}
 			placeholder="Filter  (owner:alice #tag …)"
+			aria-label="Filter nodes by id, label, owner, type, status, tag"
 			title={`Filter nodes (substring match). Supported keys:\n  owner: type: status: priority: shape: lane: box: tag:\n  #tag   free text matches id and label`}
 			class="h-6 w-56 rounded border border-neutral-800 bg-neutral-900 px-2 text-[11px] text-neutral-100 placeholder:text-neutral-500 focus:border-blue-600 focus:outline-none"
 		/>

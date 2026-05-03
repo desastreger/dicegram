@@ -105,13 +105,13 @@
 
 	const statusBadge = $derived(
 		status === 'active'
-			? { bg: '#10b981', label: '●' }
+			? { bg: palette.current.status_complete || '#10b981', label: '●' }
 			: status === 'complete'
-				? { bg: '#10b981', label: '✓' }
+				? { bg: palette.current.status_complete || '#10b981', label: '✓' }
 				: status === 'blocked'
-					? { bg: '#ef4444', label: '!' }
+					? { bg: palette.current.status_blocked || '#ef4444', label: '!' }
 					: status === 'deprecated'
-						? { bg: '#71717a', label: '×' }
+						? { bg: palette.current.status_deprecated_text || '#71717a', label: '×' }
 						: null
 	);
 </script>
@@ -167,8 +167,8 @@
 		align-items: center;
 		justify-content: center;
 		padding: 12px;
-		border-bottom: 1px solid var(--th-panel-border, #262626);
-		background: var(--th-canvas, #0a0a0a);
+		border-bottom: 1px solid var(--th-panel-border, var(--app-border));
+		background: var(--th-canvas, var(--app-bg));
 	}
 	.preview-frame {
 		position: relative;
@@ -225,13 +225,15 @@
 		pointer-events: none;
 	}
 
+	/* Owner pill — see ShapeNode.svelte for the rationale. Theme-driven so
+	   the inspector preview reads in both light and dark modes. */
 	.owner {
 		position: absolute;
 		bottom: -7px;
 		right: 8px;
-		background: #0f172a;
-		border: 1px solid #334155;
-		color: #cbd5e1;
+		background: var(--th-panel, var(--app-surface));
+		border: 1px solid var(--th-panel-border, var(--app-border));
+		color: var(--th-muted, var(--app-text-muted));
 		font-size: 10px;
 		padding: 1px 6px;
 		border-radius: 9999px;
@@ -248,15 +250,18 @@
 	}
 
 	.tag {
-		background: var(--th-panel, #1e293b);
-		border: 1px solid var(--th-panel-border, #334155);
-		color: var(--th-muted, #94a3b8);
+		background: var(--th-panel, var(--app-surface));
+		border: 1px solid var(--th-panel-border, var(--app-border));
+		color: var(--th-muted, var(--app-text-muted));
 		font-size: 9px;
 		padding: 0 5px;
 		border-radius: 9999px;
 		line-height: 14px;
 	}
 
+	/* Status badge — same shape as ShapeNode. The accent-text token is
+	   white in every chrome mode and stays readable on every status
+	   colour; the border tracks the canvas so it cuts out cleanly. */
 	.badge {
 		position: absolute;
 		top: -8px;
@@ -264,13 +269,13 @@
 		width: 18px;
 		height: 18px;
 		border-radius: 9999px;
-		color: white;
+		color: var(--app-accent-text);
 		font-size: 11px;
 		font-weight: bold;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		border: 2px solid #0a0a0a;
+		border: 2px solid var(--th-canvas, var(--app-bg));
 		pointer-events: none;
 	}
 </style>

@@ -8,16 +8,21 @@
 </div>
 
 <style>
+	/* Sticky-note rendering. Every visible property is theme-driven so the
+	   note adapts cleanly between light and dark — the warm-yellow hex
+	   fallbacks only kick in if no theme is wired in. The drop shadow comes
+	   from `--th-shadow-sm` so it softens to barely-there in light mode and
+	   stays visible in dark mode. */
 	.note {
 		position: relative;
-		background: #fde68a;
-		color: #422006;
-		border: 1px solid #b45309;
-		border-radius: 4px;
+		background: var(--th-note-fill, color-mix(in oklab, var(--app-warn) 22%, var(--app-bg)));
+		color: var(--th-note-text, var(--app-text));
+		border: 1px solid var(--th-note-border, var(--app-warn));
+		border-radius: var(--th-radius-sm, var(--app-radius-sm));
 		padding: 8px 10px;
 		font-size: 12px;
 		line-height: 1.3;
-		box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.4);
+		box-shadow: var(--th-shadow-sm, var(--app-shadow-sm));
 	}
 	.text {
 		white-space: pre-wrap;

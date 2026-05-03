@@ -20,8 +20,9 @@
 	import { buildLlmPrompt, downloadSvg } from '$lib/export';
 	import LlmPromptDialog from '$lib/LlmPromptDialog.svelte';
 	import { renderDsl, type RenderResult, type RenderNode } from '$lib/render';
-	import { getTheme, type Theme } from '$lib/themes';
+	import { getTheme, themeCssVars, counterpartThemeId, type Theme } from '$lib/themes';
 	import { theme as appTheme } from '$lib/theme.svelte';
+	import { onDestroy } from 'svelte';
 	import { palette } from '$lib/palette.svelte';
 	import { TEMPLATES, DEFAULT_TEMPLATE_ID, type DicegramTemplate } from '$lib/templates';
 	import { buildTreeFallback } from '$lib/tree-fallback';
@@ -252,12 +253,14 @@
 			: null
 	);
 
-	// An explicit `setting color_scheme <id>` in the DSL wins; otherwise the
-	// editor canvas follows the app-wide light/dark toggle in the top nav.
+	// Authored canvas style is decoupled from chrome mode (Office analogy:
+	// the document's colour theme is independent of the OS light/dark
+	// preference). When the DSL pins `setting color_scheme <id>` we honour
+	// it. Otherwise we use the `auto` theme — its tokens are `var(--app-*)`
+	// references so the canvas renders default text/edges/surfaces in the
+	// chrome's current mode without rewriting the source.
 	const explicitThemeId = $derived(getSetting(source, 'color_scheme'));
-	const themeId = $derived(
-		explicitThemeId ?? (appTheme.current === 'light' ? 'light' : 'default-dark')
-	);
+	const themeId = $derived(explicitThemeId ?? 'auto');
 	const theme = $derived<Theme>(getTheme(themeId));
 
 	// The Dicegram's theme drives the palette baseline (type fills, node
@@ -293,14 +296,58 @@
 	const dicegramFontFamily = $derived(getSetting(source, 'font_family') ?? '');
 
 	const themeVars = $derived(
-		`--th-bg:${theme.bg};--th-panel:${theme.panel};--th-panel-border:${theme.panelBorder};` +
-			`--th-text:${theme.text};--th-muted:${theme.muted};--th-accent:${theme.accent};` +
-			`--th-canvas:${theme.canvas};--th-grid-dot:${theme.gridDot};` +
-			`--th-node-fill:${theme.nodeFill};--th-node-stroke:${theme.nodeStroke};--th-node-text:${theme.nodeText};` +
-			`--th-edge:${theme.edge};` +
-			`--th-code-bg:${theme.codeBg};--th-code-text:${theme.codeText};--th-code-gutter:${theme.codeGutter};--th-code-active:${theme.codeActiveLine};` +
-			(dicegramFontFamily ? `font-family:${dicegramFontFamily};` : '')
+		themeCssVars(theme) +
+			(dicegramFontFamily ? `;font-family:${dicegramFontFamily}` : '')
 	);
+
+	// Sync chrome (site-level light/dark) to the editor theme's mode —
+	// only when the dicegram has pinned an explicit canvas style. The
+	// `auto` theme already follows chrome (its tokens are `var(--app-*)`
+	// references), so we mustn't write back into the chrome from here or
+	// we'd overwrite the user's preference with a phantom mode.
+	$effect(() => {
+		if (typeof document === 'undefined') return;
+		if (themeId === 'auto') return;
+		// When mounted as an iframe (landing / embed), don't sync the chrome
+		// — the parent page owns its own theme, and `appTheme.set` writes to
+		// localStorage which is shared across iframes and would overwrite the
+		// user's preference next time they reload.
+		if (mode === 'landing' || mode === 'embed') return;
+		const target = theme.mode;
+		if (document.documentElement.getAttribute('data-theme') !== target) {
+			document.documentElement.setAttribute('data-theme', target);
+		}
+		if (appTheme.current !== target) appTheme.set(target);
+	});
+
+	// Nav-bar sun/moon toggle behaviour while the editor is mounted:
+	//   • on `auto` (no explicit canvas style), the toggle flips chrome
+	//     normally — the canvas re-resolves via `--app-*` and follows.
+	//   • on a pinned theme (warm, dracula, solarized…), the toggle swaps
+	//     the dicegram's `setting color_scheme` line to the counterpart
+	//     so the canvas + chrome stay in sync.
+	function swapCanvasMode() {
+		const next = counterpartThemeId(themeId);
+		const re = /^(\s*setting\s+color_scheme\s+)(\S+)(\s*)$/m;
+		if (re.test(source)) {
+			source = source.replace(re, `$1${next}$3`);
+		} else {
+			source = `setting color_scheme ${next}\n${source}`;
+		}
+	}
+	$effect(() => {
+		if (themeId === 'auto') {
+			if (appTheme.override === swapCanvasMode) appTheme.override = null;
+			return;
+		}
+		appTheme.override = swapCanvasMode;
+		return () => {
+			if (appTheme.override === swapCanvasMode) appTheme.override = null;
+		};
+	});
+	onDestroy(() => {
+		if (appTheme.override === swapCanvasMode) appTheme.override = null;
+	});
 
 	const revealLine = $derived(
 		selectedNodeId ? findNodeLineIndex(source, selectedNodeId) + 1 || null : null
@@ -700,6 +747,26 @@
 		}
 	});
 	let editorGrid: HTMLDivElement | undefined = $state();
+	let openDialogPanel: HTMLDivElement | undefined = $state();
+	$effect(() => {
+		if (showOpen && openDialogPanel) {
+			queueMicrotask(() => openDialogPanel?.focus());
+		}
+	});
+	function nudgeSplit(delta: number) {
+		codeSplitPct = Math.min(85, Math.max(15, codeSplitPct + delta));
+		try {
+			localStorage.setItem(SPLIT_KEY, String(Math.round(codeSplitPct)));
+		} catch {
+			/* ignore */
+		}
+	}
+	function onSplitKey(e: KeyboardEvent) {
+		if (e.key === 'ArrowLeft') { e.preventDefault(); nudgeSplit(-2); }
+		else if (e.key === 'ArrowRight') { e.preventDefault(); nudgeSplit(2); }
+		else if (e.key === 'Home') { e.preventDefault(); codeSplitPct = 15; }
+		else if (e.key === 'End') { e.preventDefault(); codeSplitPct = 85; }
+	}
 	function startSplitResize(e: MouseEvent) {
 		e.preventDefault();
 		const grid = editorGrid;
@@ -805,6 +872,7 @@
 		? themeVars
 		: `${themeVars} height: 100vh;`}
 >
+	<h1 class="sr-only">{name || 'Untitled dicegram'} — editor</h1>
 	<EdgeMarkers />
 	{#if demoMode}
 		<div
@@ -906,10 +974,10 @@
 			/>
 			{#if result?.errors?.length}
 				<div
-					class="pointer-events-none absolute bottom-2 left-2 right-2 rounded border border-red-900 bg-red-950/85 px-2 py-1 text-[11px] text-red-200 shadow"
+					role="alert"
+					class="toast toast-error pointer-events-none absolute bottom-2 left-2 right-2 px-2 py-1 text-[11px]"
 				>
-					line {result.errors[0].line}:{result.errors[0].column}:
-					{result.errors[0].message}
+					Line {result.errors[0].line}, column {result.errors[0].column}: {result.errors[0].message}
 				</div>
 			{/if}
 		</section>
@@ -918,9 +986,13 @@
 			class="split-handle"
 			role="separator"
 			aria-orientation="vertical"
-			aria-label="Resize code / preview"
+			aria-label="Resize code / preview (arrow keys to adjust)"
+			aria-valuenow={Math.round(codeSplitPct)}
+			aria-valuemin={15}
+			aria-valuemax={85}
 			tabindex="0"
 			onmousedown={startSplitResize}
+			onkeydown={onSplitKey}
 		></div>
 		<section
 			class="relative flex min-w-0 flex-col"
@@ -962,7 +1034,8 @@
 			</div>
 			{#if renderError}
 				<div
-					class="pointer-events-none absolute left-4 top-4 rounded bg-red-900/80 px-3 py-2 text-sm text-red-100 shadow"
+					role="alert"
+					class="toast toast-error pointer-events-none absolute left-4 top-4 px-3 py-2 text-sm"
 				>
 					{renderError}
 				</div>
@@ -1023,6 +1096,8 @@
 
 {#if normalizeToast}
 	<div
+		role="status"
+		aria-live="polite"
 		class="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-md border border-neutral-700 bg-neutral-900/95 px-3 py-1.5 text-xs text-neutral-100 shadow-lg"
 	>
 		<Icon name="sparkles" size={13} />
@@ -1041,10 +1116,9 @@
 
 {#if saveToast}
 	<div
-		class="fixed bottom-14 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-md border px-3 py-1.5 text-xs shadow-lg {saveToast.kind ===
-		'error'
-			? 'border-red-900 bg-red-950/95 text-red-100'
-			: 'border-green-900 bg-green-950/95 text-green-100'}"
+		role={saveToast.kind === 'error' ? 'alert' : 'status'}
+		aria-live={saveToast.kind === 'error' ? 'assertive' : 'polite'}
+		class="toast {saveToast.kind === 'error' ? 'toast-error' : 'toast-ok'} fixed bottom-14 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3"
 	>
 		<Icon name={saveToast.kind === 'error' ? 'x' : 'check'} size={13} />
 		<span>{saveToast.message}</span>
@@ -1052,7 +1126,7 @@
 			<button
 				type="button"
 				onclick={() => goto('/dicegrams')}
-				class="rounded border border-green-800 px-2 py-0.5 text-[11px] text-green-200 hover:bg-green-900"
+				class="btn-secondary text-[11px]"
 			>
 				View in Diegrams
 			</button>
@@ -1060,34 +1134,37 @@
 	</div>
 {/if}
 
+<svelte:window onkeydown={(e) => showOpen && e.key === 'Escape' && (showOpen = false)} />
+
 {#if showOpen}
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+		class="modal-backdrop"
 		onclick={() => (showOpen = false)}
-		onkeydown={(e) => e.key === 'Escape' && (showOpen = false)}
-		role="button"
-		tabindex="-1"
 	>
 		<div
-			class="w-[480px] max-w-[90vw] rounded-lg border border-neutral-800 bg-neutral-950 p-4 shadow-xl"
+			bind:this={openDialogPanel}
+			class="modal-panel w-[480px] max-w-[90vw] p-4 focus:outline-none"
 			onclick={(e) => e.stopPropagation()}
 			onkeydown={(e) => e.stopPropagation()}
 			role="dialog"
+			aria-modal="true"
+			aria-labelledby="open-dialog-title"
 			tabindex="-1"
 		>
-			<h2 class="mb-3 text-lg font-semibold text-neutral-100">Your diegrams</h2>
+			<h2 id="open-dialog-title" class="mb-3 text-lg font-semibold text-app">Your diegrams</h2>
 			{#if myDicegrams.length === 0}
-				<p class="text-sm text-neutral-400">No saved diegrams yet.</p>
+				<p class="text-sm text-muted">No saved diegrams yet.</p>
 			{:else}
 				<ul class="flex max-h-96 flex-col gap-1 overflow-auto">
 					{#each myDicegrams as d (d.id)}
 						<li>
 							<button
 								onclick={() => load(d)}
-								class="flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800"
+								class="menu-item justify-between text-sm"
 							>
-								<span class="truncate">{d.name}</span>
-								<span class="ml-3 text-xs text-neutral-500"
+								<span class="truncate text-app">{d.name}</span>
+								<span class="ml-3 text-xs text-dim"
 									>{new Date(d.updated_at).toLocaleDateString()}</span
 								>
 							</button>
@@ -1098,7 +1175,7 @@
 			<div class="mt-4 flex justify-end">
 				<button
 					onclick={() => (showOpen = false)}
-					class="rounded border border-neutral-700 px-3 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
+					class="btn-secondary text-sm"
 				>
 					Close
 				</button>
@@ -1110,12 +1187,12 @@
 <style>
 	.split-handle {
 		cursor: col-resize;
-		background: color-mix(in oklab, var(--th-panel-border, #262626) 80%, transparent);
+		background: color-mix(in oklab, var(--th-panel-border, var(--app-border)) 80%, transparent);
 		transition: background-color 0.12s;
 	}
 	.split-handle:hover,
 	.split-handle:focus-visible {
-		background: var(--th-accent, #3b82f6);
+		background: var(--th-accent, var(--app-accent));
 		outline: none;
 	}
 </style>

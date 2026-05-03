@@ -71,15 +71,33 @@ def normalize(source: str) -> NormalizeResult:
         input/output→parallelogram, approval→hexagon, manual→rounded.
         If the author wrote an inconsistent shape the compiler rewrites it
         so visuals always match meaning.
+    R8: rename retired theme ids in `setting color_scheme <id>` to their
+        current equivalents. Quietly migrates user-saved Dicegrams the
+        first time they're rendered or saved after a rename.
     """
     notices: list[Notice] = []
     if source.startswith("\ufeff"):
         source = source.lstrip("\ufeff")
 
+    # R8: theme-rename migration. Map retired ids to their current equivalents
+    # before splitting the source so downstream rules see the migrated value.
+    _THEME_RENAME = {"anthropic": "warm"}
+    _theme_re = re.compile(r"^(\s*setting\s+color_scheme\s+)(\S+)(\s*)$", re.MULTILINE)
+
+    def _migrate_theme(m: re.Match[str]) -> str:
+        old = m.group(2).lower()
+        return f"{m.group(1)}{_THEME_RENAME[old]}{m.group(3)}" if old in _THEME_RENAME else m.group(0)
+
+    migrated = _theme_re.sub(_migrate_theme, source)
+    theme_migrated = migrated != source
+    source = migrated
+
     grid = _snap_grid(source)
     free_placement = _free_placement(source)
     lines = source.split("\n")
-    changed = False
+    changed = theme_migrated
+    if theme_migrated:
+        notices.append(Notice("fix", "migrated retired theme id", None))
 
     # R1: trim trailing whitespace (preserve line count / empty lines).
     for i, line in enumerate(lines):

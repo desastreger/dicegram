@@ -89,47 +89,41 @@
 <section class="mx-auto max-w-3xl px-4 py-8">
 	<header class="mb-6 flex items-end justify-between">
 		<div>
-			<h1 class="text-2xl font-semibold">Branding palette</h1>
-			<p class="mt-1 text-sm text-neutral-400">
+			<h1 class="text-2xl font-semibold text-app">Branding palette</h1>
+			<p class="mt-1 text-sm text-muted">
 				Default colours for new elements. Per-node overrides in the inspector
-				(<code class="rounded bg-neutral-900 px-1 py-0.5 text-xs">{'{fill:#…}'}</code>) still win —
+				(<code class="rounded bg-surface-2 px-1 py-0.5 text-xs">{'{fill:#…}'}</code>) still win —
 				this palette only fills in what the DSL doesn't specify. Applies to your
 				canvas, your SVG/PNG/PDF exports, and any diegrams you share.
 			</p>
 		</div>
-		<div class="flex items-center gap-3 text-xs text-neutral-400">
-			{#if status === 'saving'}<span>Saving…</span>{/if}
-			{#if status === 'saved'}<span class="text-emerald-400">Saved</span>{/if}
-			{#if status === 'error'}<span class="text-red-400">Save failed</span>{/if}
-			<button
-				onclick={resetAll}
-				class="rounded border border-neutral-700 px-2 py-1 text-neutral-300 hover:bg-neutral-900 hover:text-white"
-			>
+		<div class="flex items-center gap-3 text-xs text-muted">
+			<span role="status" aria-live="polite">
+				{#if status === 'saving'}Saving…{/if}
+				{#if status === 'saved'}<span class="text-ok">Saved</span>{/if}
+				{#if status === 'error'}<span class="text-danger">Save failed</span>{/if}
+			</span>
+			<button type="button" onclick={resetAll} class="btn-secondary text-xs">
 				Reset all
 			</button>
 		</div>
 	</header>
 
 	<!-- Brand lock -->
-	<div class="mb-4 flex items-start gap-3 rounded border border-neutral-800 bg-neutral-950 p-4">
+	<div class="panel mb-4 flex items-start gap-3 p-4">
 		<button
 			type="button"
 			onclick={toggleLock}
 			role="switch"
-			aria-checked={palette.locked}
-			class="mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors {palette.locked
-				? 'border-blue-500 bg-blue-600'
-				: 'border-neutral-700 bg-neutral-800'}"
+			aria-checked={!!palette.locked}
+			aria-label="Enforce brand palette"
+			class="toggle-track {palette.locked ? 'toggle-track-on' : ''} mt-0.5"
 		>
-			<span
-				class="ml-0.5 h-4 w-4 transform rounded-full bg-white transition-transform {palette.locked
-					? 'translate-x-4'
-					: 'translate-x-0'}"
-			></span>
+			<span class="toggle-knob"></span>
 		</button>
 		<div class="min-w-0 flex-1">
-			<div class="text-sm font-medium text-neutral-100">Enforce brand palette</div>
-			<p class="mt-0.5 text-xs text-neutral-500">
+			<div class="text-sm font-medium text-app">Enforce brand palette</div>
+			<p class="mt-0.5 text-xs text-dim">
 				When on, the editor's Inspector hides inline colour overrides — every node takes its
 				colour from this palette. Keep off for creative freedom; turn on for agency / enterprise
 				brand consistency.
@@ -138,11 +132,11 @@
 	</div>
 
 	<!-- Preset switcher -->
-	<div class="mb-8 rounded border border-neutral-800 bg-neutral-950 p-4">
+	<div class="panel mb-8 p-4">
 		<div class="mb-3 flex items-end justify-between gap-3">
 			<div>
-				<h2 class="text-sm font-semibold text-neutral-200">Brand presets</h2>
-				<p class="mt-1 text-xs text-neutral-500">
+				<h2 class="text-sm font-semibold text-app">Brand presets</h2>
+				<p class="mt-1 text-xs text-dim">
 					Save your current colours as a named preset, then switch between presets with one click.
 				</p>
 			</div>
@@ -158,35 +152,31 @@
 					bind:value={newPresetName}
 					placeholder="e.g. Enterprise Blue"
 					maxlength="60"
-					class="w-44 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs text-neutral-100 focus:border-neutral-600 focus:outline-none"
+					class="input-themed w-44 text-xs"
 				/>
 				<button
 					type="submit"
 					disabled={!newPresetName.trim()}
-					class="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+					class="btn-primary text-xs"
 				>
 					Save current as…
 				</button>
 			</form>
 		</div>
 		{#if palette.presets.length === 0}
-			<p class="text-xs text-neutral-500">No presets yet. Type a name and click "Save current as…" to create one.</p>
+			<p class="text-xs text-dim">No presets yet. Type a name and click "Save current as…" to create one.</p>
 		{:else}
 			<ul class="flex flex-wrap gap-2">
 				{#each palette.presets as p (p.name)}
-					<li
-						class="flex items-center gap-2 rounded border px-2 py-1 text-xs {p.active
-							? 'border-blue-500 bg-blue-950/40 text-blue-200'
-							: 'border-neutral-800 bg-neutral-900 text-neutral-200'}"
-					>
-						<span class="font-medium">{p.name}</span>
+					<li class="badge {p.active ? 'badge-active' : ''}">
+						<span class="font-medium text-app">{p.name}</span>
 						{#if p.active}
-							<span class="text-[10px] uppercase tracking-wider text-blue-400">active</span>
+							<span class="text-[10px] uppercase tracking-wider text-accent">active</span>
 						{:else}
 							<button
 								type="button"
 								onclick={() => activatePreset(p.name)}
-								class="text-neutral-400 hover:text-white"
+								class="text-muted hover:text-app"
 							>
 								Activate
 							</button>
@@ -195,9 +185,10 @@
 							type="button"
 							onclick={() => deletePreset(p.name)}
 							title="Delete preset"
-							class="text-neutral-500 hover:text-red-400"
+							aria-label={`Delete preset "${p.name}"`}
+							class="text-dim hover:text-danger"
 						>
-							×
+							<span aria-hidden="true">×</span>
 						</button>
 					</li>
 				{/each}
@@ -207,23 +198,23 @@
 
 	{#each PALETTE_SECTIONS as section}
 		<div class="mb-8">
-			<h2 class="mb-3 text-xs font-semibold uppercase tracking-wider text-neutral-500">
+			<h2 class="mb-3 text-xs font-semibold uppercase tracking-wider text-dim">
 				{section.title}
 			</h2>
 			<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
 				{#each section.keys as item}
-					<div class="flex items-center gap-3 rounded border border-neutral-800 bg-neutral-950 p-2">
+					<div class="panel flex items-center gap-3 p-2">
 						<input
 							type="color"
-							value={draft[item.key] || PALETTE_DEFAULTS[item.key] || '#1f2937'}
+							value={draft[item.key] || PALETTE_DEFAULTS[item.key] || '#888888'}
 							oninput={(e) => onColorInput(item.key, e.currentTarget.value)}
-							class="h-8 w-10 shrink-0 cursor-pointer rounded border border-neutral-700 bg-transparent"
+							class="h-8 w-10 shrink-0 cursor-pointer rounded border border-app bg-transparent"
 							aria-label={item.label}
 						/>
 						<div class="min-w-0 flex-1">
-							<div class="truncate text-sm text-neutral-100">{item.label}</div>
+							<div class="truncate text-sm text-app">{item.label}</div>
 							{#if item.hint}
-								<div class="truncate font-mono text-[11px] text-neutral-500">{item.hint}</div>
+								<div class="truncate font-mono text-[11px] text-dim">{item.hint}</div>
 							{/if}
 						</div>
 						<input
@@ -231,15 +222,18 @@
 							value={draft[item.key] ?? ''}
 							oninput={(e) => onColorInput(item.key, e.currentTarget.value)}
 							placeholder={PALETTE_DEFAULTS[item.key] || '(default)'}
-							class="w-24 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 font-mono text-xs text-neutral-200 focus:border-neutral-600 focus:outline-none"
+							aria-label={`${item.label} hex value`}
+							class="input-themed w-24 font-mono text-xs"
 						/>
 						{#if isOverridden(item.key)}
 							<button
+								type="button"
 								onclick={() => resetKey(item.key)}
 								title="Reset to default"
-								class="text-xs text-neutral-500 hover:text-neutral-200"
+								aria-label={`Reset ${item.label} to default`}
+								class="text-xs text-dim hover:text-app"
 							>
-								↺
+								<span aria-hidden="true">↺</span>
 							</button>
 						{/if}
 					</div>

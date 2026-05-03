@@ -16,6 +16,7 @@
 			obstacles?: Rect[];
 			labelFill?: string;
 			labelBg?: string;
+			labelBorder?: string;
 			axis?: 'vertical' | 'horizontal' | 'auto';
 			lineStyle?: 'orthogonal' | 'curved' | 'straight';
 		};
@@ -97,9 +98,14 @@
 		return waypoints[waypoints.length - 1];
 	});
 
-	const labelFill = $derived(data?.labelFill ?? '#e5e7eb');
-	const labelBg = $derived(data?.labelBg ?? '#0f172a');
-	const labelBorder = $derived(data?.labelBorder ?? '#334155');
+	// Label colours come from Canvas.svelte (which feeds them from the active
+	// theme's tokens). The hex fallbacks only kick in if a caller forgets to
+	// pass them — defensive, not the canonical path.
+	const labelFill = $derived(data?.labelFill ?? 'var(--th-text, var(--app-text))');
+	const labelBg = $derived(data?.labelBg ?? 'var(--th-panel, var(--app-surface))');
+	const labelBorder = $derived(
+		data?.labelBorder ?? 'var(--th-panel-border, var(--app-border))'
+	);
 	const labelLines = $derived((label ?? '').split('\n'));
 	const labelLineHeight = 14;
 	const labelWidth = $derived(

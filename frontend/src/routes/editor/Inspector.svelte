@@ -438,9 +438,9 @@
 {#if open}
   <aside
     class="flex h-full min-h-0 w-full flex-col border-l text-xs"
-    style:background-color="var(--th-panel, #0a0a0a)"
-    style:border-color="var(--th-panel-border, #262626)"
-    style:color="var(--th-text, #e5e7eb)"
+    style:background-color="var(--th-panel, var(--app-surface))"
+    style:border-color="var(--th-panel-border, var(--app-border))"
+    style:color="var(--th-text, var(--app-text))"
   >
     <header
       class="flex shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-950 px-3 py-2"
@@ -498,7 +498,12 @@
            thing *is* before tweaking details. -->
       <div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Shape</div>
       <div class="px-3">
-        <Dropdown value={currentShape} options={shapeOptions} onchange={commitShape} />
+        <Dropdown
+          value={currentShape}
+          options={shapeOptions}
+          onchange={commitShape}
+          ariaLabel="Shape"
+        />
       </div>
 
       <div class="mt-3 mb-1 flex items-center justify-between px-3 text-[10px] uppercase tracking-wide text-neutral-500">
@@ -507,6 +512,7 @@
           <button
             type="button"
             title="Move up among siblings"
+            aria-label="Move up among siblings"
             class="rounded border border-neutral-800 p-0.5 text-neutral-400 hover:text-neutral-100"
             onclick={() => selected && onSiblingMove?.(selected.id, -1)}
           >
@@ -515,6 +521,7 @@
           <button
             type="button"
             title="Move down among siblings"
+            aria-label="Move down among siblings"
             class="rounded border border-neutral-800 p-0.5 text-neutral-400 hover:text-neutral-100"
             onclick={() => selected && onSiblingMove?.(selected.id, 1)}
           >
@@ -527,13 +534,14 @@
           value={currentParentKey}
           options={dropdownParentOptions}
           onchange={commitParent}
+          ariaLabel="Parent container"
         />
       </div>
 
       <div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Identity</div>
       <div class="space-y-1 px-3">
-        <div class="flex items-center gap-2">
-          <label class="w-14 text-[11px] text-neutral-400">Name</label>
+        <label class="flex items-center gap-2">
+          <span class="w-14 text-[11px] text-neutral-400">Name</span>
           <input
             type="text"
             class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
@@ -541,9 +549,9 @@
             onblur={commitName}
             onkeydown={(e) => onTextKey(e, commitName)}
           />
-        </div>
-        <div class="flex items-start gap-2">
-          <label class="w-14 pt-1 text-[11px] text-neutral-400">Label</label>
+        </label>
+        <label class="flex items-start gap-2">
+          <span class="w-14 pt-1 text-[11px] text-neutral-400">Label</span>
           <textarea
             bind:this={labelTextarea}
             rows="3"
@@ -551,7 +559,7 @@
             bind:value={labelDraft}
             onblur={commitLabel}
           ></textarea>
-        </div>
+        </label>
       </div>
 
       <div
@@ -562,6 +570,7 @@
           type="button"
           class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-neutral-400 hover:text-neutral-100"
           title="Revert to auto-layout position"
+          aria-label="Revert to auto-layout position"
           onclick={autoPosition}
         >
           Auto
@@ -569,36 +578,40 @@
       </div>
       <div class="grid grid-cols-2 gap-1 px-3">
         <label class="flex items-center gap-1">
-          <span class="w-4 text-[11px] text-neutral-400">X</span>
+          <span class="w-4 text-[11px] text-neutral-400" aria-hidden="true">X</span>
           <input
             type="number"
+            aria-label="X position"
             class="h-6 w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
             bind:value={xDraft}
             onchange={commitPosition}
           />
         </label>
         <label class="flex items-center gap-1">
-          <span class="w-4 text-[11px] text-neutral-400">Y</span>
+          <span class="w-4 text-[11px] text-neutral-400" aria-hidden="true">Y</span>
           <input
             type="number"
+            aria-label="Y position"
             class="h-6 w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
             bind:value={yDraft}
             onchange={commitPosition}
           />
         </label>
         <label class="flex items-center gap-1">
-          <span class="w-4 text-[11px] text-neutral-400">W</span>
+          <span class="w-4 text-[11px] text-neutral-400" aria-hidden="true">W</span>
           <input
             type="number"
+            aria-label="Width"
             class="h-6 w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
             bind:value={widthDraft}
             onchange={commitWidth}
           />
         </label>
         <label class="flex items-center gap-1">
-          <span class="w-4 text-[11px] text-neutral-400">H</span>
+          <span class="w-4 text-[11px] text-neutral-400" aria-hidden="true">H</span>
           <input
             type="number"
+            aria-label="Height"
             class="h-6 w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
             bind:value={heightDraft}
             onchange={commitHeight}
@@ -619,13 +632,18 @@
       <div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Semantics</div>
       <div class="space-y-1 px-3">
         <div class="flex items-center gap-2">
-          <label class="w-14 text-[11px] text-neutral-400">Type</label>
+          <span class="w-14 text-[11px] text-neutral-400">Type</span>
           <div class="flex-1">
-            <Dropdown value={currentType} options={typeOptions} onchange={commitSelectAttr('type')} />
+            <Dropdown
+              value={currentType}
+              options={typeOptions}
+              onchange={commitSelectAttr('type')}
+              ariaLabel="Type"
+            />
           </div>
         </div>
-        <div class="flex items-center gap-2">
-          <label class="w-14 text-[11px] text-neutral-400">Owner</label>
+        <label class="flex items-center gap-2">
+          <span class="w-14 text-[11px] text-neutral-400">Owner</span>
           <input
             type="text"
             class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
@@ -633,21 +651,31 @@
             onblur={commitOwner}
             onkeydown={(e) => onTextKey(e, commitOwner)}
           />
-        </div>
+        </label>
         <div class="flex items-center gap-2">
-          <label class="w-14 text-[11px] text-neutral-400">Status</label>
+          <span class="w-14 text-[11px] text-neutral-400">Status</span>
           <div class="flex-1">
-            <Dropdown value={currentStatus} options={statusOptions} onchange={commitSelectAttr('status')} />
+            <Dropdown
+              value={currentStatus}
+              options={statusOptions}
+              onchange={commitSelectAttr('status')}
+              ariaLabel="Status"
+            />
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <label class="w-14 text-[11px] text-neutral-400">Priority</label>
+          <span class="w-14 text-[11px] text-neutral-400">Priority</span>
           <div class="flex-1">
-            <Dropdown value={currentPriority} options={priorityOptions} onchange={commitSelectAttr('priority')} />
+            <Dropdown
+              value={currentPriority}
+              options={priorityOptions}
+              onchange={commitSelectAttr('priority')}
+              ariaLabel="Priority"
+            />
           </div>
         </div>
-        <div class="flex items-center gap-2">
-          <label class="w-14 text-[11px] text-neutral-400">Tags</label>
+        <label class="flex items-center gap-2">
+          <span class="w-14 text-[11px] text-neutral-400">Tags</span>
           <input
             type="text"
             placeholder="a, b, c"
@@ -656,7 +684,7 @@
             onblur={commitTags}
             onkeydown={(e) => onTextKey(e, commitTags)}
           />
-        </div>
+        </label>
       </div>
 
       <div class="mt-3 mb-1 flex items-center justify-between px-3 text-[10px] uppercase tracking-wide text-neutral-500">
@@ -708,12 +736,12 @@
       {#if palette.locked}
         <p class="mx-3 mb-2 rounded border border-blue-900/50 bg-blue-950/30 px-2 py-1.5 text-[11px] text-blue-200">
           Colour overrides are disabled. Edit the active palette in
-          <a href="/settings" class="underline hover:text-white">Settings</a> to change colours.
+          <a href="/settings" class="link">Settings</a> to change colours.
         </p>
       {:else}
       <div class="space-y-1 px-3">
         <div class="flex items-center gap-2">
-          <label class="w-14 text-[11px] text-neutral-400">Fill</label>
+          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Fill</span>
           <input
             type="color"
             class="h-6 w-8 cursor-pointer rounded border border-neutral-800 bg-neutral-900"
@@ -733,13 +761,14 @@
             type="button"
             class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100"
             onclick={() => clearStyle('fill')}
+            aria-label="Reset fill colour to palette default"
             title="Revert to palette default"
           >
             Reset
           </button>
         </div>
         <div class="flex items-center gap-2">
-          <label class="w-14 text-[11px] text-neutral-400">Stroke</label>
+          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Stroke</span>
           <input
             type="color"
             class="h-6 w-8 cursor-pointer rounded border border-neutral-800 bg-neutral-900"
@@ -759,13 +788,14 @@
             type="button"
             class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100"
             onclick={() => clearStyle('stroke')}
+            aria-label="Reset stroke colour to palette default"
             title="Revert to palette default"
           >
             Reset
           </button>
         </div>
         <div class="flex items-center gap-2">
-          <label class="w-14 text-[11px] text-neutral-400">Text</label>
+          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Text</span>
           <input
             type="color"
             class="h-6 w-8 cursor-pointer rounded border border-neutral-800 bg-neutral-900"
@@ -785,6 +815,7 @@
             type="button"
             class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100"
             onclick={() => clearStyle('text')}
+            aria-label="Reset text colour to palette default"
             title="Revert to palette default"
           >
             Reset
@@ -798,11 +829,12 @@
       </div>
       <div class="grid grid-cols-2 gap-1 px-3">
         <div class="flex items-center gap-1">
-          <span class="w-14 text-[11px] text-neutral-400">Font</span>
+          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Font</span>
           <input
             type="number"
             placeholder="13"
             min="6"
+            aria-label="Font size"
             class="h-6 w-full min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
             bind:value={fontSizeDraft}
             onblur={() => commitStyleNum('font_size', fontSizeDraft)}
@@ -813,17 +845,19 @@
             class="rounded border border-neutral-800 px-1 py-0.5 text-[9px] uppercase tracking-wide text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
             disabled={!selected?.style?.font_size}
             onclick={() => clearStyleNum('font_size')}
+            aria-label="Clear font size override"
             title="Clear override (revert to master)"
           >
             <Icon name="x" size={9} />
           </button>
         </div>
         <div class="flex items-center gap-1">
-          <span class="w-14 text-[11px] text-neutral-400">Radius</span>
+          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Radius</span>
           <input
             type="number"
             placeholder="auto"
             min="0"
+            aria-label="Corner radius"
             class="h-6 w-full min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
             bind:value={rxDraft}
             onblur={() => commitStyleNum('rx', rxDraft)}
@@ -834,18 +868,20 @@
             class="rounded border border-neutral-800 px-1 py-0.5 text-[9px] uppercase tracking-wide text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
             disabled={!selected?.style?.rx}
             onclick={() => clearStyleNum('rx')}
+            aria-label="Clear corner radius override"
             title="Clear override (revert to master)"
           >
             <Icon name="x" size={9} />
           </button>
         </div>
         <div class="flex items-center gap-1">
-          <span class="w-14 text-[11px] text-neutral-400">Stroke</span>
+          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Stroke</span>
           <input
             type="number"
             placeholder="auto"
             min="0"
             step="0.25"
+            aria-label="Stroke width"
             class="h-6 w-full min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
             bind:value={strokeWidthDraft}
             onblur={() => commitStyleNum('stroke_width', strokeWidthDraft)}
@@ -857,19 +893,21 @@
             class="rounded border border-neutral-800 px-1 py-0.5 text-[9px] uppercase tracking-wide text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
             disabled={!selected?.style?.stroke_width}
             onclick={() => clearStyleNum('stroke_width')}
+            aria-label="Clear stroke width override"
             title="Clear override (revert to master)"
           >
             <Icon name="x" size={9} />
           </button>
         </div>
         <div class="flex items-center gap-1">
-          <span class="w-14 text-[11px] text-neutral-400">Opacity</span>
+          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Opacity</span>
           <input
             type="number"
             placeholder="1"
             min="0"
             max="1"
             step="0.05"
+            aria-label="Opacity"
             class="h-6 w-full min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
             bind:value={opacityDraft}
             onblur={() => commitStyleNum('opacity', opacityDraft)}
@@ -880,16 +918,18 @@
             class="rounded border border-neutral-800 px-1 py-0.5 text-[9px] uppercase tracking-wide text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
             disabled={!selected?.style?.opacity}
             onclick={() => clearStyleNum('opacity')}
+            aria-label="Clear opacity override"
             title="Clear override (revert to master)"
           >
             <Icon name="x" size={9} />
           </button>
         </div>
         <div class="col-span-2 flex items-center gap-2">
-          <span class="w-14 text-[11px] text-neutral-400">Font family</span>
+          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Font family</span>
           <input
             type="text"
             placeholder="inherit"
+            aria-label="Font family"
             class="h-6 flex-1 min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
             bind:value={fontFamilyDraft}
             onblur={commitFontFamily}
@@ -900,6 +940,7 @@
             class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100 disabled:opacity-30"
             disabled={!selected?.style?.font_family}
             onclick={clearFontFamily}
+            aria-label="Reset font family override"
             title="Clear override (revert to master)"
           >
             Reset

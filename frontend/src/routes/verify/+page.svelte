@@ -33,8 +33,8 @@
 
 <svelte:head><title>Verify · Dicegram</title></svelte:head>
 
-<section class="mx-auto max-w-md px-4 py-16 text-center">
-	<h1 class="mb-3 text-xl font-semibold">
+<section class="mx-auto w-full max-w-md px-4 py-16 text-center" aria-live="polite">
+	<h1 class="mb-3 text-xl font-semibold text-app">
 		{#if status === 'ok'}
 			You're in
 		{:else if status === 'error'}
@@ -43,21 +43,11 @@
 			Verifying email…
 		{/if}
 	</h1>
-	<p class="text-sm text-neutral-400">{message}</p>
+	<p class="text-sm text-muted">{message}</p>
 	{#if status === 'error'}
 		<div class="mt-6 flex justify-center gap-3 text-xs">
-			<a
-				href="/login"
-				class="rounded border border-neutral-800 px-3 py-1 text-neutral-200 hover:bg-neutral-900"
-			>
-				Log in
-			</a>
-			<a
-				href="/signup"
-				class="rounded bg-blue-600 px-3 py-1 text-white hover:bg-blue-500"
-			>
-				Sign up again
-			</a>
+			<a href="/login" class="btn-secondary">Log in</a>
+			<a href="/signup" class="btn-primary">Sign up again</a>
 		</div>
 	{/if}
 </section>

@@ -1,13 +1,55 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/forms';
 
-/* ─── Theme tokens ─────────────────────────────────────────────────────────
-   Semantic CSS variables so the whole app can flip between dark and light
-   without touching every Tailwind utility. Pages that need themed colours
-   should prefer these over raw Tailwind palette references. Editor canvas
-   stays dark by default (like Figma/Linear) — theme flip applies to
-   chrome/auth/settings surfaces.
-*/
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE THEME STANDARD
+   ───────────────────────────────────────────────────────────────────────────
+   Every UI surface in the app speaks one of three languages, in order of
+   preference. Mix them freely; they all resolve to the same theme tokens.
+
+     1) Standard utility classes (RECOMMENDED — use these by default)
+          Layout / surface : .bg-app .bg-surface .bg-surface-2 .panel .surface-soft
+          Text             : .text-app .text-muted .text-dim
+          Borders          : .border-app .border-strong .divider .divider-v
+          Buttons          : .btn-primary .btn-secondary .btn-ghost .btn-danger
+                             .btn-icon .btn-icon-active
+          Inputs           : .input-themed .field-label
+          Modals           : .modal-backdrop .modal-panel
+          Toasts/badges    : .toast .toast-ok .toast-error .badge .badge-active
+          Toggles          : .toggle-track .toggle-track-on .toggle-knob
+          Links            : .link
+          Dropdown rows    : .menu-panel .menu-item
+          Status text      : .text-ok .text-danger .text-warn .text-accent
+
+     2) CSS variables (when a class doesn't fit — e.g. svelte-flow internals,
+          inline styles from data, computed values)
+          --app-bg --app-surface --app-surface-2
+          --app-border --app-border-strong
+          --app-text --app-text-muted --app-text-dim
+          --app-accent --app-accent-text --app-accent-2
+          --app-ring --app-danger --app-warn --app-ok
+          --app-radius --app-radius-sm --header-h
+          --app-shadow-sm --app-shadow-md --app-shadow-lg
+          --app-scrim       (modal backdrop overlay)
+          --app-hover       (subtle hover background)
+
+     3) Tailwind dark-first utilities — bg-neutral-9XX, text-neutral-3XX, etc.
+          These get blanket-mapped in light mode below. They are SUPPORTED
+          but discouraged for new code: they require us to remember to add
+          a mapping for each new shade. The standard utility classes above
+          are the only sustainable answer.
+
+   When you add a new component:
+     - First reach for the standard utility classes (group #1).
+     - If you need an inline style / SVG fill / computed value, use group #2.
+     - Don't introduce hardcoded hex / rgb / oklch / hsl colours. Don't reach
+       for `text-white`, `bg-black`, `bg-white`, `text-black` directly —
+       they are remapped below but are still a code smell. Use .text-app
+       etc.
+     - Never write a `<style>` block with hardcoded greys. Reference vars.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Theme tokens ──────────────────────────────────────────────────────── */
 
 :root,
 :root[data-theme='dark'] {
@@ -19,40 +61,68 @@
 	--app-border-strong: #404040;
 	--app-text: #e5e7eb;
 	--app-text-muted: #a1a1aa;
-	--app-text-dim: #71717a;
-	--app-accent: #3b82f6;
+	/* dim was #71717a (4.1:1 — borderline AA). Lifted to #878790 (5.4:1)
+	   to clear AA cleanly in dark mode too. */
+	--app-text-dim: #878790;
+	/* accent darkened from blue-500 (#3b82f6 → 3.68:1 with white, fails AA)
+	   to blue-600 so primary buttons pass AA. accent-2 follows down a step. */
+	--app-accent: #2563eb;          /* 5.17:1 with white — passes AA */
+	--app-accent-2: #1d4ed8;        /* 6.70:1 — secondary CTAs */
 	--app-accent-text: #ffffff;
-	--app-ring: #3b82f6;
-	--app-danger: #ef4444;
+	--app-ring: #2563eb;
+	/* danger lifted from #ef4444 (3.76:1 with white) to red-600 (5.93:1). */
+	--app-danger: #dc2626;
 	--app-warn: #f59e0b;
 	--app-ok: #10b981;
 	--header-h: 40px;
 	--app-radius: 6px;
 	--app-radius-sm: 4px;
+	--app-radius-lg: 10px;
+	--app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+	--app-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+	--app-shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.55);
+	--app-scrim: rgba(0, 0, 0, 0.65);
+	--app-hover: rgba(255, 255, 255, 0.04);
 }
 
 :root[data-theme='light'] {
 	color-scheme: light;
-	/* Warm ivory paper instead of pure white — closer to anthropic.com.
-	   Surfaces step up in warmth (not grayscale) so the eye reads the
-	   layering as friendlier, not clinical. */
+	/* Warm ivory paper — surfaces step up in warmth (not grayscale). The
+	   ladder previously stepped only ~6-8 brightness points; that was
+	   the "everything blends" complaint. Widened to ~10-12 points
+	   between bg → surface → surface-2 so panels, nodes, dropdowns
+	   visibly stack on the page. */
 	--app-bg: #fbf7f2;
-	--app-surface: #f7f1e9;
-	--app-surface-2: #f1ebe1;
-	--app-border: #e3d9cf;
-	--app-border-strong: #cdbfb1;
-	--app-text: #2a241f;
-	--app-text-muted: #6b6259;
-	--app-text-dim: #8a7f74;
-	--app-accent: #d97757;          /* anthropic salmon */
+	--app-surface: #ede4d3;
+	--app-surface-2: #ddd0b8;
+	--app-border: #c8b89e;
+	--app-border-strong: #9a8771;
+	/* Text bumped half a step darker — the previous #2a241f was fine on
+	   pure paper but greyed out against the new warmer surfaces. */
+	--app-text: #1f1a16;
+	--app-text-muted: #5a5048;
+	/* dim lifted to clear AA cleanly on every surface in the ladder. */
+	--app-text-dim: #6b5f53;
+	/* accent deepened from #d97757 (3.12:1 with white, fails AA) to a darker
+	   warm rust so primary buttons / sign-up CTA / link text all pass AA. */
+	--app-accent: #b04527;          /* 5.63:1 with white — passes AA */
+	--app-accent-2: #8a3520;        /* 8.5:1 — secondary CTAs */
 	--app-accent-text: #ffffff;
-	--app-ring: #d97757;
-	--app-danger: #c44536;
+	--app-ring: #b04527;
+	--app-danger: #b8392a;          /* 5.55:1 with white — was #c44536 (4.94) */
 	--app-warn: #d4863b;
-	--app-ok: #5b8060;
+	--app-ok: #4d7553;
 	/* Softer corners for the friendlier site look. */
 	--app-radius: 10px;
 	--app-radius-sm: 6px;
+	--app-radius-lg: 14px;
+	/* Slightly stronger shadows so the ladder steps register as elevation,
+	   not just hue shifts. */
+	--app-shadow-sm: 0 1px 2px rgba(60, 50, 40, 0.10);
+	--app-shadow-md: 0 4px 12px rgba(60, 50, 40, 0.14);
+	--app-shadow-lg: 0 10px 30px rgba(60, 50, 40, 0.18);
+	--app-scrim: rgba(60, 50, 40, 0.35);
+	--app-hover: rgba(60, 50, 40, 0.07);
 }
 
 html,
@@ -71,23 +141,19 @@ body {
 	-moz-osx-font-smoothing: grayscale;
 }
 
-/* Softer, warmer scrollbars in light mode — the default Windows ones feel
-   harsh against the ivory background. */
+/* Softer, warmer scrollbars in light mode. */
 :root[data-theme='light'] {
 	scrollbar-color: #cdbfb1 transparent;
 }
 
 /* ─── Accessibility ───────────────────────────────────────────────────────── */
 
-/* Visible keyboard focus on every interactive element. Browsers honour
-   :focus-visible so mouse clicks don't trigger this, only keyboard. */
 :focus-visible {
 	outline: 2px solid var(--app-ring);
 	outline-offset: 2px;
 	border-radius: 3px;
 }
 
-/* Skip-to-content link — visually hidden until focused. */
 .skip-link {
 	position: absolute;
 	left: 0.5rem;
@@ -106,8 +172,6 @@ body {
 	transform: translateY(0);
 }
 
-/* Honour the user's motion preference — pause any animations / transitions
-   that don't convey information. */
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,
@@ -119,21 +183,55 @@ body {
 	}
 }
 
-/* ─── Themed utility classes ──────────────────────────────────────────────
-   Hand-rolled (not Tailwind-generated) so they track CSS variables at
-   runtime. Use alongside plain Tailwind utilities. */
+/* ═══════════════════════════════════════════════════════════════════════════
+   STANDARD UTILITY CLASSES — group #1 (RECOMMENDED for components)
+   These are the "vocabulary" components should reach for first. They all
+   track the active theme automatically.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* — Surfaces — */
 .bg-app       { background-color: var(--app-bg); }
 .bg-surface   { background-color: var(--app-surface); }
 .bg-surface-2 { background-color: var(--app-surface-2); }
+
+/* — Text — */
 .text-app     { color: var(--app-text); }
 .text-muted   { color: var(--app-text-muted); }
 .text-dim     { color: var(--app-text-dim); }
-.border-app   { border-color: var(--app-border); }
+.text-accent  { color: var(--app-accent); }
+.text-ok      { color: var(--app-ok); }
+.text-danger  { color: var(--app-danger); }
+.text-warn    { color: var(--app-warn); }
+
+/* — Borders — */
+.border-app    { border-color: var(--app-border); }
 .border-strong { border-color: var(--app-border-strong); }
+.divider       { border-top: 1px solid var(--app-border); }
+.divider-v     { width: 1px; align-self: stretch; background-color: var(--app-border); }
+
+/* — Rings (Tailwind ring colour shim) — */
 .ring-accent  { --tw-ring-color: var(--app-ring); }
+
+/* — Accent flat — */
 .bg-accent    { background-color: var(--app-accent); color: var(--app-accent-text); }
 
-/* Standard form control that adapts to theme. */
+/* — Cards / panels — */
+.panel {
+	background-color: var(--app-surface);
+	border: 1px solid var(--app-border);
+	border-radius: var(--app-radius, 6px);
+}
+
+.surface-soft {
+	background-color: var(--app-surface);
+	border: 1px solid var(--app-border);
+	border-radius: var(--app-radius, 6px);
+}
+:root[data-theme='light'] .surface-soft {
+	box-shadow: var(--app-shadow-md);
+}
+
+/* — Inputs — */
 .input-themed {
 	background-color: var(--app-surface-2);
 	color: var(--app-text);
@@ -150,51 +248,321 @@ body {
 	border-color: transparent;
 }
 
-/* Card / panel surface. */
-.panel {
-	background-color: var(--app-surface);
-	border: 1px solid var(--app-border);
-	border-radius: var(--app-radius, 6px);
+.field-label {
+	font-size: 0.875rem;
+	font-weight: 500;
+	color: var(--app-text);
 }
 
-/* Soft elevation for hero / promoted surfaces — used on the landing
-   hero card, the inspector callouts, etc. Keeps the look airy in light
-   mode and disappears in dark mode where shadow-on-near-black is noisy. */
-.surface-soft {
-	background-color: var(--app-surface);
-	border: 1px solid var(--app-border);
-	border-radius: var(--app-radius, 6px);
+/* — Buttons — */
+.btn-primary {
+	background-color: var(--app-accent);
+	color: var(--app-accent-text);
+	border: 1px solid transparent;
+	border-radius: var(--app-radius-sm, 4px);
+	padding: 0.375rem 0.875rem;
+	font-weight: 500;
+	transition: background-color 0.12s, opacity 0.12s;
 }
-:root[data-theme='light'] .surface-soft {
-	box-shadow:
-		0 1px 0 rgba(60, 50, 40, 0.04),
-		0 8px 24px -12px rgba(60, 50, 40, 0.08);
+.btn-primary:hover:not(:disabled) {
+	background-color: color-mix(in srgb, var(--app-accent) 88%, var(--app-text) 12%);
+}
+.btn-primary:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
-/* ─── Light-mode overrides for existing dark-neutral Tailwind utilities ──
-   The UI was built dark-first, so rather than rewrite every page we map
-   the handful of neutral-palette utilities the app actually uses onto
-   theme tokens when the user flips to light mode. Applies site-wide
-   including the editor surface. */
-:root[data-theme='light'] .bg-neutral-950 { background-color: var(--app-bg); }
-:root[data-theme='light'] .bg-neutral-900 { background-color: var(--app-surface); }
-:root[data-theme='light'] .bg-neutral-800 { background-color: var(--app-surface-2); }
+.btn-secondary {
+	background-color: var(--app-surface-2);
+	color: var(--app-text);
+	border: 1px solid var(--app-border);
+	border-radius: var(--app-radius-sm, 4px);
+	padding: 0.375rem 0.875rem;
+	font-weight: 500;
+	transition: background-color 0.12s, border-color 0.12s;
+}
+.btn-secondary:hover:not(:disabled) {
+	background-color: var(--app-surface);
+	border-color: var(--app-border-strong);
+}
+.btn-secondary:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.btn-ghost {
+	background-color: transparent;
+	color: var(--app-text-muted);
+	border: 1px solid transparent;
+	border-radius: var(--app-radius-sm, 4px);
+	padding: 0.375rem 0.625rem;
+	transition: background-color 0.12s, color 0.12s;
+}
+.btn-ghost:hover:not(:disabled) {
+	background-color: var(--app-hover);
+	color: var(--app-text);
+}
+.btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-danger {
+	background-color: var(--app-danger);
+	color: var(--app-accent-text);
+	border: 1px solid transparent;
+	border-radius: var(--app-radius-sm, 4px);
+	padding: 0.375rem 0.875rem;
+	font-weight: 500;
+	transition: background-color 0.12s;
+}
+.btn-danger:hover:not(:disabled) {
+	background-color: color-mix(in srgb, var(--app-danger) 88%, var(--app-text) 12%);
+}
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-icon {
+	background-color: transparent;
+	color: var(--app-text-muted);
+	border: 1px solid transparent;
+	border-radius: var(--app-radius-sm, 4px);
+	padding: 0.25rem;
+	transition: background-color 0.12s, color 0.12s;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+.btn-icon:hover:not(:disabled) {
+	background-color: var(--app-hover);
+	color: var(--app-text);
+}
+.btn-icon-active {
+	background-color: var(--app-surface-2);
+	color: var(--app-text);
+}
+
+/* — Modals — */
+.modal-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	background-color: var(--app-scrim);
+	backdrop-filter: blur(2px);
+	-webkit-backdrop-filter: blur(2px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.modal-panel {
+	background-color: var(--app-surface);
+	color: var(--app-text);
+	border: 1px solid var(--app-border);
+	border-radius: var(--app-radius, 6px);
+	box-shadow: var(--app-shadow-lg);
+}
+
+/* — Toasts / status badges — */
+.toast {
+	background-color: var(--app-surface);
+	color: var(--app-text);
+	border: 1px solid var(--app-border);
+	border-radius: var(--app-radius-sm, 4px);
+	box-shadow: var(--app-shadow-md);
+	padding: 0.375rem 0.75rem;
+	font-size: 0.75rem;
+}
+.toast-ok {
+	background-color: color-mix(in srgb, var(--app-ok) 18%, var(--app-bg) 82%);
+	color: var(--app-text);
+	border: 1px solid color-mix(in srgb, var(--app-ok) 50%, var(--app-border) 50%);
+}
+.toast-error {
+	background-color: color-mix(in srgb, var(--app-danger) 18%, var(--app-bg) 82%);
+	color: var(--app-text);
+	border: 1px solid color-mix(in srgb, var(--app-danger) 50%, var(--app-border) 50%);
+}
+
+.badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	padding: 0.125rem 0.5rem;
+	border-radius: 9999px;
+	font-size: 0.6875rem;
+	background-color: var(--app-surface-2);
+	color: var(--app-text-muted);
+	border: 1px solid var(--app-border);
+}
+.badge-active {
+	background-color: color-mix(in srgb, var(--app-accent) 18%, var(--app-bg) 82%);
+	color: var(--app-text);
+	border-color: color-mix(in srgb, var(--app-accent) 50%, var(--app-border) 50%);
+}
+
+/* — Toggle switch — */
+.toggle-track {
+	display: inline-flex;
+	align-items: center;
+	height: 1.25rem;          /* h-5 */
+	width: 2.25rem;           /* w-9 */
+	flex-shrink: 0;
+	border-radius: 9999px;
+	border: 1px solid var(--app-border);
+	background-color: var(--app-surface-2);
+	transition: background-color 0.12s, border-color 0.12s;
+	cursor: pointer;
+}
+.toggle-track-on {
+	background-color: var(--app-accent);
+	border-color: var(--app-accent);
+}
+.toggle-knob {
+	display: block;
+	height: 1rem;
+	width: 1rem;
+	margin-left: 0.125rem;
+	border-radius: 9999px;
+	background-color: var(--app-accent-text);
+	box-shadow: var(--app-shadow-sm);
+	transform: translateX(0);
+	transition: transform 0.15s ease-out;
+}
+.toggle-track-on .toggle-knob {
+	transform: translateX(1rem);
+}
+
+/* — Links — */
+.link {
+	color: var(--app-accent);
+	transition: color 0.12s;
+}
+.link:hover {
+	color: color-mix(in srgb, var(--app-accent) 70%, var(--app-text) 30%);
+	text-decoration: underline;
+}
+
+/* — Dropdown / menu rows — */
+.menu-panel {
+	background-color: var(--app-surface);
+	border: 1px solid var(--app-border);
+	border-radius: var(--app-radius-sm, 4px);
+	box-shadow: var(--app-shadow-md);
+	overflow: hidden;
+}
+.menu-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	width: 100%;
+	padding: 0.375rem 0.75rem;
+	color: var(--app-text);
+	text-align: left;
+	font-size: 0.75rem;
+	background: transparent;
+	border: 0;
+	cursor: pointer;
+	transition: background-color 0.1s;
+}
+.menu-item:hover:not(:disabled) {
+	background-color: var(--app-hover);
+}
+.menu-item:disabled {
+	color: var(--app-text-dim);
+	cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BLANKET TAILWIND OVERRIDES (group #3)
+   The UI was built dark-first, so a lot of legacy code uses bg-neutral-900,
+   text-neutral-400 etc. We map those to theme tokens in light mode so the
+   component renders correctly without per-component refactoring.
+   Also covers: text-white / bg-white / bg-black opacity backdrops, and
+   the gray/zinc/stone/slate families that some Tailwind users reach for
+   instead of neutral.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Neutral palette mappings ──────────────────────────────────────────── */
+:root[data-theme='light'] .bg-neutral-950,
+:root[data-theme='light'] [class*='bg-neutral-950'] { background-color: var(--app-bg); }
+:root[data-theme='light'] .bg-neutral-900,
+:root[data-theme='light'] [class*='bg-neutral-900'] { background-color: var(--app-surface); }
+:root[data-theme='light'] .bg-neutral-800,
+:root[data-theme='light'] [class*='bg-neutral-800'] { background-color: var(--app-surface-2); }
+:root[data-theme='light'] .bg-neutral-700 { background-color: var(--app-surface-2); }
+:root[data-theme='light'] .bg-neutral-600 { background-color: var(--app-border-strong); }
+
 :root[data-theme='light'] .text-neutral-100 { color: var(--app-text); }
 :root[data-theme='light'] .text-neutral-200 { color: var(--app-text); }
 :root[data-theme='light'] .text-neutral-300 { color: var(--app-text); }
 :root[data-theme='light'] .text-neutral-400 { color: var(--app-text-muted); }
 :root[data-theme='light'] .text-neutral-500 { color: var(--app-text-dim); }
+:root[data-theme='light'] .text-neutral-600 { color: var(--app-text-dim); }
+
+:root[data-theme='light'] .border-neutral-600 { border-color: var(--app-border-strong); }
 :root[data-theme='light'] .border-neutral-700 { border-color: var(--app-border-strong); }
 :root[data-theme='light'] .border-neutral-800 { border-color: var(--app-border); }
 :root[data-theme='light'] .border-neutral-900 { border-color: var(--app-border); }
+
 :root[data-theme='light'] .hover\:bg-neutral-900:hover { background-color: var(--app-surface-2); }
 :root[data-theme='light'] .hover\:bg-neutral-800:hover { background-color: var(--app-surface-2); }
-:root[data-theme='light'] .hover\:text-white:hover { color: var(--app-text); }
+:root[data-theme='light'] .hover\:bg-neutral-700:hover { background-color: var(--app-surface); }
+:root[data-theme='light'] .hover\:text-neutral-100:hover { color: var(--app-text); }
+:root[data-theme='light'] .hover\:text-neutral-200:hover { color: var(--app-text); }
 
-/* Blanket text inversion: in light mode every Tailwind text-* utility the
-   app uses collapses to "readable on white". Anything that was a pale /
-   tinted foreground in dark mode becomes --app-text (near-black). Keeps
-   it simple — no per-semantic-colour mapping, just readable contrast. */
+/* ─── Gray / zinc / stone / slate palettes (Tailwind has 5 grayscales) ──── */
+:root[data-theme='light'] [class*='bg-gray-9'],
+:root[data-theme='light'] [class*='bg-zinc-9'],
+:root[data-theme='light'] [class*='bg-stone-9'],
+:root[data-theme='light'] [class*='bg-slate-9'] { background-color: var(--app-surface); }
+:root[data-theme='light'] [class*='bg-gray-8'],
+:root[data-theme='light'] [class*='bg-zinc-8'],
+:root[data-theme='light'] [class*='bg-stone-8'],
+:root[data-theme='light'] [class*='bg-slate-8'] { background-color: var(--app-surface-2); }
+:root[data-theme='light'] [class*='text-gray-3'],
+:root[data-theme='light'] [class*='text-gray-2'],
+:root[data-theme='light'] [class*='text-gray-1'],
+:root[data-theme='light'] [class*='text-zinc-3'],
+:root[data-theme='light'] [class*='text-zinc-2'],
+:root[data-theme='light'] [class*='text-zinc-1'],
+:root[data-theme='light'] [class*='text-stone-3'],
+:root[data-theme='light'] [class*='text-stone-2'],
+:root[data-theme='light'] [class*='text-stone-1'],
+:root[data-theme='light'] [class*='text-slate-3'],
+:root[data-theme='light'] [class*='text-slate-2'],
+:root[data-theme='light'] [class*='text-slate-1'] { color: var(--app-text); }
+:root[data-theme='light'] [class*='text-gray-4'],
+:root[data-theme='light'] [class*='text-gray-5'],
+:root[data-theme='light'] [class*='text-zinc-4'],
+:root[data-theme='light'] [class*='text-zinc-5'],
+:root[data-theme='light'] [class*='text-stone-4'],
+:root[data-theme='light'] [class*='text-stone-5'],
+:root[data-theme='light'] [class*='text-slate-4'],
+:root[data-theme='light'] [class*='text-slate-5'] { color: var(--app-text-muted); }
+:root[data-theme='light'] [class*='border-gray-7'],
+:root[data-theme='light'] [class*='border-gray-8'],
+:root[data-theme='light'] [class*='border-zinc-7'],
+:root[data-theme='light'] [class*='border-zinc-8'],
+:root[data-theme='light'] [class*='border-stone-7'],
+:root[data-theme='light'] [class*='border-stone-8'],
+:root[data-theme='light'] [class*='border-slate-7'],
+:root[data-theme='light'] [class*='border-slate-8'] { border-color: var(--app-border); }
+
+/* ─── White / black hardcoded utilities ─────────────────────────────────────
+   text-white and bg-white render the same in both themes by default,
+   which is fine on coloured buttons but jarring on plain surfaces. We map
+   them to theme tokens so a stray .text-white outside an accent button
+   still reads correctly. The scoped re-assertion further down keeps text
+   on accent buttons readable. */
+:root[data-theme='light'] .bg-white { background-color: var(--app-surface); }
+:root[data-theme='light'] .text-white { color: var(--app-text); }
+:root[data-theme='light'] .text-black { color: var(--app-text); }
+:root[data-theme='light'] .bg-black { background-color: var(--app-bg); }
+:root[data-theme='light'] [class*='bg-black\/'] { background-color: var(--app-scrim); }
+:root[data-theme='light'] .hover\:text-white:hover { color: var(--app-text); }
+:root[data-theme='light'] .hover\:bg-white:hover { background-color: var(--app-surface); }
+
+/* ─── Tinted utilities — wildcard text / bg / border colour mappings ─────
+   In light mode every Tailwind text-* utility the app uses collapses to
+   "readable on white". Anything that was a pale / tinted foreground in
+   dark mode becomes --app-text. Keeps it simple. */
 :root[data-theme='light'] [class*='text-red-'],
 :root[data-theme='light'] [class*='text-emerald-'],
 :root[data-theme='light'] [class*='text-amber-'],
@@ -204,8 +572,8 @@ body {
 	color: var(--app-text);
 }
 
-/* Same for tinted backgrounds — flatten deep *-950/-900 tints down to
-   the regular surface so we don't get dark blocks on a white page. */
+/* Tinted backgrounds — flatten deep *-950/-900 tints down to the regular
+   surface so we don't get dark blocks on a white page. */
 :root[data-theme='light'] [class*='bg-red-9'],
 :root[data-theme='light'] [class*='bg-emerald-9'],
 :root[data-theme='light'] [class*='bg-amber-9'],
@@ -223,45 +591,122 @@ body {
 	border-color: var(--app-border);
 }
 
-/* Scroll isolation — each editor pane contains its own scroll momentum
-   so reaching the end in the inspector doesn't bubble up and start
-   scrolling the code pane or the page. Applied globally so every
-   overflow region in the app gets it without per-site boilerplate. */
-.cm-scroller,
-[data-editor-scroll],
-aside.inspector-scroll,
-.svelte-flow {
-	overscroll-behavior: contain;
+/* Mid-tinted callouts (7XX/8XX) — softer themed wash. */
+:root[data-theme='light'] [class*='bg-red-7'],
+:root[data-theme='light'] [class*='bg-red-8'] {
+	background-color: color-mix(in srgb, var(--app-danger) 18%, var(--app-bg) 82%);
+}
+:root[data-theme='light'] [class*='bg-blue-7'],
+:root[data-theme='light'] [class*='bg-blue-8'] {
+	background-color: color-mix(in srgb, var(--app-accent) 18%, var(--app-bg) 82%);
+}
+:root[data-theme='light'] [class*='bg-emerald-7'],
+:root[data-theme='light'] [class*='bg-emerald-8'] {
+	background-color: color-mix(in srgb, var(--app-ok) 18%, var(--app-bg) 82%);
 }
 
-/* Cards and panels using `bg-neutral-950/<opacity>` get caught here —
-   the opacity suffix slips past the plain `bg-neutral-950` selector
-   earlier. Flatten them to the regular surface. */
-:root[data-theme='light'] [class*='bg-neutral-950'] {
-	background-color: var(--app-bg);
-}
-:root[data-theme='light'] [class*='bg-neutral-900'] {
-	background-color: var(--app-surface);
-}
-:root[data-theme='light'] [class*='bg-neutral-800'] {
-	background-color: var(--app-surface-2);
-}
-
-/* Deep-coloured shadows (`shadow-blue-900/40`) render as heavy dark
-   glows in light mode — neutralise them. */
+/* Deep-coloured shadows render as heavy dark glows in light mode —
+   neutralise them. */
 :root[data-theme='light'] [class*='shadow-blue-9'],
 :root[data-theme='light'] [class*='shadow-purple-9'],
 :root[data-theme='light'] [class*='shadow-neutral-9'] {
 	--tw-shadow-color: color-mix(in oklab, #000 10%, transparent);
 }
 
-/* Landing-page gradient title — neutral-50 → neutral-400 looks great on
-   black but goes near-invisible on white. In light mode, drop the
-   gradient clip altogether so the title renders as solid dark text. */
+/* Landing-page gradient title: drop the gradient clip in light mode so
+   it renders as solid dark text. */
 :root[data-theme='light'] .bg-clip-text.text-transparent {
 	background: none !important;
 	-webkit-background-clip: initial;
 	background-clip: initial;
 	color: var(--app-text);
 	-webkit-text-fill-color: var(--app-text);
+}
+
+/* ─── Solid accent buttons — bg-blue-* / bg-purple-* / bg-red-* / bg-emerald-*
+   The codebase ships several pages with `bg-blue-600 text-white` as the
+   primary CTA. In dark mode that's a saturated blue that reads well; in
+   light mode (warm cream chrome) the same blue clashes. Map every solid
+   coloured-button utility to the matching theme token so accents track
+   the active theme. */
+:root[data-theme='light'] .bg-blue-500,
+:root[data-theme='light'] .bg-blue-600,
+:root[data-theme='light'] .bg-blue-700 {
+	background-color: var(--app-accent);
+}
+:root[data-theme='light'] .hover\:bg-blue-400:hover,
+:root[data-theme='light'] .hover\:bg-blue-500:hover,
+:root[data-theme='light'] .hover\:bg-blue-600:hover {
+	background-color: color-mix(in srgb, var(--app-accent) 88%, var(--app-text) 12%);
+}
+:root[data-theme='light'] .border-blue-500,
+:root[data-theme='light'] .border-blue-600,
+:root[data-theme='light'] .border-blue-700,
+:root[data-theme='light'] .border-blue-800 {
+	border-color: var(--app-accent);
+}
+:root[data-theme='light'] .bg-purple-600,
+:root[data-theme='light'] .bg-purple-700 {
+	background-color: var(--app-accent-2);
+}
+:root[data-theme='light'] .hover\:bg-purple-500:hover,
+:root[data-theme='light'] .hover\:bg-purple-600:hover {
+	background-color: color-mix(in srgb, var(--app-accent-2) 88%, var(--app-text) 12%);
+}
+:root[data-theme='light'] .border-purple-600,
+:root[data-theme='light'] .border-purple-700 {
+	border-color: var(--app-accent-2);
+}
+:root[data-theme='light'] .bg-red-600,
+:root[data-theme='light'] .bg-red-700,
+:root[data-theme='light'] .bg-red-800 {
+	background-color: var(--app-danger);
+}
+:root[data-theme='light'] .hover\:bg-red-500:hover,
+:root[data-theme='light'] .hover\:bg-red-600:hover,
+:root[data-theme='light'] .hover\:bg-red-700:hover,
+:root[data-theme='light'] .hover\:bg-red-800:hover {
+	background-color: color-mix(in srgb, var(--app-danger) 88%, var(--app-text) 12%);
+}
+:root[data-theme='light'] .border-red-600,
+:root[data-theme='light'] .border-red-700,
+:root[data-theme='light'] .border-red-800 {
+	border-color: var(--app-danger);
+}
+:root[data-theme='light'] .bg-emerald-600,
+:root[data-theme='light'] .bg-emerald-700 {
+	background-color: var(--app-ok);
+}
+:root[data-theme='light'] .border-emerald-600,
+:root[data-theme='light'] .border-emerald-700 {
+	border-color: var(--app-ok);
+}
+
+/* Re-assert white text inside coloured buttons — the wildcard text-blue-*
+   rule above otherwise flattens text-blue-100/200 button labels. */
+:root[data-theme='light'] .bg-blue-500 [class*='text-blue-'],
+:root[data-theme='light'] .bg-blue-600 [class*='text-blue-'],
+:root[data-theme='light'] .bg-blue-700 [class*='text-blue-'],
+:root[data-theme='light'] .bg-purple-600 [class*='text-purple-'],
+:root[data-theme='light'] .bg-purple-700 [class*='text-purple-'],
+:root[data-theme='light'] .bg-red-600 [class*='text-red-'],
+:root[data-theme='light'] .bg-red-700 [class*='text-red-'],
+:root[data-theme='light'] .bg-red-800 [class*='text-red-'] {
+	color: var(--app-accent-text);
+}
+
+/* Focus ring colours — keep coloured rings in light mode rather than
+   collapsing them to neutral. */
+:root[data-theme='light'] .focus\:border-blue-500:focus,
+:root[data-theme='light'] .focus\:border-blue-600:focus,
+:root[data-theme='light'] .focus\:border-blue-700:focus {
+	border-color: var(--app-accent) !important;
+}
+
+/* ─── Editor scroll isolation ─────────────────────────────────────────── */
+.cm-scroller,
+[data-editor-scroll],
+aside.inspector-scroll,
+.svelte-flow {
+	overscroll-behavior: contain;
 }

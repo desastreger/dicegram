@@ -47,44 +47,44 @@
 
 <svelte:head><title>Reset password · Dicegram</title></svelte:head>
 
-<section class="mx-auto max-w-md px-4 py-12">
-	<h1 class="mb-2 text-xl font-semibold">Set a new password</h1>
+<section class="mx-auto w-full max-w-md px-4 py-12">
+	<h1 class="mb-2 text-xl font-semibold text-app">Set a new password</h1>
 
 	{#if done}
-		<div class="rounded border border-emerald-900 bg-emerald-950/50 p-4 text-sm text-emerald-200">
+		<div role="status" class="toast toast-ok p-4 text-sm">
 			Password updated. Redirecting to the editor…
 		</div>
 	{:else}
 		<form onsubmit={submit} class="space-y-3">
 			<label class="block">
-				<span class="text-sm font-medium text-neutral-300">New password</span>
+				<span class="field-label">New password</span>
 				<input
 					type="password"
 					required
 					minlength="8"
 					autocomplete="new-password"
 					bind:value={password}
-					class="mt-1 block w-full rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm focus:border-neutral-600 focus:outline-none"
+					class="input-themed mt-1 block w-full text-sm"
 				/>
 			</label>
 			<label class="block">
-				<span class="text-sm font-medium text-neutral-300">Confirm new password</span>
+				<span class="field-label">Confirm new password</span>
 				<input
 					type="password"
 					required
 					minlength="8"
 					autocomplete="new-password"
 					bind:value={confirm}
-					class="mt-1 block w-full rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm focus:border-neutral-600 focus:outline-none"
+					class="input-themed mt-1 block w-full text-sm"
 				/>
 			</label>
 			{#if error}
-				<p class="text-xs text-red-400">{error}</p>
+				<p role="alert" class="text-xs text-danger">{error}</p>
 			{/if}
 			<button
 				type="submit"
 				disabled={submitting || !token || !password || !confirm}
-				class="w-full rounded bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+				class="btn-primary w-full"
 			>
 				{submitting ? 'Updating…' : 'Update password'}
 			</button>

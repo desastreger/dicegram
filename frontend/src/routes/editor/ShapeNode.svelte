@@ -102,13 +102,13 @@
 
 	const statusBadge = $derived(
 		status === 'active'
-			? { bg: '#10b981', label: '●' }
+			? { bg: palette.current.status_complete || '#10b981', label: '●' }
 			: status === 'complete'
-				? { bg: '#10b981', label: '✓' }
+				? { bg: palette.current.status_complete || '#10b981', label: '✓' }
 				: status === 'blocked'
-					? { bg: '#ef4444', label: '!' }
+					? { bg: palette.current.status_blocked || '#ef4444', label: '!' }
 					: status === 'deprecated'
-						? { bg: '#71717a', label: '×' }
+						? { bg: palette.current.status_deprecated_text || '#71717a', label: '×' }
 						: null
 	);
 </script>
@@ -197,13 +197,17 @@
 		pointer-events: none;
 	}
 
+	/* Owner / tag pills sit just outside the shape edge. Both light and dark
+	   themes need a readable surface here, so we drive every colour from
+	   theme tokens. The hex fallbacks are defensive — if the theme variables
+	   aren't wired in, we fall back to the dark-mode appearance. */
 	.owner {
 		position: absolute;
 		bottom: -7px;
 		right: 8px;
-		background: #0f172a;
-		border: 1px solid #334155;
-		color: #cbd5e1;
+		background: var(--th-panel, var(--app-surface));
+		border: 1px solid var(--th-panel-border, var(--app-border));
+		color: var(--th-muted, var(--app-text-muted));
 		font-size: 10px;
 		padding: 1px 6px;
 		border-radius: 9999px;
@@ -220,15 +224,18 @@
 	}
 
 	.tag {
-		background: var(--th-panel, #1e293b);
-		border: 1px solid var(--th-panel-border, #334155);
-		color: var(--th-muted, #94a3b8);
+		background: var(--th-panel, var(--app-surface));
+		border: 1px solid var(--th-panel-border, var(--app-border));
+		color: var(--th-muted, var(--app-text-muted));
 		font-size: 9px;
 		padding: 0 5px;
 		border-radius: 9999px;
 		line-height: 14px;
 	}
 
+	/* Status badge — `bg` is a semantic colour (green=ok, red=blocked, etc.)
+	   set inline. The 2px border is the *canvas* colour so the badge reads
+	   as a "cut-out" disk in both modes. */
 	.badge {
 		position: absolute;
 		top: -8px;
@@ -236,20 +243,20 @@
 		width: 18px;
 		height: 18px;
 		border-radius: 9999px;
-		color: white;
+		color: var(--app-accent-text);
 		font-size: 11px;
 		font-weight: bold;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		border: 2px solid #0a0a0a;
+		border: 2px solid var(--th-canvas, var(--app-bg));
 		pointer-events: none;
 	}
 
-	/* Tiny amber dot in the top-right corner indicating that this node has
+	/* Tiny accent dot in the top-right corner indicating that this node has
 	   inline style overrides — i.e. it has been "Made Unique" and won't
-	   re-skin when the master theme changes. Sized so it's visible at low
-	   zoom but doesn't crowd the label. */
+	   re-skin when the master theme changes. Tracks the active theme accent
+	   so it reads in both light and dark modes. */
 	.unique-dot {
 		position: absolute;
 		top: -4px;
@@ -257,16 +264,18 @@
 		width: 8px;
 		height: 8px;
 		border-radius: 9999px;
-		background: #f59e0b;
-		border: 1.5px solid var(--th-bg, #fbf7f2);
+		background: var(--th-accent, var(--app-accent));
+		border: 1.5px solid var(--th-bg, var(--app-bg));
 		pointer-events: none;
 	}
 
+	/* xyflow connection handles. Slate fill + canvas-coloured outline so
+	   they read against the node and against the canvas in both modes. */
 	:global(.handle) {
 		width: 8px !important;
 		height: 8px !important;
-		background: #64748b !important;
-		border: 1.5px solid #0f172a !important;
+		background: var(--th-muted, var(--app-text-muted)) !important;
+		border: 1.5px solid var(--th-canvas, var(--app-bg)) !important;
 		opacity: 0.45;
 		transition: opacity 0.15s;
 	}
@@ -277,12 +286,12 @@
 	}
 
 	:global(.svelte-flow__node.selected) .shape .bg {
-		outline: 2px solid var(--th-accent, #3b82f6);
+		outline: 2px solid var(--th-accent, var(--app-accent));
 		outline-offset: 2px;
 	}
 	:global(.svelte-flow__node.selected) .shape.clipped .bg {
 		outline: none;
-		filter: drop-shadow(0 0 0 var(--th-accent, #3b82f6))
-			drop-shadow(0 0 2px var(--th-accent, #3b82f6));
+		filter: drop-shadow(0 0 0 var(--th-accent, var(--app-accent)))
+			drop-shadow(0 0 2px var(--th-accent, var(--app-accent)));
 	}
 </style>

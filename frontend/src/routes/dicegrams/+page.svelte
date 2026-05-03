@@ -145,16 +145,18 @@
 	}
 </script>
 
-<section class="mx-auto max-w-6xl px-4 py-6 text-neutral-100">
+<svelte:head><title>My diegrams · Dicegram</title></svelte:head>
+
+<section class="mx-auto max-w-6xl px-4 py-6 text-app">
 	<div class="mb-4 flex items-center justify-between">
 		<h1 class="flex items-baseline gap-2 text-lg font-semibold">
 			My diegrams
-			<span class="text-xs text-neutral-500">{items.length}</span>
+			<span class="text-xs text-dim">{items.length}</span>
 		</h1>
 		<button
 			type="button"
 			onclick={() => goto('/editor')}
-			class="flex items-center gap-1 rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500"
+			class="btn-primary flex items-center gap-1 text-xs"
 		>
 			<Icon name="plus" size={14} />
 			New dicegram
@@ -162,31 +164,25 @@
 	</div>
 
 	{#if loading}
-		<p class="text-xs text-neutral-400">Loading diegrams…</p>
+		<p role="status" aria-live="polite" class="text-xs text-muted">Loading diegrams…</p>
 	{:else if error}
-		<div class="rounded border border-red-900 bg-red-950/50 p-3 text-xs text-red-300">
-			<p class="font-medium">Could not load diegrams</p>
-			<p class="mt-1 text-red-400">{error}</p>
-			<button
-				type="button"
-				onclick={load}
-				class="mt-2 rounded bg-red-900 px-2 py-0.5 text-[11px] hover:bg-red-800"
-			>
+		<div role="alert" class="toast toast-error p-3 text-xs">
+			<p class="font-medium text-app">Could not load diegrams</p>
+			<p class="mt-1 text-danger">{error}</p>
+			<button type="button" onclick={load} class="btn-danger mt-2 text-[11px]">
 				Try again
 			</button>
 		</div>
 	{:else if items.length === 0}
-		<div
-			class="rounded-lg border border-dashed border-neutral-800 bg-neutral-950 p-10 text-center"
-		>
-			<p class="text-sm text-neutral-300">You don't have any diegrams yet.</p>
-			<p class="mt-1 text-xs text-neutral-500">
+		<div class="panel p-10 text-center" style="border-style: dashed;">
+			<p class="text-sm text-app">You don't have any diegrams yet.</p>
+			<p class="mt-1 text-xs text-dim">
 				Start with a blank canvas and your work will show up here.
 			</p>
 			<button
 				type="button"
 				onclick={() => goto('/editor')}
-				class="mt-4 inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500"
+				class="btn-primary mt-4 inline-flex items-center gap-1 text-xs"
 			>
 				<Icon name="plus" size={14} />
 				Create your first dicegram
@@ -195,13 +191,11 @@
 	{:else}
 		<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 			{#each items as d (d.id)}
-				<article
-					class="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950 transition hover:border-neutral-700"
-				>
+				<article class="panel overflow-hidden transition hover:border-strong">
 					<button
 						type="button"
 						onclick={() => open(d)}
-						class="flex aspect-video w-full items-center justify-center overflow-hidden border-b border-neutral-800 bg-neutral-900"
+						class="flex aspect-video w-full items-center justify-center overflow-hidden border-b border-app bg-surface-2"
 						aria-label={`Open ${d.name}`}
 					>
 						<img
@@ -218,18 +212,19 @@
 								bind:value={renameValue}
 								onkeydown={(e) => onRenameKey(e, d)}
 								onblur={() => commitRename(d)}
-								class="w-full rounded border border-neutral-700 bg-neutral-900 px-1.5 py-0.5 text-sm font-medium text-neutral-100 focus:border-blue-500 focus:outline-none"
+								aria-label={`Rename ${d.name}`}
+								class="input-themed w-full text-sm font-medium"
 							/>
 						{:else}
 							<button
 								type="button"
 								onclick={() => open(d)}
-								class="block w-full truncate text-left text-sm font-medium text-neutral-100 hover:text-blue-400"
+								class="block w-full truncate text-left text-sm font-medium text-app hover:text-accent"
 							>
 								{d.name}
 							</button>
 						{/if}
-						<p class="mt-0.5 text-[10px] text-neutral-500">
+						<p class="mt-0.5 text-[10px] text-dim">
 							Updated {formatDate(d.updated_at)}
 						</p>
 						<div class="mt-2 flex items-center gap-0.5">
@@ -237,7 +232,8 @@
 								type="button"
 								onclick={() => startRename(d)}
 								title="Rename"
-								class="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+								aria-label={`Rename ${d.name}`}
+								class="btn-icon"
 							>
 								<Icon name="pencil" size={13} />
 							</button>
@@ -245,7 +241,8 @@
 								type="button"
 								onclick={() => duplicate(d)}
 								title="Duplicate"
-								class="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+								aria-label={`Duplicate ${d.name}`}
+								class="btn-icon"
 							>
 								<Icon name="duplicate" size={13} />
 							</button>
@@ -253,7 +250,8 @@
 								type="button"
 								onclick={() => share(d)}
 								title="Copy share link"
-								class="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+								aria-label={`Copy share link for ${d.name}`}
+								class="btn-icon"
 							>
 								<Icon name="share" size={13} />
 							</button>
@@ -262,9 +260,12 @@
 								type="button"
 								onclick={() => remove(d)}
 								title={confirmDeleteId === d.id ? 'Click again to confirm' : 'Delete'}
-								class="flex items-center gap-1 rounded p-1 {confirmDeleteId === d.id
-									? 'bg-red-950 text-red-300'
-									: 'text-neutral-400 hover:bg-red-950 hover:text-red-400'}"
+								aria-label={confirmDeleteId === d.id
+									? `Confirm delete ${d.name}`
+									: `Delete ${d.name}`}
+								class="btn-icon flex items-center gap-1 {confirmDeleteId === d.id
+									? 'btn-icon-active text-danger'
+									: 'hover:text-danger'}"
 							>
 								<Icon name="trash" size={13} />
 								{#if confirmDeleteId === d.id}<span class="text-[10px]">Confirm?</span>{/if}
@@ -278,7 +279,9 @@
 
 	{#if toast}
 		<div
-			class="fixed right-4 bottom-4 flex items-center gap-1.5 rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs shadow-lg"
+			role="status"
+			aria-live="polite"
+			class="toast fixed right-4 bottom-4 flex items-center gap-1.5"
 		>
 			<Icon name="check" size={13} />
 			{toast}

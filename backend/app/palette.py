@@ -52,10 +52,10 @@ DEFAULT_DARK_PALETTE: dict[str, str] = {
 }
 
 
-# Anthropic-inspired warm palette — cream canvas, salmon terminals,
-# sage green for processes/automated, lavender for decisions/gates,
-# soft warm grays for edges and chrome. Intentionally light/airy.
-ANTHROPIC_PALETTE: dict[str, str] = {
+# Warm palette — cream canvas, salmon terminals, sage green for
+# processes/automated, lavender for decisions/gates, soft warm grays
+# for edges and chrome. Intentionally light/airy.
+WARM_PALETTE: dict[str, str] = {
     # Type fills.
     "type_start": "#fce4d6",         # salmon pill
     "type_end": "#fce4d6",
@@ -115,7 +115,7 @@ LIGHT_PALETTE: dict[str, str] = {
 # frontend/src/lib/themes.ts so a single `setting color_scheme <id>`
 # directive picks both chrome and palette together.
 THEME_PRESETS: dict[str, dict[str, str]] = {
-    "anthropic": ANTHROPIC_PALETTE,
+    "warm": WARM_PALETTE,
     "default-dark": DEFAULT_DARK_PALETTE,
     "light": LIGHT_PALETTE,
 }
@@ -201,8 +201,8 @@ def build_theme(
             type_fill[type_attr] = v
 
     # Surface chrome (lane / box / note backgrounds) varies by theme. The
-    # anthropic / light themes want a paper-white surface; default-dark
-    # keeps the existing slate look.
+    # warm / light themes want a paper-white surface; default-dark keeps
+    # the existing slate look.
     is_dark = (theme_id or DEFAULT_THEME_ID).lower() == "default-dark"
     if is_dark:
         bg = "#0a0a0a"
@@ -220,8 +220,8 @@ def build_theme(
         group_border = "#f59e0b"
         group_label = "#f59e0b"
     else:
-        # Warm light surface for anthropic / light themes.
-        bg = "#fbf7f2" if (theme_id or "").lower() == "anthropic" else "#ffffff"
+        # Warm light surface for the `warm` theme; clean white for `light`.
+        bg = "#fbf7f2" if (theme_id or "").lower() == "warm" else "#ffffff"
         lane_bg = "rgba(217,119,87,0.06)"
         lane_border = "#e3d9cf"
         lane_label = "#6b6259"

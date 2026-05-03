@@ -6,7 +6,7 @@ export type DicegramTemplate = {
 };
 
 const META_SOURCE = `direction top-to-bottom
-setting color_scheme anthropic
+setting color_scheme warm
 
 // A meta-Dicegram: the loop we use to build Dicegram itself.
 
@@ -49,7 +49,7 @@ group "inner loop" { plan scope edit check }
 `;
 
 const FLOWCHART_SOURCE = `direction top-to-bottom
-setting color_scheme anthropic
+setting color_scheme warm
 
 [circle] start "Start" step:0 type:start
 [rect] step1 "Do the thing" step:1 type:process
@@ -65,7 +65,7 @@ step2 -> end
 `;
 
 const SDLC_SOURCE = `direction left-to-right
-setting color_scheme anthropic
+setting color_scheme warm
 
 swimlane "Product" {
 	[circle] idea "Idea" step:0 type:start
@@ -95,7 +95,7 @@ stage -> live
 `;
 
 const EMPTY_SOURCE = `direction top-to-bottom
-setting color_scheme anthropic
+setting color_scheme warm
 
 [rect] start "Start" step:0
 `;

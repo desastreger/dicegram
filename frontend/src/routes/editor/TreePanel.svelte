@@ -122,6 +122,7 @@
 			type="button"
 			onclick={onClose}
 			title="Hide tree"
+			aria-label="Hide dicetree"
 			class="rounded p-0.5 hover:text-neutral-100"
 		>
 			<Icon name="x" size={13} />
@@ -179,10 +180,14 @@
 		cursor: pointer;
 	}
 	.tree-row:hover {
-		background-color: color-mix(in srgb, var(--th-panel-border, #404040) 25%, transparent);
+		background-color: color-mix(
+			in srgb,
+			var(--th-panel-border, var(--app-border)) 25%,
+			transparent
+		);
 	}
 	.tree-row:focus-visible {
-		outline: 2px solid var(--th-accent, #3b82f6);
+		outline: 2px solid var(--th-accent, var(--app-accent));
 		outline-offset: -2px;
 	}
 </style>

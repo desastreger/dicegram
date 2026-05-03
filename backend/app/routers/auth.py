@@ -96,6 +96,7 @@ def _dispatch_reset_email(user: User) -> None:
 @limiter.limit("5/minute")
 def signup(
     request: Request,
+    response: Response,
     creds: Credentials,
     session: Session = Depends(get_session),
 ):
@@ -117,6 +118,7 @@ def signup(
 @limiter.limit("10/minute")
 def login(
     request: Request,
+    response: Response,
     creds: Credentials,
     session: Session = Depends(get_session),
 ):
@@ -156,6 +158,7 @@ def request_verify(request: Request, user: User = Depends(current_user)):
 @limiter.limit("20/minute")
 def verify_email(
     request: Request,
+    response: Response,
     token: str,
     session: Session = Depends(get_session),
 ):
@@ -203,6 +206,7 @@ def request_password_reset(
 @limiter.limit("5/minute")
 def reset_password(
     request: Request,
+    response: Response,
     body: ResetIn,
     session: Session = Depends(get_session),
 ):

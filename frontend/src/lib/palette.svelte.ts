@@ -29,7 +29,7 @@ const DEFAULT_DARK_PALETTE: Record<string, string> = {
 	edge_label: '#e5e7eb'
 };
 
-const ANTHROPIC_PALETTE: Record<string, string> = {
+const WARM_PALETTE: Record<string, string> = {
 	type_start: '#fce4d6',
 	type_end: '#fce4d6',
 	type_decision: '#e6e3f7',
@@ -78,7 +78,7 @@ const LIGHT_PALETTE: Record<string, string> = {
 };
 
 const THEME_PRESETS: Record<string, Record<string, string>> = {
-	anthropic: ANTHROPIC_PALETTE,
+	warm: WARM_PALETTE,
 	'default-dark': DEFAULT_DARK_PALETTE,
 	light: LIGHT_PALETTE
 };

@@ -115,15 +115,15 @@
 	}
 </script>
 
-<div class="border-b border-neutral-800 bg-neutral-950 px-2 py-1">
+<div class="border-b border-app bg-surface px-2 py-1">
 	<!-- Row 1 — CONTAINERS: frame or annotate groups of nodes. -->
 	<div class="flex flex-wrap items-center gap-0.5" aria-label="Insert container">
-		<span class="mr-1 w-16 text-[9px] uppercase tracking-wider text-neutral-600">Containers</span>
+		<span class="mr-1 w-16 text-[9px] uppercase tracking-wider text-dim">Containers</span>
 		<button
 			type="button"
 			onclick={insertSwimlane}
 			title="Insert swimlane"
-			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
+			class="btn-ghost text-[11px]"
 		>
 			+ Lane
 		</button>
@@ -131,7 +131,7 @@
 			type="button"
 			onclick={insertBox}
 			title="Insert box inside the nearest swimlane"
-			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
+			class="btn-ghost text-[11px]"
 		>
 			+ Box
 		</button>
@@ -139,7 +139,7 @@
 			type="button"
 			onclick={insertNote}
 			title="Insert sticky note attached to the last shape"
-			class="rounded px-1.5 py-1 text-[11px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
+			class="btn-ghost text-[11px]"
 		>
 			+ Note
 		</button>
@@ -147,10 +147,10 @@
 
 	<!-- Row 2 — NODES (shapes), grouped by semantic cluster. -->
 	<div class="mt-0.5 flex flex-wrap items-center gap-0.5" aria-label="Insert shape">
-		<span class="mr-1 w-16 text-[9px] uppercase tracking-wider text-neutral-600">Nodes</span>
+		<span class="mr-1 w-16 text-[9px] uppercase tracking-wider text-dim">Nodes</span>
 		{#each SHAPE_GROUPS as group, gi (group.key)}
 			{#if gi > 0}
-				<span class="mx-1 h-4 w-px bg-neutral-800" aria-hidden="true"></span>
+				<span class="divider-v mx-1 h-4" aria-hidden="true"></span>
 			{/if}
 			{#each group.shapes as s (s.id)}
 				<button
@@ -158,7 +158,7 @@
 					onclick={() => insertShape(s.id)}
 					title={s.title}
 					aria-label={s.title}
-					class="rounded p-1 text-neutral-400 hover:bg-neutral-900 hover:text-white"
+					class="btn-icon"
 				>
 					<Icon name={s.icon} size={16} />
 				</button>
@@ -168,17 +168,17 @@
 
 	<!-- Row 3 — CONNECTORS: link the last two shapes with a specific line + tip combo. -->
 	<div class="mt-0.5 flex flex-wrap items-center gap-0.5" aria-label="Insert connector">
-		<span class="mr-1 w-16 text-[9px] uppercase tracking-wider text-neutral-600">Connectors</span>
+		<span class="mr-1 w-16 text-[9px] uppercase tracking-wider text-dim">Connectors</span>
 		{#each CONNECTORS as c, ci (c.key)}
 			{#if ci === 5}
-				<span class="mx-1 h-4 w-px bg-neutral-800" aria-hidden="true"></span>
+				<span class="divider-v mx-1 h-4" aria-hidden="true"></span>
 			{/if}
 			<button
 				type="button"
 				onclick={() => insertConnector(c)}
 				title={c.title}
 				aria-label={c.title}
-				class="min-w-[28px] rounded px-1.5 py-1 text-center font-mono text-[12px] text-neutral-400 hover:bg-neutral-900 hover:text-white"
+				class="btn-ghost min-w-[28px] text-center font-mono text-[12px]"
 			>
 				{c.glyph}
 			</button>
