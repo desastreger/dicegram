@@ -12,8 +12,15 @@ backend/.venv/
 backend/.env
 backend/*.db
 backend/*.db-journal
+backend/*.db-shm
+backend/*.db-wal
 backend/*.sqlite
 backend/*.sqlite3
+
+# local-only MCP / browser-test config (per-machine)
+.mcp.json
+.playwright-mcp/
+a11y-*.png
 
 # frontend (SvelteKit) — node_modules etc. are handled by frontend/.gitignore
 frontend/.env
