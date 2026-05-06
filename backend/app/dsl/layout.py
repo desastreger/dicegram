@@ -8,14 +8,14 @@ DEFAULTS = {
     "h_gap": 60,
     "v_gap": 80,
     "swimlane_gap": 40,
-    "container_padding": 32,
-    "box_padding": 18,
-    "group_padding": 14,
-    "note_offset": 28,
+    "container_padding": 40,   # 2×grid — swimlane inner margin, symmetrical
+    "box_padding": 40,          # 2×grid — box margin on all 4 sides; top clearance covers ~20px header pill
+    "group_padding": 20,        # 1×grid
+    "note_offset": 40,          # 2×grid
     "note_width": 160,
-    "note_height": 56,
-    "margin": 60,
-    "snap_grid": 10,
+    "note_height": 60,          # 3×grid
+    "margin": 60,               # 3×grid
+    "snap_grid": 20,            # base grid unit; all positions/sizes snap to this
 }
 
 SHAPE_PADDING_MULT = {
@@ -96,6 +96,20 @@ def _label_run_px(label: str) -> int:
     return max(30, longest * 6 + 12)
 
 
+def _container_pad(label: str, base_pad: int, snap: int) -> int:
+    """Symmetrical padding for any container whose title label sits at the
+    top edge. Each side gets the same clearance so the layout stays balanced.
+    Accounts for multi-line labels: 3 lines ≈ 3×20px + insets.
+    Result is always a multiple of `snap`."""
+    lines = max(1, label.count("\n") + 1)
+    # 20 px per line (covers 10–11 px font + leading + inset), plus an 8 px
+    # top inset (the CSS `top: 4–6px` offset on the pill).
+    header_h = lines * 20 + 8
+    needed = header_h + snap   # header + one grid unit of breathing room
+    g = max(snap, 1)
+    return ((max(base_pad, needed) + g - 1) // g) * g
+
+
 def compute_layout(parsed: Parsed) -> dict:
     cfg = {
         **DEFAULTS,
@@ -103,6 +117,8 @@ def compute_layout(parsed: Parsed) -> dict:
     }
     direction = parsed.direction
     nodes = parsed.nodes
+    # Resolve snap grid early — used by _container_pad and step_gap.
+    snap: int = int(cfg["snap_grid"]) if int(cfg.get("snap_grid", 1)) > 0 else 1
 
     # Nodes marked type:end without an explicit step land alongside type:start
     # at step 0. Shift them past the last explicit step so they render as the
@@ -180,15 +196,24 @@ def compute_layout(parsed: Parsed) -> dict:
                     forward_label_max[k] = max(forward_label_max.get(k, 0), px)
                 edges_crossing[k] = edges_crossing.get(k, 0) + 1
 
+    # Per-lane dynamic container padding: a swimlane titled "My Multi-Line\nHeader"
+    # needs more inset clearance than a single-word lane name.
+    lane_pad: dict[str, int] = {}
+    for sl in parsed.swimlanes:
+        lane_pad[sl.name] = _container_pad(sl.name, cfg["container_padding"], snap)
+    if "" not in lane_pad:
+        lane_pad[""] = int(cfg["container_padding"])
+
     lane_breadth: dict[str, int] = {}
     for lane in lane_order:
+        lp = lane_pad.get(lane, int(cfg["container_padding"]))
         widest = cfg["node_width"]
         for s in all_steps:
             cell = by_lane_step.get((lane, s), [])
             if cell:
                 total = sum(sizes[cn.name][0] for cn in cell) + cfg["h_gap"] * (len(cell) - 1)
                 widest = max(widest, total)
-        lane_breadth[lane] = widest + 2 * cfg["container_padding"]
+        lane_breadth[lane] = widest + 2 * lp
 
     step_depth: dict[int, int] = {}
     for s in all_steps:
@@ -200,7 +225,6 @@ def compute_layout(parsed: Parsed) -> dict:
 
     horizontal = direction in ("left-to-right", "right-to-left")
     reverse_steps = direction in ("bottom-to-top", "right-to-left")
-    snap = cfg["snap_grid"] if cfg["snap_grid"] > 0 else 1
     # Pin the page margin to the grid so the very first cursor position
     # (margin) lands on a grid line. Otherwise everything downstream
     # carries the offset.
@@ -374,23 +398,28 @@ def compute_layout(parsed: Parsed) -> dict:
                 }
             cursor += lane_breadth[lane] + cfg["swimlane_gap"]
 
-    # Grow each swimlane rect to contain all its children. A pinned @(x,y)
-    # position can push a node outside the step-derived bounds; the lane
-    # rectangle must always enclose every child of the swimlane.
+    # Grow each swimlane rect to contain ALL its descendants: nodes, boxes
+    # that live inside the lane, and notes attached to nodes in the lane.
+    # A pinned @(x,y) position or a large child can push content outside
+    # the step-derived bounds; the lane rectangle must always enclose every
+    # descendant with symmetric clearance.
     lane_children: dict[str, list[str]] = {lane: [] for lane in lane_rects}
     for n in nodes:
         lane = n.swimlane or ""
         if lane in lane_rects:
             lane_children[lane].append(n.name)
-    lane_pad = cfg["container_padding"]
+    # Use per-lane dynamic padding for the grow pass so that lanes with
+    # longer title labels keep the correct minimum inset.
+    _grow_pad = lane_pad  # dict built earlier: {lane_name -> int}
     for lane, rect in lane_rects.items():
+        gp = _grow_pad.get(lane, int(cfg["container_padding"]))
         children = [positions[nm] for nm in lane_children.get(lane, []) if nm in positions]
         if not children:
             continue
-        cx0 = min(r["x"] for r in children) - lane_pad
-        cy0 = min(r["y"] for r in children) - lane_pad
-        cx1 = max(r["x"] + r["w"] for r in children) + lane_pad
-        cy1 = max(r["y"] + r["h"] for r in children) + lane_pad
+        cx0 = min(r["x"] for r in children) - gp
+        cy0 = min(r["y"] for r in children) - gp
+        cx1 = max(r["x"] + r["w"] for r in children) + gp
+        cy1 = max(r["y"] + r["h"] for r in children) + gp
         x0 = min(rect["x"], cx0)
         y0 = min(rect["y"], cy0)
         x1 = max(rect["x"] + rect["w"], cx1)
@@ -409,7 +438,8 @@ def compute_layout(parsed: Parsed) -> dict:
 
     box_rects: dict[str, dict] = {}
     for b in parsed.boxes:
-        rect = _bbox(b.members, cfg["box_padding"])
+        pad = _container_pad(b.label, cfg["box_padding"], snap)
+        rect = _bbox(b.members, pad)
         if rect:
             box_rects[b.label] = rect
 
@@ -420,6 +450,7 @@ def compute_layout(parsed: Parsed) -> dict:
             group_rects[g.name] = rect
 
     note_positions: list[dict] = []
+    node_lane = {n.name: (n.swimlane or "") for n in nodes}
     for note in parsed.notes:
         target = positions.get(note.target)
         if not target:
@@ -427,16 +458,45 @@ def compute_layout(parsed: Parsed) -> dict:
         nw, nh = cfg["note_width"], cfg["note_height"]
         nx = target["x"] + target["w"] + cfg["note_offset"]
         ny = target["y"] + (target["h"] - nh) / 2
-        note_positions.append(
-            {
-                "text": note.text,
-                "target": note.target,
-                "x": _snap(nx, snap),
-                "y": _snap(ny, snap),
-                "w": nw,
-                "h": nh,
-            }
-        )
+        np_ = {
+            "text": note.text,
+            "target": note.target,
+            "x": _snap(nx, snap),
+            "y": _snap(ny, snap),
+            "w": nw,
+            "h": nh,
+        }
+        note_positions.append(np_)
+
+        # Expand the note target's swimlane rect to enclose the note.
+        lane = node_lane.get(note.target, "")
+        if lane in lane_rects:
+            r = lane_rects[lane]
+            gp = _grow_pad.get(lane, int(cfg["container_padding"]))
+            r["x"] = min(r["x"], np_["x"] - gp)
+            r["y"] = min(r["y"], np_["y"] - gp)
+            nx1 = np_["x"] + np_["w"] + gp
+            ny1 = np_["y"] + np_["h"] + gp
+            r["w"] = max(r["x"] + r["w"], nx1) - r["x"]
+            r["h"] = max(r["y"] + r["h"], ny1) - r["y"]
+
+    # Expand each lane rect to also contain any box rects that sit inside it.
+    box_lane: dict[str, str] = {}
+    for b in parsed.boxes:
+        if b.members:
+            first_member = b.members[0]
+            box_lane[b.label] = node_lane.get(first_member, "")
+    for b_label, b_rect in box_rects.items():
+        lane = box_lane.get(b_label, "")
+        if lane in lane_rects:
+            r = lane_rects[lane]
+            gp = _grow_pad.get(lane, int(cfg["container_padding"]))
+            r["x"] = min(r["x"], b_rect["x"] - gp)
+            r["y"] = min(r["y"], b_rect["y"] - gp)
+            bx1 = b_rect["x"] + b_rect["w"] + gp
+            by1 = b_rect["y"] + b_rect["h"] + gp
+            r["w"] = max(r["x"] + r["w"], bx1) - r["x"]
+            r["h"] = max(r["y"] + r["h"], by1) - r["y"]
 
     return {
         "positions": positions,
