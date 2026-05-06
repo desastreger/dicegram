@@ -8,14 +8,14 @@ DEFAULTS = {
     "h_gap": 60,
     "v_gap": 80,
     "swimlane_gap": 40,
-    "container_padding": 40,   # 2×grid — swimlane inner margin, symmetrical
-    "box_padding": 40,          # 2×grid — box margin on all 4 sides; top clearance covers ~20px header pill
-    "group_padding": 20,        # 1×grid
-    "note_offset": 40,          # 2×grid
-    "note_width": 160,
-    "note_height": 60,          # 3×grid
-    "margin": 60,               # 3×grid
-    "snap_grid": 20,            # base grid unit; all positions/sizes snap to this
+    "container_padding": 40,   # swimlane inner margin (2×snap)
+    "box_padding": 20,          # base box padding — _container_pad() may grow it for multi-line titles
+    "group_padding": 20,
+    "note_offset": 20,          # gap between node right and note left
+    "note_width": 120,          # compact note pill
+    "note_height": 40,
+    "margin": 60,
+    "snap_grid": 10,            # keep at 10; all padding values are multiples of 20 (also multiples of 10)
 }
 
 SHAPE_PADDING_MULT = {
@@ -450,7 +450,6 @@ def compute_layout(parsed: Parsed) -> dict:
             group_rects[g.name] = rect
 
     note_positions: list[dict] = []
-    node_lane = {n.name: (n.swimlane or "") for n in nodes}
     for note in parsed.notes:
         target = positions.get(note.target)
         if not target:
@@ -458,45 +457,20 @@ def compute_layout(parsed: Parsed) -> dict:
         nw, nh = cfg["note_width"], cfg["note_height"]
         nx = target["x"] + target["w"] + cfg["note_offset"]
         ny = target["y"] + (target["h"] - nh) / 2
-        np_ = {
-            "text": note.text,
-            "target": note.target,
-            "x": _snap(nx, snap),
-            "y": _snap(ny, snap),
-            "w": nw,
-            "h": nh,
-        }
-        note_positions.append(np_)
-
-        # Expand the note target's swimlane rect to enclose the note.
-        lane = node_lane.get(note.target, "")
-        if lane in lane_rects:
-            r = lane_rects[lane]
-            gp = _grow_pad.get(lane, int(cfg["container_padding"]))
-            r["x"] = min(r["x"], np_["x"] - gp)
-            r["y"] = min(r["y"], np_["y"] - gp)
-            nx1 = np_["x"] + np_["w"] + gp
-            ny1 = np_["y"] + np_["h"] + gp
-            r["w"] = max(r["x"] + r["w"], nx1) - r["x"]
-            r["h"] = max(r["y"] + r["h"], ny1) - r["y"]
-
-    # Expand each lane rect to also contain any box rects that sit inside it.
-    box_lane: dict[str, str] = {}
-    for b in parsed.boxes:
-        if b.members:
-            first_member = b.members[0]
-            box_lane[b.label] = node_lane.get(first_member, "")
-    for b_label, b_rect in box_rects.items():
-        lane = box_lane.get(b_label, "")
-        if lane in lane_rects:
-            r = lane_rects[lane]
-            gp = _grow_pad.get(lane, int(cfg["container_padding"]))
-            r["x"] = min(r["x"], b_rect["x"] - gp)
-            r["y"] = min(r["y"], b_rect["y"] - gp)
-            bx1 = b_rect["x"] + b_rect["w"] + gp
-            by1 = b_rect["y"] + b_rect["h"] + gp
-            r["w"] = max(r["x"] + r["w"], bx1) - r["x"]
-            r["h"] = max(r["y"] + r["h"], by1) - r["y"]
+        note_positions.append(
+            {
+                "text": note.text,
+                "target": note.target,
+                "x": _snap(nx, snap),
+                "y": _snap(ny, snap),
+                "w": nw,
+                "h": nh,
+            }
+        )
+    # Notes are compact sticky-note pills. They float next to their target
+    # node and intentionally do NOT force the enclosing swimlane wider —
+    # the user chose to keep the lane tight and let notes use the space
+    # already available beside the node.
 
     return {
         "positions": positions,
