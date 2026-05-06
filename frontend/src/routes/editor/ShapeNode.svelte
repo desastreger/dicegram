@@ -48,7 +48,18 @@
 			.filter(Boolean)
 	);
 
-	const fill = $derived(data.fill ?? palette.typeFill(typeAttr));
+	// Reading from `palette.current` here (rather than `palette.typeFill(...)`)
+	// keeps the Svelte 5 reactive tracker watching every key on the resolved
+	// palette object. Without the direct read, a swap of activeThemeId or a
+	// hot-update of the static palette tables doesn't always re-trigger a
+	// per-node $derived — type:process rects would stay on the previous
+	// palette's node_fill.
+	const fill = $derived.by(() => {
+		if (data.fill) return data.fill;
+		const cur = palette.current;
+		const v = typeAttr ? cur[`type_${typeAttr}`] : '';
+		return v && v.length ? v : cur.node_fill;
+	});
 	const stroke = $derived(
 		data.stroke ??
 			(priority === 'critical'
@@ -269,29 +280,48 @@
 		pointer-events: none;
 	}
 
-	/* xyflow connection handles. Slate fill + canvas-coloured outline so
-	   they read against the node and against the canvas in both modes. */
+	/* xyflow connection handles. Hidden by default so the four 8px dots
+	   don't read as phantom arrowheads on every shape (UAT bug #21). They
+	   fade in on hover or when the node is selected, which is when the
+	   user is actually building or repointing connections. */
 	:global(.handle) {
-		width: 8px !important;
-		height: 8px !important;
-		background: var(--th-muted, var(--app-text-muted)) !important;
+		width: 9px !important;
+		height: 9px !important;
+		background: var(--th-accent, var(--app-accent)) !important;
 		border: 1.5px solid var(--th-canvas, var(--app-bg)) !important;
-		opacity: 0.45;
-		transition: opacity 0.15s;
+		opacity: 0;
+		transform: scale(0.85);
+		transition:
+			opacity 0.15s var(--app-ease, ease-out),
+			transform 0.15s var(--app-ease, ease-out);
 	}
 
 	.shape:hover :global(.handle),
-	:global(.svelte-flow__node.selected .handle) {
+	:global(.svelte-flow__node.selected .handle),
+	:global(.svelte-flow__handle.connectingfrom),
+	:global(.svelte-flow__handle.connectionindicator):hover {
 		opacity: 1;
+		transform: scale(1);
 	}
 
+	/* Selection ring. Boxes / rects / circles / stadiums / cylinders
+	   pick up a clean 2px outline around the whole shape (UAT bug #7).
+	   Clipped silhouettes (diamond / parallelogram / hexagon) can't carry
+	   an outline, so we synthesize one with four offset drop-shadows that
+	   form a 2px stroke along the shape's path. */
 	:global(.svelte-flow__node.selected) .shape .bg {
-		outline: 2px solid var(--th-accent, var(--app-accent));
-		outline-offset: 2px;
+		outline: 2.5px solid var(--th-accent, var(--app-accent));
+		outline-offset: 3px;
+		box-shadow: 0 0 0 5px color-mix(in srgb, var(--th-accent, var(--app-accent)) 18%, transparent);
 	}
 	:global(.svelte-flow__node.selected) .shape.clipped .bg {
 		outline: none;
-		filter: drop-shadow(0 0 0 var(--th-accent, var(--app-accent)))
-			drop-shadow(0 0 2px var(--th-accent, var(--app-accent)));
+		box-shadow: none;
+		filter:
+			drop-shadow(2px 0 0 var(--th-accent, var(--app-accent)))
+			drop-shadow(-2px 0 0 var(--th-accent, var(--app-accent)))
+			drop-shadow(0 2px 0 var(--th-accent, var(--app-accent)))
+			drop-shadow(0 -2px 0 var(--th-accent, var(--app-accent)))
+			drop-shadow(0 0 6px color-mix(in srgb, var(--th-accent, var(--app-accent)) 25%, transparent));
 	}
 </style>

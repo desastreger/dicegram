@@ -16,7 +16,38 @@ Tokens cover:
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+# Strict CSS-color shape — refuses anything that could land in an SVG
+# attribute as raw HTML. The previous prefix-only check ("starts with #
+# / rgb / hsl") let a payload like `#"><script>` through, which then
+# rendered literal `<script>` in every export. Any colour the user can
+# legitimately set passes; everything else is dropped silently.
+_COLOR_RE = re.compile(
+    r"^("
+    r"#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})"  # #rgb / #rgba / #rrggbb / #rrggbbaa
+    r"|rgb\(\s*[^)<>\"']+\)"
+    r"|rgba\(\s*[^)<>\"']+\)"
+    r"|hsl\(\s*[^)<>\"']+\)"
+    r"|hsla\(\s*[^)<>\"']+\)"
+    r"|oklch\(\s*[^)<>\"']+\)"
+    r"|color\(\s*[^)<>\"']+\)"
+    r"|color-mix\(\s*[^)<>\"']+\)"
+    r"|[a-zA-Z]{3,30}"  # named colors (red, transparent, currentColor, …)
+    r")$"
+)
+
+
+def _is_safe_color(value: str) -> bool:
+    """Reject any colour string that contains characters that could
+    break out of an SVG attribute. Whitelist common functional colour
+    forms; everything else is dropped at the boundary."""
+    if not value or len(value) > 80:
+        return False
+    if any(c in value for c in "<>\"'`"):
+        return False
+    return _COLOR_RE.match(value) is not None
 
 
 # Default-Dark — the "no theme picked" baseline. Mirrors the chrome's
@@ -116,8 +147,28 @@ LIGHT_PALETTE: dict[str, str] = {
 # directive picks both chrome and palette together.
 THEME_PRESETS: dict[str, dict[str, str]] = {
     "warm": WARM_PALETTE,
+    "warm_dark": DEFAULT_DARK_PALETTE,
+    "warm-dark": DEFAULT_DARK_PALETTE,
     "default-dark": DEFAULT_DARK_PALETTE,
+    "default_dark": DEFAULT_DARK_PALETTE,
+    "dark": DEFAULT_DARK_PALETTE,
+    "dracula": DEFAULT_DARK_PALETTE,
+    "gruvbox": DEFAULT_DARK_PALETTE,
+    "gruvbox_dark": DEFAULT_DARK_PALETTE,
+    "gruvbox-dark": DEFAULT_DARK_PALETTE,
+    "high_contrast": DEFAULT_DARK_PALETTE,
+    "high-contrast": DEFAULT_DARK_PALETTE,
+    "solarized_dark": DEFAULT_DARK_PALETTE,
+    "solarized-dark": DEFAULT_DARK_PALETTE,
+    "solarized_light": LIGHT_PALETTE,
+    "solarized-light": LIGHT_PALETTE,
     "light": LIGHT_PALETTE,
+    # `auto` on the canvas tracks chrome via CSS variables, but a static
+    # SVG export has to commit to one palette. Warm-light is the brand
+    # default, so unconfigured dicegrams ship as the warm-on-cream look
+    # rather than the deep-slate look (which used to render with pale
+    # labels on a white background — unreadable when shared).
+    "auto": WARM_PALETTE,
 }
 
 # Default-Dark stays as the historical "no theme" baseline — used when
@@ -165,7 +216,7 @@ def merge_palette(
             v = v.strip()
             if v == "":
                 continue
-            if not (v.startswith("#") or v.startswith("rgb") or v.startswith("hsl")):
+            if not _is_safe_color(v):
                 continue
             out[k] = v
     return out
@@ -202,8 +253,10 @@ def build_theme(
 
     # Surface chrome (lane / box / note backgrounds) varies by theme. The
     # warm / light themes want a paper-white surface; default-dark keeps
-    # the existing slate look.
-    is_dark = (theme_id or DEFAULT_THEME_ID).lower() == "default-dark"
+    # the existing slate look. Treat `auto` as warm for export — there's
+    # no chrome to follow when the SVG is rendered server-side.
+    norm_id = (theme_id or DEFAULT_THEME_ID).lower()
+    is_dark = norm_id in {"default-dark", "default_dark", "dark", "dracula", "gruvbox", "gruvbox-dark", "gruvbox_dark", "high-contrast", "high_contrast", "solarized-dark", "solarized_dark", "warm-dark", "warm_dark"}
     if is_dark:
         bg = "#0a0a0a"
         lane_bg = "rgba(56,70,95,0.18)"
@@ -219,9 +272,12 @@ def build_theme(
         note_leader = "#b45309"
         group_border = "#f59e0b"
         group_label = "#f59e0b"
+        edge_label_text = p["edge_label"]
     else:
-        # Warm light surface for the `warm` theme; clean white for `light`.
-        bg = "#fbf7f2" if (theme_id or "").lower() == "warm" else "#ffffff"
+        # Warm light surface for the `warm` / `auto` themes; clean white
+        # for `light` / `solarized-light`.
+        warm_like = norm_id in {"warm", "auto"}
+        bg = "#fbf7f2" if warm_like else "#ffffff"
         lane_bg = "rgba(217,119,87,0.06)"
         lane_border = "#e3d9cf"
         lane_label = "#6b6259"
@@ -235,6 +291,12 @@ def build_theme(
         note_leader = "#d4863b"
         group_border = "#b8a48f"
         group_label = "#8a7a6a"
+        # Force a dark edge-label text colour on light surfaces; the
+        # palette's `edge_label` may be the dark-mode pale-grey value
+        # (when a user mixed-and-matched), which would render unreadable
+        # on the paper bg. Pick the brand text colour for warm/auto, the
+        # light theme's deep-slate for everything else.
+        edge_label_text = "#3d3d35" if warm_like else "#0f172a"
 
     return {
         "bg": bg,
@@ -254,7 +316,7 @@ def build_theme(
         "node_stroke": p["node_stroke"],
         "node_text": p["node_text"],
         "edge": p["edge"],
-        "edge_label": p["edge_label"],
+        "edge_label": edge_label_text,
         "edge_label_bg": edge_label_bg,
         "type_fill": type_fill,
         "priority_stroke": {

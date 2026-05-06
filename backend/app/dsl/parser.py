@@ -95,7 +95,7 @@ IDENT_RE = re.compile(r"\w+")
 #                               end: arrow
 #                           }
 # Header matches whether or not the optional `edge` keyword prefixes it.
-_EDGE_BLOCK_SYMS = r"->|-->|==>|---|-\.-"
+_EDGE_BLOCK_SYMS = r"<->|->|-->|==>|---|-\.-"
 EDGE_BLOCK_OPEN_RE = re.compile(
     r"^(?:edge\s+)?(\w+)(?:@(\w+))?\s*(" + _EDGE_BLOCK_SYMS + r")\s*(\w+)(?:@(\w+))?\s*\{\s*(.*)$"
 )
@@ -230,17 +230,27 @@ def _split_attrs(rest: str) -> tuple[dict, dict, tuple[float, float] | None]:
 
 
 def _join_label_parts(raw: str) -> str:
-    """Collapse `"A" [linebreak] "B"` → `A\\nB`. Also honours the legacy
-    `\\n` escape inside a single quoted string so pre-existing files keep
-    working; new files should prefer the `[linebreak]` token which is
-    discoverable in autocomplete."""
+    """Collapse `"A" [linebreak] "B"` → `A\\nB`. Also accepts the linebreak
+    token / `<br>` / `\\n` *inside* a quoted string — LLMs and humans both
+    forget the between-segments form, and the literal `[linebreak]` text in
+    a node was the most-reported polish bug."""
     parts: list[str] = []
     for m in _LABEL_PART_RE.finditer(raw):
         tok = m.group(1)
         if tok == "[linebreak]":
             parts.append("\n")
         else:
-            inner = tok[1:-1].replace("\\n", "\n").replace('\\"', '"')
+            inner = tok[1:-1]
+            # In-string aliases for a newline. Order matters: handle the
+            # explicit tokens before the generic backslash-n so a literal
+            # `\n` inside a deliberately-escaped string still wins.
+            inner = (
+                inner.replace("[linebreak]", "\n")
+                .replace("<br>", "\n")
+                .replace("<br/>", "\n")
+                .replace("\\n", "\n")
+                .replace('\\"', '"')
+            )
             parts.append(inner)
     return "".join(parts)
 
@@ -281,6 +291,30 @@ _PORT_ALIASES = {
     "l": "l", "left": "l", "w": "l", "west": "l",
     "r": "r", "right": "r", "e": "r", "east": "r",
 }
+# Offset suffix — supports `r+1`, `t-2`, etc. The renderer's port-
+# exclusivity allocator emits these for spill-over slots, and a user
+# can hand-author them in the DSL when they want a specific offset.
+_PORT_CODE_RE = re.compile(r"^([tblr])([+-]\d+)$")
+
+
+def _canon_port(value: str) -> str | None:
+    """Canonicalise a port string. Returns single-letter for cardinal
+    inputs (`top`/`t`/`north`/...) and side+offset for the spill-over
+    syntax (`r+1`, `top+2`, `t-3`). Unparseable inputs return None."""
+    v = value.lower().strip()
+    if v in _PORT_ALIASES:
+        return _PORT_ALIASES[v]
+    m = _PORT_CODE_RE.match(v)
+    if m:
+        return f"{m.group(1)}{m.group(2)}"
+    # Long-name + offset: `right+1` → `r+1`.
+    for long, short in (("top", "t"), ("bottom", "b"), ("left", "l"), ("right", "r")):
+        if v.startswith(long):
+            tail = v[len(long):]
+            tm = re.match(r"^([+-]\d+)$", tail)
+            if tm:
+                return f"{short}{tm.group(1)}"
+    return None
 
 
 def _split_node_port(token: str) -> tuple[str, str | None]:
@@ -366,10 +400,10 @@ def _apply_edge_block_attr(edge: Edge, key: str, value: str) -> None:
                 edge.target_port = port
         return
     if key in ("from_port", "from_anchor", "source_port", "source_anchor", "origin_anchor"):
-        edge.source_port = _PORT_ALIASES.get(v.lower(), v.lower()) or None
+        edge.source_port = _canon_port(v) or None
         return
     if key in ("to_port", "to_anchor", "target_port", "target_anchor", "destination_anchor"):
-        edge.target_port = _PORT_ALIASES.get(v.lower(), v.lower()) or None
+        edge.target_port = _canon_port(v) or None
         return
     if key == "label":
         edge.label = v

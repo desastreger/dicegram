@@ -442,21 +442,19 @@
     style:border-color="var(--th-panel-border, var(--app-border))"
     style:color="var(--th-text, var(--app-text))"
   >
-    <header
-      class="flex shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-950 px-3 py-2"
-    >
+    <header class="dg-inspector-head">
       <div class="flex items-baseline gap-1.5">
-        <h2 class="flex items-center gap-1.5 text-xs font-medium text-neutral-200">
+        <h2 class="dg-inspector-title">
           <Icon name="panel-right" size={13} /> Inspector
         </h2>
         {#if selected}
-          <span class="font-mono text-[10px] text-neutral-500">&lt;{currentId}&gt;</span>
+          <span class="dg-inspector-id numeric">&lt;{currentId}&gt;</span>
         {/if}
       </div>
       <button
         type="button"
         onclick={onClose}
-        class="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+        class="btn-icon"
         aria-label="Close inspector"
       >
         <Icon name="x" size={14} />
@@ -483,20 +481,23 @@
         />
       </div>
     {:else if !selected}
-      <div class="p-5 text-center text-[11px] text-neutral-500">
-        Select anything on the canvas to edit its properties.
+      <div class="dg-inspector-empty">
+        <div class="dg-inspector-empty-icon" aria-hidden="true">
+          <Icon name="panel-right" size={20} />
+        </div>
+        <p>Select a shape, edge, or container on the canvas to edit its properties here.</p>
       </div>
     {:else}
       <!-- Preview sits pinned at the top of the shape branch and stays
            visible while the fields below scroll. -->
-      <div class="shrink-0 border-b border-neutral-800">
+      <div class="dg-inspector-preview">
         <ShapePreview node={selected} />
       </div>
       <div class="min-h-0 flex-1 overflow-y-auto" data-editor-scroll>
       <!-- Shape selector is the primary "type" control for a node — it
            sits above everything else so the user can change what the
            thing *is* before tweaking details. -->
-      <div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Shape</div>
+      <div class="dg-section-head">Shape</div>
       <div class="px-3">
         <Dropdown
           value={currentShape}
@@ -506,14 +507,14 @@
         />
       </div>
 
-      <div class="mt-3 mb-1 flex items-center justify-between px-3 text-[10px] uppercase tracking-wide text-neutral-500">
+      <div class="dg-section-head dg-section-head-row">
         <span>Hierarchy</span>
         <div class="flex items-center gap-0.5">
           <button
             type="button"
             title="Move up among siblings"
             aria-label="Move up among siblings"
-            class="rounded border border-neutral-800 p-0.5 text-neutral-400 hover:text-neutral-100"
+            class="dg-mini-icon"
             onclick={() => selected && onSiblingMove?.(selected.id, -1)}
           >
             <Icon name="move-up" size={11} />
@@ -522,7 +523,7 @@
             type="button"
             title="Move down among siblings"
             aria-label="Move down among siblings"
-            class="rounded border border-neutral-800 p-0.5 text-neutral-400 hover:text-neutral-100"
+            class="dg-mini-icon"
             onclick={() => selected && onSiblingMove?.(selected.id, 1)}
           >
             <Icon name="move-down" size={11} />
@@ -538,24 +539,24 @@
         />
       </div>
 
-      <div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Identity</div>
+      <div class="dg-section-head">Identity</div>
       <div class="space-y-1 px-3">
         <label class="flex items-center gap-2">
-          <span class="w-14 text-[11px] text-neutral-400">Name</span>
+          <span class="dg-field-label">Name</span>
           <input
             type="text"
-            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="dg-input"
             bind:value={nameDraft}
             onblur={commitName}
             onkeydown={(e) => onTextKey(e, commitName)}
           />
         </label>
         <label class="flex items-start gap-2">
-          <span class="w-14 pt-1 text-[11px] text-neutral-400">Label</span>
+          <span class="dg-field-label" style="padding-top: 0.25rem;">Label</span>
           <textarea
             bind:this={labelTextarea}
             rows="3"
-            class="flex-1 resize-y rounded border border-neutral-800 bg-neutral-900 px-1.5 py-1 text-xs text-neutral-100"
+            class="dg-input dg-input-multi"
             bind:value={labelDraft}
             onblur={commitLabel}
           ></textarea>
@@ -563,12 +564,12 @@
       </div>
 
       <div
-        class="mt-3 mb-1 flex items-center justify-between px-3 text-[10px] uppercase tracking-wide text-neutral-500"
+        class="dg-section-head dg-section-head-row"
       >
         <span>Position &amp; Size</span>
         <button
           type="button"
-          class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-neutral-400 hover:text-neutral-100"
+          class="dg-mini"
           title="Revert to auto-layout position"
           aria-label="Revert to auto-layout position"
           onclick={autoPosition}
@@ -578,50 +579,50 @@
       </div>
       <div class="grid grid-cols-2 gap-1 px-3">
         <label class="flex items-center gap-1">
-          <span class="w-4 text-[11px] text-neutral-400" aria-hidden="true">X</span>
+          <span class="dg-field-label dg-field-label-tight" aria-hidden="true">X</span>
           <input
             type="number"
             aria-label="X position"
-            class="h-6 w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="dg-input"
             bind:value={xDraft}
             onchange={commitPosition}
           />
         </label>
         <label class="flex items-center gap-1">
-          <span class="w-4 text-[11px] text-neutral-400" aria-hidden="true">Y</span>
+          <span class="dg-field-label dg-field-label-tight" aria-hidden="true">Y</span>
           <input
             type="number"
             aria-label="Y position"
-            class="h-6 w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="dg-input"
             bind:value={yDraft}
             onchange={commitPosition}
           />
         </label>
         <label class="flex items-center gap-1">
-          <span class="w-4 text-[11px] text-neutral-400" aria-hidden="true">W</span>
+          <span class="dg-field-label dg-field-label-tight" aria-hidden="true">W</span>
           <input
             type="number"
             aria-label="Width"
-            class="h-6 w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="dg-input"
             bind:value={widthDraft}
             onchange={commitWidth}
           />
         </label>
         <label class="flex items-center gap-1">
-          <span class="w-4 text-[11px] text-neutral-400" aria-hidden="true">H</span>
+          <span class="dg-field-label dg-field-label-tight" aria-hidden="true">H</span>
           <input
             type="number"
             aria-label="Height"
-            class="h-6 w-full rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="dg-input"
             bind:value={heightDraft}
             onchange={commitHeight}
           />
         </label>
         <label class="col-span-2 flex items-center gap-2">
-          <span class="w-14 text-[11px] text-neutral-400">Step</span>
+          <span class="dg-field-label">Step</span>
           <input
             type="text"
-            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="dg-input"
             bind:value={stepDraft}
             onblur={commitStep}
             onkeydown={(e) => onTextKey(e, commitStep)}
@@ -629,10 +630,10 @@
         </label>
       </div>
 
-      <div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">Semantics</div>
+      <div class="dg-section-head">Semantics</div>
       <div class="space-y-1 px-3">
         <div class="flex items-center gap-2">
-          <span class="w-14 text-[11px] text-neutral-400">Type</span>
+          <span class="dg-field-label">Type</span>
           <div class="flex-1">
             <Dropdown
               value={currentType}
@@ -643,17 +644,17 @@
           </div>
         </div>
         <label class="flex items-center gap-2">
-          <span class="w-14 text-[11px] text-neutral-400">Owner</span>
+          <span class="dg-field-label">Owner</span>
           <input
             type="text"
-            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="dg-input"
             bind:value={ownerDraft}
             onblur={commitOwner}
             onkeydown={(e) => onTextKey(e, commitOwner)}
           />
         </label>
         <div class="flex items-center gap-2">
-          <span class="w-14 text-[11px] text-neutral-400">Status</span>
+          <span class="dg-field-label">Status</span>
           <div class="flex-1">
             <Dropdown
               value={currentStatus}
@@ -664,7 +665,7 @@
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <span class="w-14 text-[11px] text-neutral-400">Priority</span>
+          <span class="dg-field-label">Priority</span>
           <div class="flex-1">
             <Dropdown
               value={currentPriority}
@@ -675,11 +676,11 @@
           </div>
         </div>
         <label class="flex items-center gap-2">
-          <span class="w-14 text-[11px] text-neutral-400">Tags</span>
+          <span class="dg-field-label">Tags</span>
           <input
             type="text"
             placeholder="a, b, c"
-            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="dg-input"
             bind:value={tagsDraft}
             onblur={commitTags}
             onkeydown={(e) => onTextKey(e, commitTags)}
@@ -687,21 +688,21 @@
         </label>
       </div>
 
-      <div class="mt-3 mb-1 flex items-center justify-between px-3 text-[10px] uppercase tracking-wide text-neutral-500">
+      <div class="dg-section-head dg-section-head-row">
         <span class="flex items-center gap-1.5">
           Style
           {#if isUnique}
             <span
-              class="inline-flex items-center gap-1 rounded-full border border-amber-700/60 bg-amber-950/40 px-1.5 py-0.5 text-[9px] font-medium normal-case tracking-normal text-amber-300"
+              class="dg-unique-pill"
               title="Detached from the master theme — overrides survive theme swaps"
             >
-              <span class="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+              <span class="dg-unique-dot"></span>
               Unique
             </span>
           {/if}
         </span>
         {#if palette.locked}
-          <span title="Brand palette is locked in Settings" class="normal-case tracking-normal text-[10px] text-blue-400">
+          <span title="Brand palette is locked in Settings" class="dg-locked">
             Palette locked
           </span>
         {/if}
@@ -711,11 +712,11 @@
            colours so a later theme change won't repaint this node; Snap to
            Master clears every inline override so the node re-skins. -->
       {#if !palette.locked}
-        <div class="mb-2 flex items-center gap-1 px-3">
+        <div class="dg-master-row">
           {#if isUnique}
             <button
               type="button"
-              class="flex flex-1 items-center justify-center gap-1 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-200 hover:bg-neutral-800"
+              class="dg-master-btn"
               title="Drop every inline override and re-skin from the active theme"
               onclick={snapToMaster}
             >
@@ -724,7 +725,7 @@
           {:else}
             <button
               type="button"
-              class="flex flex-1 items-center justify-center gap-1 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-200 hover:bg-neutral-800"
+              class="dg-master-btn"
               title="Pin the current resolved colours so future theme swaps don't touch this node"
               onclick={makeUnique}
             >
@@ -734,17 +735,17 @@
         </div>
       {/if}
       {#if palette.locked}
-        <p class="mx-3 mb-2 rounded border border-blue-900/50 bg-blue-950/30 px-2 py-1.5 text-[11px] text-blue-200">
+        <p class="dg-locked-note">
           Colour overrides are disabled. Edit the active palette in
           <a href="/settings" class="link">Settings</a> to change colours.
         </p>
       {:else}
       <div class="space-y-1 px-3">
         <div class="flex items-center gap-2">
-          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Fill</span>
+          <span class="dg-field-label" aria-hidden="true">Fill</span>
           <input
             type="color"
-            class="h-6 w-8 cursor-pointer rounded border border-neutral-800 bg-neutral-900"
+            class="dg-color"
             value={currentFill}
             onchange={(e) => commitStyle('fill', (e.target as HTMLInputElement).value)}
             aria-label="Fill colour (overrides palette)"
@@ -752,14 +753,14 @@
           <input
             type="text"
             placeholder="auto"
-            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
+            class="dg-input dg-input-mono"
             value={selected.style?.fill ?? ''}
             onchange={(e) => commitHex('fill', (e.target as HTMLInputElement).value)}
             aria-label="Fill colour hex value"
           />
           <button
             type="button"
-            class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100"
+            class="dg-mini"
             onclick={() => clearStyle('fill')}
             aria-label="Reset fill colour to palette default"
             title="Revert to palette default"
@@ -768,10 +769,10 @@
           </button>
         </div>
         <div class="flex items-center gap-2">
-          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Stroke</span>
+          <span class="dg-field-label" aria-hidden="true">Stroke</span>
           <input
             type="color"
-            class="h-6 w-8 cursor-pointer rounded border border-neutral-800 bg-neutral-900"
+            class="dg-color"
             value={currentStroke}
             onchange={(e) => commitStyle('stroke', (e.target as HTMLInputElement).value)}
             aria-label="Stroke colour (overrides palette)"
@@ -779,14 +780,14 @@
           <input
             type="text"
             placeholder="auto"
-            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
+            class="dg-input dg-input-mono"
             value={selected.style?.stroke ?? ''}
             onchange={(e) => commitHex('stroke', (e.target as HTMLInputElement).value)}
             aria-label="Stroke colour hex value"
           />
           <button
             type="button"
-            class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100"
+            class="dg-mini"
             onclick={() => clearStyle('stroke')}
             aria-label="Reset stroke colour to palette default"
             title="Revert to palette default"
@@ -795,10 +796,10 @@
           </button>
         </div>
         <div class="flex items-center gap-2">
-          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Text</span>
+          <span class="dg-field-label" aria-hidden="true">Text</span>
           <input
             type="color"
-            class="h-6 w-8 cursor-pointer rounded border border-neutral-800 bg-neutral-900"
+            class="dg-color"
             value={currentText}
             onchange={(e) => commitStyle('text', (e.target as HTMLInputElement).value)}
             aria-label="Text colour (overrides palette)"
@@ -806,14 +807,14 @@
           <input
             type="text"
             placeholder="auto"
-            class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
+            class="dg-input dg-input-mono"
             value={selected.style?.text ?? ''}
             onchange={(e) => commitHex('text', (e.target as HTMLInputElement).value)}
             aria-label="Text colour hex value"
           />
           <button
             type="button"
-            class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100"
+            class="dg-mini"
             onclick={() => clearStyle('text')}
             aria-label="Reset text colour to palette default"
             title="Revert to palette default"
@@ -824,25 +825,25 @@
       </div>
       {/if}
 
-      <div class="mt-3 mb-1 px-3 text-[10px] uppercase tracking-wide text-neutral-500">
+      <div class="dg-section-head">
         Typography &amp; shape
       </div>
       <div class="grid grid-cols-2 gap-1 px-3">
         <div class="flex items-center gap-1">
-          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Font</span>
+          <span class="dg-field-label" aria-hidden="true">Font</span>
           <input
             type="number"
             placeholder="13"
             min="6"
             aria-label="Font size"
-            class="h-6 w-full min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="dg-input"
             bind:value={fontSizeDraft}
             onblur={() => commitStyleNum('font_size', fontSizeDraft)}
             onkeydown={(e) => onTextKey(e, () => commitStyleNum('font_size', fontSizeDraft))}
           />
           <button
             type="button"
-            class="rounded border border-neutral-800 px-1 py-0.5 text-[9px] uppercase tracking-wide text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
+            class="dg-mini-x"
             disabled={!selected?.style?.font_size}
             onclick={() => clearStyleNum('font_size')}
             aria-label="Clear font size override"
@@ -852,20 +853,20 @@
           </button>
         </div>
         <div class="flex items-center gap-1">
-          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Radius</span>
+          <span class="dg-field-label" aria-hidden="true">Radius</span>
           <input
             type="number"
             placeholder="auto"
             min="0"
             aria-label="Corner radius"
-            class="h-6 w-full min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="dg-input"
             bind:value={rxDraft}
             onblur={() => commitStyleNum('rx', rxDraft)}
             onkeydown={(e) => onTextKey(e, () => commitStyleNum('rx', rxDraft))}
           />
           <button
             type="button"
-            class="rounded border border-neutral-800 px-1 py-0.5 text-[9px] uppercase tracking-wide text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
+            class="dg-mini-x"
             disabled={!selected?.style?.rx}
             onclick={() => clearStyleNum('rx')}
             aria-label="Clear corner radius override"
@@ -875,14 +876,14 @@
           </button>
         </div>
         <div class="flex items-center gap-1">
-          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Stroke</span>
+          <span class="dg-field-label" aria-hidden="true">Stroke</span>
           <input
             type="number"
             placeholder="auto"
             min="0"
             step="0.25"
             aria-label="Stroke width"
-            class="h-6 w-full min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="dg-input"
             bind:value={strokeWidthDraft}
             onblur={() => commitStyleNum('stroke_width', strokeWidthDraft)}
             onkeydown={(e) =>
@@ -890,7 +891,7 @@
           />
           <button
             type="button"
-            class="rounded border border-neutral-800 px-1 py-0.5 text-[9px] uppercase tracking-wide text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
+            class="dg-mini-x"
             disabled={!selected?.style?.stroke_width}
             onclick={() => clearStyleNum('stroke_width')}
             aria-label="Clear stroke width override"
@@ -900,7 +901,7 @@
           </button>
         </div>
         <div class="flex items-center gap-1">
-          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Opacity</span>
+          <span class="dg-field-label" aria-hidden="true">Opacity</span>
           <input
             type="number"
             placeholder="1"
@@ -908,14 +909,14 @@
             max="1"
             step="0.05"
             aria-label="Opacity"
-            class="h-6 w-full min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="dg-input"
             bind:value={opacityDraft}
             onblur={() => commitStyleNum('opacity', opacityDraft)}
             onkeydown={(e) => onTextKey(e, () => commitStyleNum('opacity', opacityDraft))}
           />
           <button
             type="button"
-            class="rounded border border-neutral-800 px-1 py-0.5 text-[9px] uppercase tracking-wide text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
+            class="dg-mini-x"
             disabled={!selected?.style?.opacity}
             onclick={() => clearStyleNum('opacity')}
             aria-label="Clear opacity override"
@@ -925,19 +926,19 @@
           </button>
         </div>
         <div class="col-span-2 flex items-center gap-2">
-          <span class="w-14 text-[11px] text-neutral-400" aria-hidden="true">Font family</span>
+          <span class="dg-field-label" aria-hidden="true">Font family</span>
           <input
             type="text"
             placeholder="inherit"
             aria-label="Font family"
-            class="h-6 flex-1 min-w-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
+            class="dg-input"
             bind:value={fontFamilyDraft}
             onblur={commitFontFamily}
             onkeydown={(e) => onTextKey(e, commitFontFamily)}
           />
           <button
             type="button"
-            class="rounded border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-100 disabled:opacity-30"
+            class="dg-mini"
             disabled={!selected?.style?.font_family}
             onclick={clearFontFamily}
             aria-label="Reset font family override"
@@ -950,7 +951,8 @@
 
       <button
         type="button"
-        class="mt-4 mx-3 mb-4 flex w-[calc(100%-1.5rem)] items-center justify-center gap-1.5 rounded border border-red-900 bg-red-950 px-2 py-1.5 text-xs text-red-300 hover:bg-red-900"
+        class="dg-delete-btn"
+        class:dg-delete-confirm={confirmDelete}
         onclick={handleDelete}
       >
         <Icon name="trash" size={13} />
@@ -960,3 +962,257 @@
     {/if}
   </aside>
 {/if}
+
+<style>
+	.dg-inspector-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-shrink: 0;
+		padding: 0.5rem 0.85rem;
+		background: var(--app-surface);
+		border-bottom: 1px solid var(--app-border);
+	}
+	.dg-inspector-title {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.78rem;
+		font-weight: 500;
+		color: var(--app-text);
+	}
+	.dg-inspector-id {
+		font-family: var(--app-mono-font);
+		font-size: 0.65rem;
+		color: var(--app-text-dim);
+	}
+	.dg-inspector-empty {
+		padding: 1.5rem 1.25rem;
+		text-align: center;
+		color: var(--app-text-dim);
+		font-size: 0.75rem;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.6rem;
+	}
+	.dg-inspector-empty-icon {
+		width: 36px;
+		height: 36px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 9999px;
+		background: var(--app-surface-2);
+		color: var(--app-accent);
+	}
+	.dg-inspector-preview {
+		flex-shrink: 0;
+		border-bottom: 1px solid var(--app-rule);
+	}
+
+	.dg-section-head {
+		margin: 0.85rem 0 0.35rem;
+		padding: 0 0.85rem;
+		font-size: 0.62rem;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--app-text-dim);
+	}
+	.dg-section-head-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.dg-field-label {
+		flex-shrink: 0;
+		width: 3.5rem;
+		font-size: 0.7rem;
+		color: var(--app-text-muted);
+	}
+	.dg-field-label-tight {
+		width: 1rem;
+	}
+
+	.dg-input {
+		flex: 1;
+		min-width: 0;
+		height: 28px;
+		padding: 0.15rem 0.5rem;
+		font-size: 0.75rem;
+		font-family: var(--app-body-font);
+		color: var(--app-text);
+		background: var(--app-surface-2);
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius-sm);
+		transition:
+			border-color var(--app-dur-fast) var(--app-ease),
+			box-shadow var(--app-dur-fast) var(--app-ease);
+	}
+	.dg-input:focus {
+		outline: 2px solid var(--app-ring);
+		outline-offset: 0;
+		border-color: transparent;
+	}
+	.dg-input::placeholder { color: var(--app-text-dim); }
+	.dg-input-multi {
+		height: auto;
+		padding: 0.35rem 0.5rem;
+		resize: vertical;
+		font-family: var(--app-body-font);
+	}
+	.dg-input-mono {
+		font-family: var(--app-mono-font);
+		font-size: 0.7rem;
+	}
+
+	.dg-color {
+		height: 28px;
+		width: 32px;
+		flex-shrink: 0;
+		padding: 0;
+		background: var(--app-surface-2);
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius-sm);
+		cursor: pointer;
+	}
+
+	.dg-mini {
+		flex-shrink: 0;
+		padding: 0.2rem 0.55rem;
+		font-size: 0.65rem;
+		font-weight: 500;
+		font-family: var(--app-body-font);
+		color: var(--app-text-muted);
+		background: transparent;
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius-sm);
+		cursor: pointer;
+		transition:
+			color var(--app-dur-fast) var(--app-ease),
+			background-color var(--app-dur-fast) var(--app-ease),
+			border-color var(--app-dur-fast) var(--app-ease);
+	}
+	.dg-mini:hover:not(:disabled) {
+		color: var(--app-text);
+		background: var(--app-hover);
+		border-color: var(--app-border-strong);
+	}
+	.dg-mini:disabled { opacity: 0.35; cursor: not-allowed; }
+
+	.dg-mini-x {
+		flex-shrink: 0;
+		padding: 0.15rem 0.3rem;
+		color: var(--app-text-dim);
+		background: transparent;
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius-sm);
+		cursor: pointer;
+		transition: color var(--app-dur-fast) var(--app-ease);
+	}
+	.dg-mini-x:hover:not(:disabled) { color: var(--app-text); }
+	.dg-mini-x:disabled { opacity: 0.3; }
+
+	.dg-mini-icon {
+		padding: 0.15rem;
+		color: var(--app-text-muted);
+		background: transparent;
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius-sm);
+		cursor: pointer;
+		transition: color var(--app-dur-fast) var(--app-ease),
+			background-color var(--app-dur-fast) var(--app-ease);
+	}
+	.dg-mini-icon:hover { color: var(--app-text); background: var(--app-hover); }
+
+	.dg-unique-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.05rem 0.45rem;
+		font-size: 0.6rem;
+		font-weight: 500;
+		letter-spacing: 0;
+		text-transform: none;
+		color: var(--app-warn);
+		background: color-mix(in srgb, var(--app-warn) 14%, var(--app-bg) 86%);
+		border: 1px solid color-mix(in srgb, var(--app-warn) 45%, var(--app-border) 55%);
+		border-radius: 9999px;
+	}
+	.dg-unique-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 9999px;
+		background: var(--app-warn);
+	}
+
+	.dg-locked {
+		font-size: 0.62rem;
+		text-transform: none;
+		letter-spacing: 0;
+		color: var(--app-accent);
+	}
+
+	.dg-master-row {
+		display: flex;
+		gap: 0.25rem;
+		padding: 0 0.85rem 0.55rem;
+	}
+	.dg-master-btn {
+		flex: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.3rem;
+		padding: 0.35rem 0.55rem;
+		font-size: 0.7rem;
+		color: var(--app-text);
+		background: var(--app-surface-2);
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius-sm);
+		cursor: pointer;
+		transition: background-color var(--app-dur-fast) var(--app-ease);
+	}
+	.dg-master-btn:hover { background: var(--app-surface-3, var(--app-surface-2)); }
+
+	.dg-locked-note {
+		margin: 0 0.85rem 0.55rem;
+		padding: 0.35rem 0.6rem;
+		font-size: 0.7rem;
+		color: var(--app-text);
+		background: var(--app-accent-soft);
+		border: 1px solid color-mix(in srgb, var(--app-accent) 35%, var(--app-border) 65%);
+		border-radius: var(--app-radius-sm);
+	}
+
+	.dg-delete-btn {
+		display: flex;
+		width: calc(100% - 1.7rem);
+		margin: 1rem 0.85rem;
+		padding: 0.45rem 0.6rem;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		font-size: 0.75rem;
+		color: var(--app-danger);
+		background: color-mix(in srgb, var(--app-danger) 8%, var(--app-bg) 92%);
+		border: 1px solid color-mix(in srgb, var(--app-danger) 35%, var(--app-border) 65%);
+		border-radius: var(--app-radius-sm);
+		cursor: pointer;
+		transition: background-color var(--app-dur-fast) var(--app-ease),
+			color var(--app-dur-fast) var(--app-ease);
+	}
+	.dg-delete-btn:hover {
+		background: color-mix(in srgb, var(--app-danger) 16%, var(--app-bg) 84%);
+	}
+	.dg-delete-confirm {
+		background: var(--app-danger);
+		color: var(--app-accent-text);
+		border-color: var(--app-danger);
+	}
+	.dg-delete-confirm:hover {
+		background: color-mix(in srgb, var(--app-danger) 88%, var(--app-text) 12%);
+	}
+</style>

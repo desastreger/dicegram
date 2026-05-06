@@ -5,6 +5,7 @@ from ..config import settings
 from ..dsl.compiler import normalize
 from ..dsl.layout import compute_layout
 from ..dsl.parser import parse
+from ..dsl.route_planner import plan_edges
 from ..dsl.tree import build_tree
 
 router = APIRouter(prefix="/api/render", tags=["render"])
@@ -30,6 +31,11 @@ class NodeOut(BaseModel):
     style: dict = Field(default_factory=dict)
 
 
+class WaypointOut(BaseModel):
+    x: float
+    y: float
+
+
 class EdgeOut(BaseModel):
     id: str
     source: str
@@ -39,6 +45,18 @@ class EdgeOut(BaseModel):
     attrs: dict = Field(default_factory=dict)
     source_port: str | None = None
     target_port: str | None = None
+    # Deterministic routing plan from `route_planner.plan_edges`. The
+    # frontend draws the connector exactly as described — no further
+    # routing decisions are made downstream.
+    source_x: float | None = None
+    source_y: float | None = None
+    target_x: float | None = None
+    target_y: float | None = None
+    waypoints: list[WaypointOut] = Field(default_factory=list)
+    label_x: float | None = None
+    label_y: float | None = None
+    label_axis: str = "horizontal"
+    corner_radius: float = 6.0
 
 
 class LaneOut(BaseModel):
@@ -143,6 +161,26 @@ def render(body: RenderIn) -> RenderOut:
 
     parsed = parse(normalized_source)
     layout = compute_layout(parsed)
+    # The route planner is the SINGLE source of truth for connector
+    # geometry — it collapses reciprocal pairs, allocates ports
+    # exclusively, and emits a complete polyline + label position per
+    # edge. The frontend renders the plan directly with no further
+    # routing decisions.
+    plans, num_collapsed = plan_edges(parsed, layout)
+    if num_collapsed > 0:
+        notices_out.append(
+            NoticeOut(
+                severity="info",
+                message=(
+                    f"Merged {num_collapsed} reciprocal arrow pair"
+                    + ("s" if num_collapsed > 1 else "")
+                    + " into bidirectional connectors. Use `<->` if you"
+                    " want bidirectional explicitly."
+                ),
+                line=None,
+            )
+        )
+    plans_by_id = {p.edge_id: p for p in plans}
     positions = layout["positions"]
     tree = build_tree(parsed)
 
@@ -170,19 +208,31 @@ def render(body: RenderIn) -> RenderOut:
             )
         )
 
-    edges_out = [
-        EdgeOut(
-            id=f"e{i}",
-            source=e.source,
-            target=e.target,
-            kind=e.kind,
-            label=e.label,
-            attrs=e.attrs,
-            source_port=e.source_port,
-            target_port=e.target_port,
+    edges_out: list[EdgeOut] = []
+    for i, e in enumerate(parsed.edges):
+        edge_id = f"e{i}"
+        plan = plans_by_id.get(edge_id)
+        edges_out.append(
+            EdgeOut(
+                id=edge_id,
+                source=e.source,
+                target=e.target,
+                kind=e.kind,
+                label=e.label,
+                attrs=e.attrs,
+                source_port=plan.source_port if plan else e.source_port,
+                target_port=plan.target_port if plan else e.target_port,
+                source_x=plan.source_x if plan else None,
+                source_y=plan.source_y if plan else None,
+                target_x=plan.target_x if plan else None,
+                target_y=plan.target_y if plan else None,
+                waypoints=[WaypointOut(x=p.x, y=p.y) for p in plan.waypoints] if plan else [],
+                label_x=plan.label_x if plan else None,
+                label_y=plan.label_y if plan else None,
+                label_axis=plan.label_axis if plan else "horizontal",
+                corner_radius=plan.corner_radius if plan else 6.0,
+            )
         )
-        for i, e in enumerate(parsed.edges)
-    ]
 
     lanes_out = [
         LaneOut(

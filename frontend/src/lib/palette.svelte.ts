@@ -77,13 +77,46 @@ const LIGHT_PALETTE: Record<string, string> = {
 	edge_label: '#0f172a'
 };
 
+// "Auto" palette: the dicegram doesn't pin a colour scheme, so canvas
+// colours track the chrome (light/dark mode of the app). All fills /
+// strokes / texts resolve to CSS variables — they expand at render time
+// so a chrome-mode flip repaints the canvas without a re-parse.
+//
+// SVG export goes through the backend palette pipeline (palette.py) which
+// substitutes static colours, so these var() values never reach a static
+// SVG file. They only live on the live canvas.
+const AUTO_PALETTE: Record<string, string> = {
+	type_start: 'color-mix(in srgb, var(--app-ok) 24%, var(--app-bg))',
+	type_end: 'color-mix(in srgb, var(--app-danger) 22%, var(--app-bg))',
+	type_decision: 'color-mix(in srgb, var(--app-warn) 26%, var(--app-bg))',
+	type_datastore: 'color-mix(in srgb, var(--app-accent) 18%, var(--app-bg))',
+	type_process: 'var(--app-surface-2)',
+	type_input: 'color-mix(in srgb, var(--app-accent) 14%, var(--app-bg))',
+	type_output: 'color-mix(in srgb, var(--app-accent) 14%, var(--app-bg))',
+	type_manual: 'var(--app-surface-2)',
+	type_automated: 'color-mix(in srgb, var(--app-ok) 16%, var(--app-bg))',
+	type_approval: 'color-mix(in srgb, var(--app-warn) 18%, var(--app-bg))',
+	type_external: 'color-mix(in srgb, var(--app-accent) 12%, var(--app-bg))',
+	node_fill: 'var(--app-surface-2)',
+	node_stroke: 'var(--app-border-strong)',
+	node_text: 'var(--app-text)',
+	priority_critical: 'var(--app-danger)',
+	priority_high: 'var(--app-warn)',
+	status_blocked: 'var(--app-danger)',
+	status_complete: 'var(--app-ok)',
+	status_deprecated_text: 'var(--app-text-dim)',
+	edge: 'var(--app-text-muted)',
+	edge_label: 'var(--app-text)'
+};
+
 const THEME_PRESETS: Record<string, Record<string, string>> = {
+	auto: AUTO_PALETTE,
 	warm: WARM_PALETTE,
 	'default-dark': DEFAULT_DARK_PALETTE,
 	light: LIGHT_PALETTE
 };
 
-const DEFAULT_THEME_ID = 'default-dark';
+const DEFAULT_THEME_ID = 'auto';
 
 // Back-compat: callers that referenced PALETTE_DEFAULTS directly get the
 // historical default-dark palette so behaviour matches the pre-theme code.

@@ -85,65 +85,11 @@
 					</button>
 				</div>
 				<div class="mt-5 border-t border-app pt-4">
-					<p class="mb-2 text-[10px] uppercase tracking-wide text-dim">
-						Open a chat
+					<p class="eyebrow mb-2" style="font-size: 0.6rem;">Next step</p>
+					<p class="text-xs text-muted">
+						Paste the prompt into your chat model of choice — the model
+						returns a full DSL block that drops back into the editor.
 					</p>
-					<div class="flex flex-wrap gap-2">
-						<a
-							href="https://claude.ai/new"
-							target="_blank"
-							rel="noopener noreferrer"
-							class="btn-secondary flex items-center gap-1.5 text-xs"
-						>
-							Claude
-							<Icon name="arrow-right" size={12} />
-						</a>
-						<a
-							href="https://chatgpt.com/"
-							target="_blank"
-							rel="noopener noreferrer"
-							class="btn-secondary flex items-center gap-1.5 text-xs"
-						>
-							ChatGPT
-							<Icon name="arrow-right" size={12} />
-						</a>
-						<a
-							href="https://gemini.google.com/app"
-							target="_blank"
-							rel="noopener noreferrer"
-							class="btn-secondary flex items-center gap-1.5 text-xs"
-						>
-							Gemini
-							<Icon name="arrow-right" size={12} />
-						</a>
-						<a
-							href="https://copilot.microsoft.com/"
-							target="_blank"
-							rel="noopener noreferrer"
-							class="btn-secondary flex items-center gap-1.5 text-xs"
-						>
-							Copilot
-							<Icon name="arrow-right" size={12} />
-						</a>
-						<a
-							href="https://www.perplexity.ai/"
-							target="_blank"
-							rel="noopener noreferrer"
-							class="btn-secondary flex items-center gap-1.5 text-xs"
-						>
-							Perplexity
-							<Icon name="arrow-right" size={12} />
-						</a>
-						<a
-							href="https://chat.mistral.ai/"
-							target="_blank"
-							rel="noopener noreferrer"
-							class="btn-secondary flex items-center gap-1.5 text-xs"
-						>
-							Mistral
-							<Icon name="arrow-right" size={12} />
-						</a>
-					</div>
 				</div>
 			</div>
 		</div>

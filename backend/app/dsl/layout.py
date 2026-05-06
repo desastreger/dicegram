@@ -34,7 +34,21 @@ def _as_positive_int(value: object) -> int | None:
     return n if n > 0 else None
 
 
-def _measure(node: Node, base_w: int, base_h: int) -> tuple[int, int]:
+def _round_to_even_grid(value: int, grid: int) -> int:
+    """Round UP to the nearest even multiple of `grid`. The "even" part is
+    why ports stay grid-aligned: a node centred on `(x, y)` exposes its
+    `left` port at `(x, y + h/2)`. If `h` is `n * grid`, that midpoint
+    only lands on a grid line when `n` is even — otherwise it falls
+    halfway between, and the connector running into that port snaps to
+    the wrong row. Using `2*grid` as the quantum guarantees every face
+    midpoint is a grid intersection."""
+    if grid <= 0:
+        return value
+    quantum = grid * 2
+    return ((value + quantum - 1) // quantum) * quantum
+
+
+def _measure(node: Node, base_w: int, base_h: int, grid: int = 10) -> tuple[int, int]:
     lines = node.label.count("\n") + 1
     h = max(base_h, 36 + 18 * lines)
     longest = max((len(ln) for ln in node.label.split("\n")), default=4)
@@ -44,13 +58,42 @@ def _measure(node: Node, base_w: int, base_h: int) -> tuple[int, int]:
     h = int(h * pad_h)
     w_override = _as_positive_int(node.attrs.get("width"))
     h_override = _as_positive_int(node.attrs.get("height"))
-    return w_override or w, h_override or h
+    final_w = w_override or w
+    final_h = h_override or h
+    # Snap to an even grid quantum so every port (centre of a face)
+    # lands exactly on a grid intersection. Dimensions can grow but
+    # never shrink — preserves the user's `width:` / `height:` lower
+    # bounds while keeping the routing aligned.
+    return _round_to_even_grid(final_w, grid), _round_to_even_grid(final_h, grid)
 
 
 def _snap(value: float, grid: int) -> float:
     if grid <= 0:
         return value
     return round(value / grid) * grid
+
+
+def _snap_up(value: float, grid: int) -> float:
+    """Round UP to the next multiple of `grid`. Used to make centre
+    positions land on grid lines (paired with `_round_to_even_grid` for
+    sizes, every port is then a grid intersection)."""
+    if grid <= 0:
+        return value
+    return ((int(value) + grid - 1) // grid) * grid
+
+
+def _label_run_px(label: str) -> int:
+    """Approximate visual width (px) needed for a connector label rendered
+    by SmartEdge.svelte. Mirrors the frontend formula
+    `max(30, longest * 6 + 12)`: ~6px per glyph at the 11px sans body
+    font, plus a small horizontal pad for the label background. Returns
+    0 for empty labels so callers can skip widening when nothing's drawn."""
+    if not label:
+        return 0
+    longest = max((len(ln) for ln in label.split("\n")), default=0)
+    if longest == 0:
+        return 0
+    return max(30, longest * 6 + 12)
 
 
 def compute_layout(parsed: Parsed) -> dict:
@@ -85,9 +128,57 @@ def compute_layout(parsed: Parsed) -> dict:
     for n in nodes:
         by_lane_step.setdefault((n.swimlane or "", n.step), []).append(n)
 
-    sizes = {n.name: _measure(n, cfg["node_width"], cfg["node_height"]) for n in nodes}
+    sizes = {
+        n.name: _measure(n, cfg["node_width"], cfg["node_height"], cfg["snap_grid"])
+        for n in nodes
+    }
 
     all_steps = sorted({n.step for n in nodes}) if nodes else []
+
+    # Per-step adaptive gap. The base `h_gap` (or `v_gap`, depending on
+    # direction) is enough for unlabelled connectors, but a connector with
+    # a label like "no" / "yes" / "approved" needs a horizontal/vertical
+    # run long enough for the label's background rect to sit on it without
+    # crowding either node face. Walk all forward edges (source.step <
+    # target.step) and find the widest label that crosses each step
+    # boundary, then bump that gap so the label has room.
+    #
+    # Backward / self-loop edges are skipped — they route over a long
+    # detour where the label can settle on one of the long legs regardless
+    # of the inter-step gap.
+    step_index = {s: i for i, s in enumerate(all_steps)}
+    node_step = {n.name: n.step for n in nodes}
+    forward_label_max: dict[int, int] = {}
+    # Parallel-corridor count: every edge that crosses a given boundary
+    # demands its own ~OFFSET_STEP-px lane in the gap. Counting these per
+    # boundary lets the layout open the gap proportionally — three
+    # parallel back-edges between two rows ends up with 3 * lane_px of
+    # extra clearance, so they never stack in the same corridor.
+    edges_crossing: dict[int, int] = {}
+    if parsed.edges and len(all_steps) >= 2:
+        for ed in parsed.edges:
+            ss = node_step.get(ed.source)
+            ts = node_step.get(ed.target)
+            if ss is None or ts is None:
+                continue
+            if ss == ts:
+                continue  # same-step edge; routes around the cell, not across
+            # Edge crosses every step boundary between min and max. Label
+            # rides the longest segment, which runs along the gap; widen
+            # every boundary it crosses so the label has room. Forward and
+            # back edges both qualify — for a back-edge, the U-detour's
+            # long horizontal still sits inside this gap.
+            lo = min(ss, ts)
+            hi = max(ss, ts)
+            si = step_index.get(lo)
+            ti = step_index.get(hi)
+            if si is None or ti is None:
+                continue
+            px = _label_run_px(ed.label) if ed.label else 0
+            for k in range(si, ti):
+                if px > 0:
+                    forward_label_max[k] = max(forward_label_max.get(k, 0), px)
+                edges_crossing[k] = edges_crossing.get(k, 0) + 1
 
     lane_breadth: dict[str, int] = {}
     for lane in lane_order:
@@ -109,27 +200,82 @@ def compute_layout(parsed: Parsed) -> dict:
 
     horizontal = direction in ("left-to-right", "right-to-left")
     reverse_steps = direction in ("bottom-to-top", "right-to-left")
-    margin = cfg["margin"]
+    snap = cfg["snap_grid"] if cfg["snap_grid"] > 0 else 1
+    # Pin the page margin to the grid so the very first cursor position
+    # (margin) lands on a grid line. Otherwise everything downstream
+    # carries the offset.
+    margin = int(_snap_up(cfg["margin"], snap))
     steps_ordered = list(reversed(all_steps)) if reverse_steps else all_steps
-    snap = cfg["snap_grid"]
+
+    # Map "boundary k between steps_ordered[k] and steps_ordered[k+1]" to
+    # the extra pixels we need beyond the configured base gap. The
+    # `forward_label_max` index was built against the natural step order;
+    # if we're rendering reversed, mirror the indices so boundary 0 is
+    # still "the first gap we walk past".
+    base_gap = cfg["h_gap"] if horizontal else cfg["v_gap"]
+    # Per-edge corridor — every connector crossing a boundary needs its
+    # own lane in the gap. Picked to leave a clear visual band between
+    # adjacent corridors at typical zoom levels.
+    corridor_px = 18
+    label_pad = 18
+
+    def step_gap(boundary_idx_in_ordered: int) -> int:
+        """How much space to leave AFTER the step at this position,
+        before the next step. `boundary_idx_in_ordered` is 0-based against
+        `steps_ordered`."""
+        if reverse_steps:
+            # If reversed, boundary i in ordered corresponds to boundary
+            # (len-2-i) in natural order.
+            natural_i = len(all_steps) - 2 - boundary_idx_in_ordered
+        else:
+            natural_i = boundary_idx_in_ordered
+        # Two demands stack: label width and parallel-edge corridors.
+        # Take the bigger of the two — they don't compound (the label
+        # rides one of the corridors). The +1 on edge count gives a
+        # symmetric margin around the corridor stack.
+        label_need = forward_label_max.get(natural_i, 0)
+        edge_count = edges_crossing.get(natural_i, 0)
+        edge_need = (edge_count + 1) * corridor_px if edge_count > 0 else 0
+        needed = max(label_need + label_pad, edge_need)
+        if needed <= 0:
+            return base_gap
+        gap = max(base_gap, needed)
+        # Snap up to a grid multiple so the cumulative cursor stays
+        # aligned and ports between steps land on grid lines.
+        return _snap_up(gap, snap)
 
     positions: dict[str, dict] = {}
     lane_rects: dict[str, dict] = {}
 
     if not horizontal:
+        # Snap each lane's breadth UP to an even grid quantum so its
+        # midpoint (where shapes centre) lands on a grid line. Same
+        # rationale as `_round_to_even_grid` for nodes.
+        lane_quantum = snap * 2
+        for lane in lane_order:
+            lane_breadth[lane] = (
+                (lane_breadth[lane] + lane_quantum - 1) // lane_quantum
+            ) * lane_quantum
         lane_center: dict[str, float] = {}
         cursor = margin
+        swimlane_gap = int(_snap_up(cfg["swimlane_gap"], snap))
         for lane in lane_order:
             lane_center[lane] = cursor + lane_breadth[lane] / 2
-            cursor += lane_breadth[lane] + cfg["swimlane_gap"]
-        total_w = cursor - cfg["swimlane_gap"] + margin
+            cursor += lane_breadth[lane] + swimlane_gap
+        total_w = cursor - swimlane_gap + margin
 
         step_center: dict[int, float] = {}
         cursor = margin
-        for s in steps_ordered:
+        last_gap = base_gap
+        for i, s in enumerate(steps_ordered):
             step_center[s] = cursor + step_depth[s] / 2
-            cursor += step_depth[s] + cfg["v_gap"]
-        total_h = cursor - cfg["v_gap"] + margin
+            # Use the adaptive gap between this step and the next; the
+            # final step doesn't need a trailing gap (we subtract it
+            # below to compute total_h).
+            gap = step_gap(i) if i < len(steps_ordered) - 1 else base_gap
+            cursor += step_depth[s] + gap
+            last_gap = gap
+        total_h = cursor - last_gap + margin
 
         for (lane, step), cell in by_lane_step.items():
             cx = lane_center[lane]
@@ -166,25 +312,34 @@ def compute_layout(parsed: Parsed) -> dict:
                 }
             cursor += lane_breadth[lane] + cfg["swimlane_gap"]
     else:
+        lane_quantum = snap * 2
+        for lane in lane_order:
+            lane_breadth[lane] = (
+                (lane_breadth[lane] + lane_quantum - 1) // lane_quantum
+            ) * lane_quantum
         lane_center: dict[str, float] = {}
         cursor = margin
+        swimlane_gap = int(_snap_up(cfg["swimlane_gap"], snap))
         for lane in lane_order:
             lane_center[lane] = cursor + lane_breadth[lane] / 2
-            cursor += lane_breadth[lane] + cfg["swimlane_gap"]
-        total_h = cursor - cfg["swimlane_gap"] + margin
+            cursor += lane_breadth[lane] + swimlane_gap
+        total_h = cursor - swimlane_gap + margin
 
         step_center: dict[int, float] = {}
         cursor = margin
         step_w_lookup: dict[int, int] = {}
-        for s in steps_ordered:
+        last_gap = base_gap
+        for i, s in enumerate(steps_ordered):
             widest = cfg["node_width"]
             for lane in lane_order:
                 for cn in by_lane_step.get((lane, s), []):
                     widest = max(widest, sizes[cn.name][0])
             step_w_lookup[s] = widest
             step_center[s] = cursor + widest / 2
-            cursor += widest + cfg["h_gap"]
-        total_w = cursor - cfg["h_gap"] + margin
+            gap = step_gap(i) if i < len(steps_ordered) - 1 else base_gap
+            cursor += widest + gap
+            last_gap = gap
+        total_w = cursor - last_gap + margin
 
         for (lane, step), cell in by_lane_step.items():
             cx = step_center[step]

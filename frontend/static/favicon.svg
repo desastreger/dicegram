@@ -1,17 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Dicegram">
-	<!-- Warm rust square with rounded corners — die-face plate. -->
 	<rect x="2" y="2" width="28" height="28" rx="7" fill="#b04527" />
-	<!-- Inner highlight to give the plate dimension. -->
 	<rect x="2" y="2" width="28" height="28" rx="7" fill="url(#dgGloss)" opacity="0.18" />
-	<!-- The "3" face of a die — three pips on the diagonal, the brand
-	     monogram. Pips offset slightly toward the bottom-right so the
-	     mark reads as motion / sequence (not just decoration). -->
 	<circle cx="10" cy="10" r="2.7" fill="#fff8ed" />
 	<circle cx="16" cy="16" r="2.7" fill="#fff8ed" />
 	<circle cx="22" cy="22" r="2.7" fill="#fff8ed" />
-	<!-- Hairline arrow connecting the pips — what makes the glyph
-	     "diagram" instead of just "die". Clipped to the plate so it
-	     doesn't break the rounded corners. -->
 	<path d="M 10 10 L 22 22" stroke="#fff8ed" stroke-width="0.6" stroke-linecap="round" opacity="0.55" />
 	<defs>
 		<linearGradient id="dgGloss" x1="0" y1="0" x2="0" y2="1">

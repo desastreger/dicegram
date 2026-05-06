@@ -45,6 +45,7 @@
 		{ value: 'solid', label: 'solid ( → )' },
 		{ value: 'dashed', label: 'dashed ( ⇢ )' },
 		{ value: 'thick', label: 'thick ( ⇒ )' },
+		{ value: 'bidirectional', label: 'bidirectional ( ↔ )' },
 		{ value: 'solid_line', label: 'solid line (no arrow)' },
 		{ value: 'dotted_line', label: 'dotted line (no arrow)' }
 	];

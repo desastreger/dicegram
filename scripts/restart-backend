@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Kill any running uvicorn on :8000 and restart it fresh. Run as
+#   scripts/restart-backend [--logs]
+# `--logs` tails the new log to stdout for ~3s so I can confirm startup.
+#
+# Why this exists: the dev backend pid wanders across reloads (every code
+# edit spawns a new worker pid + the watcher pid). Killing them
+# individually requires per-pid permission prompts, which derails AI
+# iteration. This single script wraps the whole "tear down + bring up"
+# move so it can sit on the allow list once and never block again.
+
+set -uo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VENV_PY="${LOCALAPPDATA:-$HOME/AppData/Local}/dicegram-venv/Scripts/python.exe"
+LOG_FILE="${TMPDIR:-/tmp}/dicegram-backend.log"
+PORT=8000
+
+if [[ ! -x "$VENV_PY" ]]; then
+  # Some shells expand $LOCALAPPDATA differently — fall back to a known path.
+  VENV_PY="/c/Users/igdes/AppData/Local/dicegram-venv/Scripts/python.exe"
+fi
+
+echo "[restart-backend] killing existing uvicorn on :$PORT"
+# 1) Anyone listening on :PORT (covers reloader + worker pids).
+mapfile -t pids < <(netstat -ano 2>/dev/null | awk -v port=":$PORT" '
+  $0 ~ "LISTENING" && $2 ~ port { print $NF }
+' | sort -u)
+for pid in "${pids[@]}"; do
+  [[ -z "$pid" ]] && continue
+  echo "  kill listener pid=$pid"
+  taskkill //F //PID "$pid" >/dev/null 2>&1 || true
+done
+
+# 2) Every python.exe whose command line mentions `uvicorn app.main` —
+# catches stale workers that lost the socket but kept running and any
+# leftover reloaders piled up across crashes. Without this step a stale
+# worker can keep serving cached bytecode after a code edit.
+mapfile -t orphan_lines < <(
+  wmic process where "Name='python.exe'" get ProcessId,CommandLine 2>/dev/null \
+    | tr -d '\r' | grep -i "uvicorn app.main" || true
+)
+for line in "${orphan_lines[@]}"; do
+  pid=$(echo "$line" | awk '{print $NF}')
+  [[ -z "$pid" ]] && continue
+  [[ ! "$pid" =~ ^[0-9]+$ ]] && continue
+  echo "  kill orphan uvicorn pid=$pid"
+  taskkill //F //PID "$pid" >/dev/null 2>&1 || true
+done
+
+# 3) Clear cached __pycache__ — a stale .pyc occasionally lingers after a
+# refactor and the new worker imports the old version.
+find "$PROJECT_ROOT/backend" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+# Brief settle so the OS releases the socket before we rebind.
+sleep 1
+
+echo "[restart-backend] starting uvicorn"
+cd "$PROJECT_ROOT/backend"
+nohup "$VENV_PY" -m uvicorn app.main:app --reload --port "$PORT" \
+  > "$LOG_FILE" 2>&1 &
+new_pid=$!
+echo "[restart-backend] pid=$new_pid log=$LOG_FILE"
+
+# Poll for readiness. Cap at ~10s so we never block forever.
+for _ in {1..40}; do
+  if curl -s -m 1 -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PORT/api/health" 2>/dev/null \
+     | grep -q "^200$"; then
+    echo "[restart-backend] ready"
+    break
+  fi
+  sleep 0.25
+done
+
+if [[ "${1:-}" == "--logs" ]]; then
+  echo "[restart-backend] tailing $LOG_FILE for 3s"
+  timeout 3 tail -n 50 -f "$LOG_FILE" || true
+fi

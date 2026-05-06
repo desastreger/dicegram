@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { ApiError } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
+	import favicon from '$lib/assets/favicon.svg';
 
 	let email = $state('');
 	let password = $state('');
@@ -36,38 +37,54 @@
 
 <svelte:head><title>Log in · Dicegram</title></svelte:head>
 
-<section class="mx-auto w-full max-w-sm px-6 py-16 text-app">
-	<h1 class="mb-6 text-2xl font-semibold">Log in</h1>
-	<form onsubmit={submit} class="flex w-full flex-col gap-4">
-		<label class="flex flex-col gap-1">
-			<span class="field-label">Email</span>
-			<input
-				type="email"
-				required
-				autocomplete="username"
-				bind:value={email}
-				class="input-themed"
-			/>
-		</label>
-		<label class="flex flex-col gap-1">
-			<span class="field-label">Password</span>
-			<input
-				type="password"
-				required
-				autocomplete="current-password"
-				bind:value={password}
-				class="input-themed"
-			/>
-		</label>
-		{#if error}
-			<p role="alert" class="text-sm text-danger">{error}</p>
-		{/if}
-		<button type="submit" disabled={submitting} class="btn-primary">
-			{submitting ? 'Signing in…' : 'Log in'}
-		</button>
-		<div class="flex items-center justify-between text-sm">
-			<a href="/forgot-password" class="link">Forgot password?</a>
+<section class="auth-shell">
+	<div class="auth-card">
+		<div class="auth-eyebrow eyebrow">
+			<img src={favicon} alt="" class="auth-mark" aria-hidden="true" />
+			<span>Welcome back</span>
+		</div>
+		<h1 class="auth-title">Log in to Dicegram</h1>
+		<p class="auth-lede">Pick up where you left off — your diegrams autosave to your account.</p>
+		<form onsubmit={submit} class="flex w-full flex-col gap-4">
+			<label class="flex flex-col gap-1">
+				<span class="field-label">Email</span>
+				<input
+					type="email"
+					required
+					autocomplete="username"
+					bind:value={email}
+					class="input-themed"
+				/>
+			</label>
+			<label class="flex flex-col gap-1">
+				<span class="field-label">Password</span>
+				<input
+					type="password"
+					required
+					autocomplete="current-password"
+					bind:value={password}
+					class="input-themed"
+				/>
+			</label>
+			{#if error}
+				<p role="alert" class="text-sm text-danger">{error}</p>
+			{/if}
+			<button type="submit" disabled={submitting || !email || !password} class="btn-primary">
+				{submitting ? 'Signing in…' : 'Log in'}
+			</button>
+		</form>
+		<hr class="auth-divider" />
+		<div class="auth-foot">
+			<a href="/forgot-password" class="link" title="Look up the hint you set at signup">Forgot? Look up your hint</a>
 			<a href="/signup" class="link">Create an account</a>
 		</div>
-	</form>
+	</div>
 </section>
+
+<style>
+	.auth-mark {
+		width: 18px;
+		height: 18px;
+		display: block;
+	}
+</style>

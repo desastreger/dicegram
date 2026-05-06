@@ -1,7 +1,19 @@
 import { ApiError, api } from './api';
 import { palette } from './palette.svelte';
 
-export type User = { id: number; email: string; email_verified?: boolean };
+export type User = {
+	id: number;
+	email: string;
+	username?: string | null;
+	password_hint?: string | null;
+};
+
+export type SignupPayload = {
+	email: string;
+	password: string;
+	username: string;
+	password_hint: string;
+};
 
 function createAuth() {
 	let user = $state<User | null>(null);
@@ -32,8 +44,8 @@ function createAuth() {
 			}
 		},
 
-		async signup(email: string, password: string) {
-			user = await api.post<User>('/auth/signup', { email, password });
+		async signup(payload: SignupPayload) {
+			user = await api.post<User>('/auth/signup', payload);
 			await hydratePalette();
 		},
 
@@ -45,6 +57,14 @@ function createAuth() {
 		async logout() {
 			await api.post('/auth/logout');
 			user = null;
+		},
+
+		async updateHint(hint: string) {
+			user = await api.put<User>('/auth/me/hint', { password_hint: hint });
+		},
+
+		async updateUsername(username: string) {
+			user = await api.put<User>('/auth/me/username', { username });
 		}
 	};
 }

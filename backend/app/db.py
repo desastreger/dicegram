@@ -41,14 +41,19 @@ def _ensure_schema() -> None:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE user ADD COLUMN palette_presets JSON"))
             conn.execute(text("UPDATE user SET palette_presets = '{}' WHERE palette_presets IS NULL"))
-    if "email_verified_at" not in user_cols:
-        with engine.begin() as conn:
-            # Stored as ISO datetime text in SQLite. NULL = unverified.
-            conn.execute(text("ALTER TABLE user ADD COLUMN email_verified_at DATETIME"))
     if "palette_locked" not in user_cols:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE user ADD COLUMN palette_locked BOOLEAN DEFAULT 0"))
             conn.execute(text("UPDATE user SET palette_locked = 0 WHERE palette_locked IS NULL"))
+    # Username + password_hint added when SMTP-driven recovery was disabled
+    # (see PR notes); both NULLABLE because pre-existing rows don't have
+    # them and we never want a forced backfill.
+    if "username" not in user_cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE user ADD COLUMN username VARCHAR"))
+    if "password_hint" not in user_cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE user ADD COLUMN password_hint VARCHAR"))
 
 
 def init_db() -> None:

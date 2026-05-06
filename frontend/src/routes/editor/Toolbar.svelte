@@ -9,7 +9,7 @@
 		downloadPdf,
 		downloadPng,
 		downloadSvg,
-		downloadVisioCsv
+		downloadProcessFlowCsv
 	} from '$lib/export';
 	import type { RenderResult } from '$lib/render';
 	import { TEMPLATES, type DicegramTemplate } from '$lib/templates';
@@ -181,7 +181,7 @@
 	}
 
 	async function doExport(
-		kind: 'svg' | 'png' | 'pdf' | 'html' | 'visio' | 'copy-svg' | 'copy-dsl'
+		kind: 'svg' | 'png' | 'pdf' | 'html' | 'process-flow' | 'copy-svg' | 'copy-dsl'
 	) {
 		exportOpen = false;
 		const baseName = name || 'dicegram';
@@ -190,9 +190,9 @@
 			else if (kind === 'png') await downloadPng(baseName, source);
 			else if (kind === 'pdf') await downloadPdf(baseName, source);
 			else if (kind === 'html') await downloadHtml(baseName, source);
-			else if (kind === 'visio') {
+			else if (kind === 'process-flow') {
 				if (!result) throw new Error('nothing to export yet');
-				downloadVisioCsv(baseName, result);
+				downloadProcessFlowCsv(baseName, result);
 			} else if (kind === 'copy-svg') {
 				await copySvg(source);
 				flashCopyToast('Copied SVG to clipboard');
@@ -226,37 +226,35 @@
 	}
 </script>
 
-<div
-	class="flex flex-wrap items-center gap-1.5 border-b border-neutral-800 bg-neutral-950 px-2 py-1 text-xs"
->
+<div class="dg-toolbar">
 	<input
 		type="text"
 		bind:value={name}
 		placeholder="Untitled dicegram"
 		aria-label="Dicegram name"
 		title="Dicegram name"
-		class="h-6 w-44 rounded border border-neutral-800 bg-neutral-900 px-2 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-blue-600 focus:outline-none"
+		class="dg-name input-themed numeric"
 	/>
 
-	<div class="flex items-center gap-0.5">
+	<div class="dg-group">
 		<button
 			type="button"
 			onclick={onSave}
 			disabled={saving}
 			title={saving ? 'Saving…' : 'Save (Ctrl+S)'}
-			class="flex h-6 items-center gap-1 rounded bg-blue-600 px-2 text-white hover:bg-blue-500 disabled:opacity-50"
+			class="dg-btn-primary"
 		>
 			<Icon name="save" size={13} />
-			<span class="hidden md:inline">{saving ? 'Saving…' : 'Save'}</span>
+			<span class="dg-label">{saving ? 'Saving…' : 'Save'}</span>
 		</button>
 		<button
 			type="button"
 			onclick={onOpen}
 			title="Open"
-			class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800"
+			class="btn-tactile"
 		>
 			<Icon name="folder-open" size={13} />
-			<span class="hidden md:inline">Open</span>
+			<span class="dg-label">Open</span>
 		</button>
 		<div class="relative" bind:this={newRoot}>
 			<button
@@ -264,24 +262,22 @@
 				onclick={() => (newOpen = !newOpen)}
 				aria-expanded={newOpen}
 				title="New dicegram"
-				class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800"
+				class="btn-tactile"
 			>
 				<Icon name="file-plus" size={13} />
-				<span class="hidden md:inline">New</span>
+				<span class="dg-label">New</span>
 				<Icon name="chevron-down" size={11} />
 			</button>
 			{#if newOpen}
-				<div
-					class="absolute left-0 top-full z-30 mt-1 w-64 overflow-hidden rounded border border-neutral-800 bg-neutral-900 shadow-lg"
-				>
+				<div class="dg-pop menu-panel">
 					{#each TEMPLATES as t (t.id)}
 						<button
 							type="button"
 							onclick={() => pickNew(t)}
-							class="block w-full px-3 py-1.5 text-left text-neutral-200 hover:bg-neutral-800"
+							class="dg-pop-item"
 						>
-							<div class="text-xs font-medium">{t.name}</div>
-							<div class="mt-0.5 text-[10px] text-neutral-500">{t.description}</div>
+							<div class="dg-pop-name">{t.name}</div>
+							<div class="dg-pop-hint">{t.description}</div>
 						</button>
 					{/each}
 				</div>
@@ -289,13 +285,9 @@
 		</div>
 	</div>
 
-	<span class="h-4 w-px bg-neutral-800"></span>
+	<span class="dg-rule" aria-hidden="true"></span>
 
-	<div
-		role="group"
-		aria-label="Layout direction"
-		class="flex overflow-hidden rounded border border-neutral-800"
-	>
+	<div role="group" aria-label="Layout direction" class="dg-segment">
 		{#each DIRECTIONS as d (d.id)}
 			{@const active = d.id === activeDirection}
 			<button
@@ -304,16 +296,15 @@
 				aria-pressed={active}
 				aria-label={`Layout direction: ${d.label.toLowerCase()}`}
 				title={d.label}
-				class="flex h-6 items-center justify-center border-r border-neutral-800 px-1.5 last:border-r-0 hover:bg-neutral-800 {active
-					? 'bg-blue-700 text-white'
-					: 'text-neutral-300'}"
+				class="dg-seg-btn"
+				class:dg-seg-on={active}
 			>
 				<Icon name={d.icon} size={13} />
 			</button>
 		{/each}
 	</div>
 
-	<span class="h-4 w-px bg-neutral-800"></span>
+	<span class="dg-rule" aria-hidden="true"></span>
 
 	<button
 		type="button"
@@ -321,9 +312,7 @@
 		aria-pressed={treeOpen}
 		aria-label="Toggle dicetree"
 		title="Dicetree (Ctrl+B)"
-		class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800 {treeOpen
-			? 'bg-neutral-800'
-			: ''}"
+		class="btn-tactile"
 	>
 		<Icon name="tree" size={13} />
 	</button>
@@ -333,9 +322,7 @@
 		aria-pressed={settingsOpen}
 		aria-label="Toggle dicegram settings"
 		title="Dicegram settings"
-		class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800 {settingsOpen
-			? 'bg-neutral-800'
-			: ''}"
+		class="btn-tactile"
 	>
 		<Icon name="settings" size={13} />
 	</button>
@@ -345,9 +332,7 @@
 		aria-pressed={inspectorOpen}
 		aria-label="Toggle inspector"
 		title="Inspector (Ctrl+.)"
-		class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800 {inspectorOpen
-			? 'bg-neutral-800'
-			: ''}"
+		class="btn-tactile"
 	>
 		<Icon name="panel-right" size={13} />
 	</button>
@@ -359,36 +344,37 @@
 			disabled={currentId == null}
 			aria-expanded={shareOpen}
 			title={currentId == null ? 'Save the dicegram first to share it' : 'Share'}
-			class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+			class="btn-tactile"
 		>
 			<Icon name="share" size={13} />
-			<span class="hidden md:inline">Share</span>
+			<span class="dg-label">Share</span>
 			<Icon name="chevron-down" size={11} />
 		</button>
 		{#if shareOpen && currentId != null}
-			<div
-				class="absolute left-0 top-full z-20 mt-1 w-72 rounded border border-neutral-800 bg-neutral-900 p-2 shadow-lg"
-			>
+			<div class="dg-pop menu-panel" style="width: 18rem; padding: 0.55rem;">
 				{#if shareBusy && !shareSlug}
-					<p class="px-1 py-2 text-xs text-neutral-400">Creating link…</p>
+					<p class="dg-pop-hint" style="padding: 0.45rem 0.25rem;">Creating link…</p>
 				{:else if shareError}
-					<p class="px-1 py-2 text-xs text-red-400">{shareError}</p>
+					<p class="dg-pop-hint text-danger" style="padding: 0.45rem 0.25rem;">{shareError}</p>
 				{:else if shareUrl}
-					<p class="px-1 pb-1 text-[10px] uppercase tracking-wide text-neutral-500">
+					<p class="eyebrow" style="font-size: 0.6rem; margin-bottom: 0.4rem; padding: 0 0.25rem;">
 						Public read-only link
 					</p>
 					<input
 						type="text"
 						readonly
 						value={shareUrl}
-						class="mb-2 w-full rounded border border-neutral-800 bg-neutral-950 px-2 py-1 font-mono text-[11px] text-neutral-200"
+						aria-label="Share URL"
+						class="input-themed numeric"
+						style="width: 100%; font-family: var(--app-mono-font); font-size: 0.7rem; margin-bottom: 0.5rem;"
 						onclick={(e) => (e.target as HTMLInputElement).select()}
 					/>
 					<div class="flex gap-1">
 						<button
 							type="button"
 							onclick={copyShare}
-							class="flex flex-1 items-center justify-center gap-1 rounded border border-neutral-800 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
+							class="btn-tactile"
+							style="flex: 1; justify-content: center;"
 						>
 							<Icon name={shareCopied ? 'check' : 'copy'} size={12} />
 							{shareCopied ? 'Copied' : 'Copy link'}
@@ -397,7 +383,8 @@
 							type="button"
 							onclick={revokeShare}
 							disabled={shareBusy}
-							class="flex flex-1 items-center justify-center gap-1 rounded border border-red-900 px-2 py-1 text-xs text-red-300 hover:bg-red-950 disabled:opacity-50"
+							class="btn-tactile dg-revoke"
+							style="flex: 1; justify-content: center;"
 						>
 							<Icon name="trash" size={12} /> Revoke
 						</button>
@@ -413,65 +400,39 @@
 			onclick={() => (exportOpen = !exportOpen)}
 			aria-expanded={exportOpen}
 			title="Export"
-			class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800"
+			class="btn-tactile"
 		>
 			<Icon name="download" size={13} />
-			<span class="hidden md:inline">Export</span>
+			<span class="dg-label">Export</span>
 			<Icon name="chevron-down" size={11} />
 		</button>
 		{#if exportOpen}
-			<div
-				class="absolute left-0 top-full z-20 mt-1 w-48 overflow-hidden rounded border border-neutral-800 bg-neutral-900 shadow-lg"
-			>
-				<button
-					type="button"
-					onclick={() => doExport('svg')}
-					class="flex w-full items-center gap-2 px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
-				>
+			<div class="dg-pop menu-panel">
+				<button type="button" onclick={() => doExport('svg')} class="menu-item">
 					<Icon name="download" size={13} /> Download SVG
 				</button>
-				<button
-					type="button"
-					onclick={() => doExport('png')}
-					class="flex w-full items-center gap-2 px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
-				>
+				<button type="button" onclick={() => doExport('png')} class="menu-item">
 					<Icon name="download" size={13} /> Download PNG
 				</button>
-				<button
-					type="button"
-					onclick={() => doExport('pdf')}
-					class="flex w-full items-center gap-2 px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
-				>
+				<button type="button" onclick={() => doExport('pdf')} class="menu-item">
 					<Icon name="download" size={13} /> Download PDF
 				</button>
-				<button
-					type="button"
-					onclick={() => doExport('html')}
-					class="flex w-full items-center gap-2 px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
-				>
+				<button type="button" onclick={() => doExport('html')} class="menu-item">
 					<Icon name="download" size={13} /> Download HTML
 				</button>
 				<button
 					type="button"
-					onclick={() => doExport('visio')}
-					title="Visio Data Visualizer CSV. Lossy: groups, notes, free positions and non-flow edges are dropped."
-					class="flex w-full items-center gap-2 px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
+					onclick={() => doExport('process-flow')}
+					title="Process-flow CSV. Columns: Process Step ID, Description, Shape Type, Function Band, Phase, Next Step ID, Connector Label. Lossy: groups, notes, free positions and non-flow edges are dropped."
+					class="menu-item"
 				>
-					<Icon name="download" size={13} /> Visio CSV
+					<Icon name="download" size={13} /> Process-flow CSV
 				</button>
-				<div class="border-t border-neutral-800"></div>
-				<button
-					type="button"
-					onclick={() => doExport('copy-svg')}
-					class="flex w-full items-center gap-2 px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
-				>
+				<div class="dg-divider"></div>
+				<button type="button" onclick={() => doExport('copy-svg')} class="menu-item">
 					<Icon name="copy" size={13} /> Copy SVG
 				</button>
-				<button
-					type="button"
-					onclick={() => doExport('copy-dsl')}
-					class="flex w-full items-center gap-2 px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
-				>
+				<button type="button" onclick={() => doExport('copy-dsl')} class="menu-item">
 					<Icon name="clipboard" size={13} /> Copy DSL
 				</button>
 				<button
@@ -480,7 +441,7 @@
 						exportOpen = false;
 						onLlmOpen?.();
 					}}
-					class="flex w-full items-center gap-2 px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
+					class="menu-item"
 				>
 					<Icon name="sparkles" size={13} /> LLM prompt…
 				</button>
@@ -491,38 +452,38 @@
 	<button
 		type="button"
 		onclick={() => onLlmOpen?.()}
-		title="Open the LLM prompt dialog (copy + quick-jump to Claude / ChatGPT / Gemini / …)"
-		class="flex h-6 items-center gap-1 rounded border border-neutral-800 px-2 text-neutral-200 hover:bg-neutral-800"
+		title="Copy a ready-made prompt and open it in any chat model"
+		class="btn-tactile"
 	>
 		<Icon name="sparkles" size={13} />
-		<span class="hidden md:inline">LLM prompt</span>
+		<span class="dg-label">LLM prompt</span>
 	</button>
 
-	<div class="ml-auto flex items-center gap-2 text-[11px]">
+	<div class="dg-status">
 		<input
 			type="search"
 			bind:value={filter}
 			placeholder="Filter  (owner:alice #tag …)"
 			aria-label="Filter nodes by id, label, owner, type, status, tag"
 			title={`Filter nodes (substring match). Supported keys:\n  owner: type: status: priority: shape: lane: box: tag:\n  #tag   free text matches id and label`}
-			class="h-6 w-56 rounded border border-neutral-800 bg-neutral-900 px-2 text-[11px] text-neutral-100 placeholder:text-neutral-500 focus:border-blue-600 focus:outline-none"
+			class="dg-filter input-themed numeric"
 		/>
 		{#if rendering}
-			<span class="text-neutral-400">rendering…</span>
+			<span class="dg-meta">rendering…</span>
 		{:else if errorCount > 0}
-			<span class="text-red-400">{errorCount} error{errorCount === 1 ? '' : 's'}</span>
+			<span class="dg-meta text-danger numeric">{errorCount} error{errorCount === 1 ? '' : 's'}</span>
 		{:else}
-			<span class="text-neutral-500">{nodeCount} node{nodeCount === 1 ? '' : 's'}</span>
+			<span class="dg-meta numeric">{nodeCount} node{nodeCount === 1 ? '' : 's'}</span>
 		{/if}
 		{#if saveMsg}
-			<span class="flex items-center gap-1 text-green-400">
+			<span class="dg-meta text-ok">
 				<Icon name="check" size={12} />
 				{saveMsg}
 			</span>
 		{:else if autosaveStatus === 'saving'}
-			<span class="text-neutral-500">Saving…</span>
+			<span class="dg-meta">Saving…</span>
 		{:else if autosaveStatus === 'saved'}
-			<span class="flex items-center gap-1 text-neutral-400">
+			<span class="dg-meta">
 				<Icon name="check" size={12} /> Saved
 			</span>
 		{/if}
@@ -533,8 +494,186 @@
 	<div
 		role="status"
 		aria-live="polite"
-		class="pointer-events-none fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 shadow-lg"
+		class="dg-copy-toast toast"
 	>
 		{copyToast}
 	</div>
 {/if}
+
+<style>
+	.dg-toolbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.35rem;
+		padding: 0.4rem 0.6rem;
+		background: var(--app-surface);
+		border-bottom: 1px solid var(--app-border);
+		font-size: 0.78rem;
+	}
+
+	.dg-name {
+		height: 28px;
+		width: 12rem;
+		padding: 0.15rem 0.55rem;
+		font-size: 0.78rem;
+	}
+
+	.dg-group {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.15rem;
+	}
+
+	/* The save button is the only chrome in the toolbar that uses the
+	   accent fill — the rest sit on neutral surfaces so the brand colour
+	   draws the eye to the primary action. UAT bug #6: was bg-blue-600
+	   which the global override remapped, but the height didn't track
+	   the rest of the toolbar. */
+	.dg-btn-primary {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		height: 28px;
+		padding: 0 0.7rem;
+		background: var(--app-accent);
+		color: var(--app-accent-text);
+		border-radius: var(--app-radius-sm);
+		font-size: 0.75rem;
+		font-weight: 500;
+		border: 1px solid transparent;
+		transition:
+			background-color var(--app-dur-fast) var(--app-ease),
+			transform var(--app-dur-fast) var(--app-ease);
+	}
+	.dg-btn-primary:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--app-accent) 88%, var(--app-text) 12%);
+	}
+	.dg-btn-primary:active:not(:disabled) {
+		transform: translateY(1px);
+	}
+	.dg-btn-primary:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
+	}
+
+	/* Override the .btn-tactile defaults to fit the toolbar height. */
+	.dg-toolbar :global(.btn-tactile) {
+		height: 28px;
+		padding: 0 0.55rem;
+		font-size: 0.75rem;
+	}
+
+	.dg-rule {
+		height: 18px;
+		width: 1px;
+		background: var(--app-border);
+		opacity: 0.7;
+		margin: 0 0.15rem;
+	}
+
+	.dg-segment {
+		display: inline-flex;
+		overflow: hidden;
+		border: 1px solid var(--app-border);
+		border-radius: var(--app-radius-sm);
+		height: 28px;
+	}
+	.dg-seg-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0 0.5rem;
+		color: var(--app-text-muted);
+		background: transparent;
+		border: 0;
+		border-right: 1px solid var(--app-border);
+		cursor: pointer;
+		transition:
+			background-color var(--app-dur-fast) var(--app-ease),
+			color var(--app-dur-fast) var(--app-ease);
+	}
+	.dg-seg-btn:last-child { border-right: 0; }
+	.dg-seg-btn:hover {
+		background: var(--app-hover);
+		color: var(--app-text);
+	}
+	.dg-seg-on {
+		background: var(--app-accent-soft);
+		color: var(--app-accent);
+	}
+
+	.dg-pop {
+		position: absolute;
+		left: 0;
+		top: 100%;
+		z-index: 30;
+		margin-top: 0.3rem;
+		min-width: 14rem;
+	}
+	.dg-pop-item {
+		display: block;
+		width: 100%;
+		padding: 0.45rem 0.85rem;
+		text-align: left;
+		background: transparent;
+		border: 0;
+		color: var(--app-text);
+		cursor: pointer;
+		transition: background-color var(--app-dur-fast) var(--app-ease);
+	}
+	.dg-pop-item:hover { background: var(--app-hover); }
+	.dg-pop-name { font-size: 0.78rem; font-weight: 500; }
+	.dg-pop-hint { font-size: 0.7rem; color: var(--app-text-dim); margin-top: 0.1rem; }
+	.dg-divider {
+		height: 1px;
+		background: var(--app-rule);
+		margin: 0.25rem 0;
+	}
+
+	.dg-revoke {
+		color: var(--app-danger);
+		border-color: color-mix(in srgb, var(--app-danger) 35%, var(--app-border) 65%);
+	}
+	.dg-revoke:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--app-danger) 12%, var(--app-bg) 88%);
+		border-color: var(--app-danger);
+	}
+
+	.dg-label {
+		display: none;
+	}
+	@media (min-width: 768px) {
+		.dg-label { display: inline; }
+	}
+
+	.dg-status {
+		margin-left: auto;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.55rem;
+		font-size: 0.7rem;
+	}
+	.dg-filter {
+		height: 28px;
+		width: 14rem;
+		padding: 0.15rem 0.55rem;
+		font-size: 0.7rem;
+	}
+	.dg-meta {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		color: var(--app-text-dim);
+		white-space: nowrap;
+	}
+
+	.dg-copy-toast {
+		position: fixed;
+		bottom: 1rem;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 50;
+		pointer-events: none;
+	}
+</style>

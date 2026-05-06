@@ -1,23 +1,11 @@
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlmodel import Session, select
 
-from ..config import settings
 from ..db import get_session
 from ..deps import current_user
-from ..email import (
-    PURPOSE_RESET,
-    PURPOSE_VERIFY,
-    build_reset_email,
-    build_verify_email,
-    make_token,
-    read_token,
-    send_email,
-)
 from ..models import User
-from ..palette import ALLOWED_KEYS, DEFAULT_PALETTE, merge_palette
+from ..palette import ALLOWED_KEYS, merge_palette
 from ..rate_limit import limiter
 from ..security import hash_password, verify_password
 
@@ -29,10 +17,42 @@ class Credentials(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
+class SignupCredentials(BaseModel):
+    """Signup payload. Adds `username` (display handle) and `password_hint`
+    (a user-chosen reminder string we display back if they forget the
+    password). The hint is *not* a security token — there's no SMTP-based
+    recovery while we're offline, so the hint exists purely so the user
+    can refresh their own memory."""
+
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    username: str = Field(min_length=1, max_length=60)
+    password_hint: str = Field(min_length=1, max_length=140)
+
+
 class UserPublic(BaseModel):
     id: int
     email: EmailStr
-    email_verified: bool = False
+    username: str | None = None
+    password_hint: str | None = None
+
+
+class HintLookupIn(BaseModel):
+    email: EmailStr
+
+
+class HintLookupOut(BaseModel):
+    # Empty string when no account matches — keeps the response shape
+    # consistent and avoids a 404-vs-200 enumeration vector.
+    password_hint: str = ""
+
+
+class HintUpdateIn(BaseModel):
+    password_hint: str = Field(min_length=1, max_length=140)
+
+
+class UsernameUpdateIn(BaseModel):
+    username: str = Field(min_length=1, max_length=60)
 
 
 class PaletteOut(BaseModel):
@@ -61,35 +81,13 @@ class PresetSaveIn(BaseModel):
     overrides: dict[str, str] | None = None
 
 
-class EmailOnly(BaseModel):
-    email: EmailStr
-
-
-class ResetIn(BaseModel):
-    token: str = Field(min_length=1, max_length=1024)
-    password: str = Field(min_length=8, max_length=128)
-
-
 def _user_public(user: User) -> UserPublic:
     return UserPublic(
         id=user.id,
         email=user.email,
-        email_verified=user.email_verified_at is not None,
+        username=user.username,
+        password_hint=user.password_hint,
     )
-
-
-def _dispatch_verify_email(user: User) -> None:
-    token = make_token(user.id, PURPOSE_VERIFY)
-    url = f"{settings.app_base_url.rstrip('/')}/verify?token={token}"
-    subject, text, html = build_verify_email(url)
-    send_email(user.email, subject, text, html)
-
-
-def _dispatch_reset_email(user: User) -> None:
-    token = make_token(user.id, PURPOSE_RESET)
-    url = f"{settings.app_base_url.rstrip('/')}/reset-password?token={token}"
-    subject, text, html = build_reset_email(url)
-    send_email(user.email, subject, text, html)
 
 
 @router.post("/signup", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
@@ -97,7 +95,7 @@ def _dispatch_reset_email(user: User) -> None:
 def signup(
     request: Request,
     response: Response,
-    creds: Credentials,
+    creds: SignupCredentials,
     session: Session = Depends(get_session),
 ):
     exists = session.exec(select(User).where(User.email == creds.email)).first()
@@ -105,12 +103,16 @@ def signup(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="email already registered"
         )
-    user = User(email=creds.email, password_hash=hash_password(creds.password))
+    user = User(
+        email=creds.email,
+        password_hash=hash_password(creds.password),
+        username=creds.username.strip(),
+        password_hint=creds.password_hint.strip(),
+    )
     session.add(user)
     session.commit()
     session.refresh(user)
     request.session["user_id"] = user.id
-    _dispatch_verify_email(user)
     return _user_public(user)
 
 
@@ -142,97 +144,50 @@ def me(user: User = Depends(current_user)):
     return _user_public(user)
 
 
-# ─── Email verification ───────────────────────────────────────────────────
+# ─── Password hint (replacement for SMTP-driven reset) ──────────────────
 
-@router.post("/request-verify", status_code=status.HTTP_204_NO_CONTENT)
-@limiter.limit("3/minute")
-def request_verify(request: Request, user: User = Depends(current_user)):
-    """Re-send the verification email to the currently signed-in user."""
-    if user.email_verified_at is not None:
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    _dispatch_verify_email(user)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@router.get("/verify", response_model=UserPublic)
-@limiter.limit("20/minute")
-def verify_email(
+@router.post("/hint-lookup", response_model=HintLookupOut)
+@limiter.limit("10/minute")
+def hint_lookup(
     request: Request,
     response: Response,
-    token: str,
+    body: HintLookupIn,
     session: Session = Depends(get_session),
 ):
-    uid = read_token(token, PURPOSE_VERIFY, settings.verify_token_max_age)
-    if uid is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="verification link invalid or expired",
-        )
-    user = session.get(User, uid)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="verification link invalid or expired",
-        )
-    if user.email_verified_at is None:
-        user.email_verified_at = datetime.now(timezone.utc)
-        session.add(user)
-        session.commit()
-        session.refresh(user)
-    # Log the user in as a side-effect of clicking the verification link
-    # from their email client.
-    request.session["user_id"] = user.id
-    return _user_public(user)
-
-
-# ─── Password reset ───────────────────────────────────────────────────────
-
-@router.post("/request-reset", status_code=status.HTTP_204_NO_CONTENT)
-@limiter.limit("5/minute")
-def request_password_reset(
-    request: Request,
-    body: EmailOnly,
-    session: Session = Depends(get_session),
-):
-    """Start a password reset flow. Always returns 204 to avoid leaking
-    whether an email address is registered."""
+    """Return the password hint stored for the given email, or an empty
+    string if no account matches. Rate-limited so the endpoint can't be
+    used as a free email enumeration oracle. The hint is user-chosen and
+    intentionally not secret — it's the bridge while SMTP recovery is
+    offline."""
     user = session.exec(select(User).where(User.email == body.email)).first()
-    if user is not None:
-        _dispatch_reset_email(user)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    if user is None or not user.password_hint:
+        return HintLookupOut(password_hint="")
+    return HintLookupOut(password_hint=user.password_hint)
 
 
-@router.post("/reset", response_model=UserPublic)
-@limiter.limit("5/minute")
-def reset_password(
-    request: Request,
-    response: Response,
-    body: ResetIn,
+@router.put("/me/hint", response_model=UserPublic)
+def update_hint(
+    body: HintUpdateIn,
+    user: User = Depends(current_user),
     session: Session = Depends(get_session),
 ):
-    uid = read_token(body.token, PURPOSE_RESET, settings.reset_token_max_age)
-    if uid is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="reset link invalid or expired",
-        )
-    user = session.get(User, uid)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="reset link invalid or expired",
-        )
-    user.password_hash = hash_password(body.password)
-    # Resetting via email proves ownership of the inbox, so mark verified
-    # as a side-effect if they hadn't already.
-    if user.email_verified_at is None:
-        user.email_verified_at = datetime.now(timezone.utc)
+    user.password_hint = body.password_hint.strip()
     session.add(user)
     session.commit()
     session.refresh(user)
-    # Invalidate any existing session and start a fresh one as the reset user.
-    request.session.clear()
-    request.session["user_id"] = user.id
+    return _user_public(user)
+
+
+@router.put("/me/username", response_model=UserPublic)
+def update_username(
+    body: UsernameUpdateIn,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+):
+    user.username = body.username.strip()
+    session.add(user)
+    session.commit()
+    session.refresh(user)
     return _user_public(user)
 
 

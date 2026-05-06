@@ -19,11 +19,22 @@ export type RenderEdge = {
 	id: string;
 	source: string;
 	target: string;
-	kind: 'solid' | 'dashed' | 'thick' | 'solid_line' | 'dotted_line';
+	kind: 'solid' | 'dashed' | 'thick' | 'solid_line' | 'dotted_line' | 'bidirectional';
 	label: string;
 	attrs: Record<string, string>;
 	source_port: string | null;
 	target_port: string | null;
+	// Deterministic geometry from the backend route planner. The frontend
+	// renders these directly — no further routing decisions.
+	source_x: number | null;
+	source_y: number | null;
+	target_x: number | null;
+	target_y: number | null;
+	waypoints: { x: number; y: number }[];
+	label_x: number | null;
+	label_y: number | null;
+	label_axis: 'horizontal' | 'vertical';
+	corner_radius: number;
 };
 
 export type RenderLane = {

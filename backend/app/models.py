@@ -12,11 +12,15 @@ class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
     password_hash: str
+    # Display handle the user picks at signup. Optional today (older rows
+    # predate the column) — the email is still the canonical identifier.
+    username: str | None = Field(default=None)
+    # User-supplied "password reminder" string. Captured at signup so the
+    # user can recover their own memory of the password while SMTP-driven
+    # forgot-password is disabled. Visible only to the signed-in user
+    # (Settings page) plus the lookup-by-email helper on /login.
+    password_hint: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow)
-    # Set the first time the user confirms their email via the verification
-    # link. Until then, email_verified_at is None and we surface a banner
-    # in the frontend; no feature is gated on verification yet.
-    email_verified_at: datetime | None = Field(default=None)
     # Currently applied per-user branding palette (see app/palette.py).
     # Stored as JSON; only keys in ALLOWED_KEYS survive a PUT. Empty-string
     # values mean "inherit the shipped default".

@@ -415,11 +415,23 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
                 mx_lbl, my_lbl = (sx + tx) / 2, sy + dy / 2
             else:
                 mx_lbl, my_lbl = sx + dx / 2, (sy + ty) / 2
+            label_lines = edge.label.split("\n")
+            longest = max((len(line) for line in label_lines), default=0)
+            label_w = max(30, longest * 6 + 12)
+            label_h = max(14, len(label_lines) * 13 + 4)
+            line_h = 13
             parts.append(
-                f'<rect x="{mx_lbl-30:.1f}" y="{my_lbl-9:.1f}" width="60" height="14" rx="3" fill="{th["edge_label_bg"]}" />'
-                f'<text x="{mx_lbl:.1f}" y="{my_lbl+3:.1f}" text-anchor="middle" font-size="11" '
-                f'fill="{th["edge_label"]}">{escape(edge.label)}</text>'
+                f'<rect x="{mx_lbl-label_w/2:.1f}" y="{my_lbl-label_h/2:.1f}" '
+                f'width="{label_w:.1f}" height="{label_h:.1f}" rx="3" '
+                f'fill="{th["edge_label_bg"]}" stroke="{th["edge_label"]}" stroke-opacity="0.25" />'
             )
+            top_y = my_lbl - label_h / 2 + 11
+            for i, ln in enumerate(label_lines):
+                parts.append(
+                    f'<text x="{mx_lbl:.1f}" y="{top_y + i * line_h:.1f}" '
+                    f'text-anchor="middle" font-size="11" '
+                    f'fill="{th["edge_label"]}">{escape(ln)}</text>'
+                )
 
     for n in layout["note_positions"]:
         target = positions.get(n["target"])
@@ -436,10 +448,12 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
             f'<rect x="{n["x"]:.1f}" y="{n["y"]:.1f}" width="{n["w"]:.1f}" height="{n["h"]:.1f}" '
             f'rx="4" fill="{th["note_bg"]}" stroke="{th["note_border"]}" />'
         )
-        parts.append(
-            f'<text x="{n["x"]+10:.1f}" y="{n["y"]+22:.1f}" font-size="12" fill="{th["note_text"]}">'
-            f"{escape(n['text'].splitlines()[0] if n['text'] else '')}</text>"
-        )
+        note_lines = (n["text"] or "").split("\n")
+        for i, ln in enumerate(note_lines):
+            parts.append(
+                f'<text x="{n["x"]+10:.1f}" y="{n["y"]+22 + i*15:.1f}" '
+                f'font-size="12" fill="{th["note_text"]}">{escape(ln)}</text>'
+            )
 
     # Groups are temporarily disabled end-to-end: the parser still accepts
     # the syntax (for legacy files) and layout still computes rects, but

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { ApiError } from '$lib/api';
+	import { auth } from '$lib/auth.svelte';
 	import Icon from '$lib/Icon.svelte';
 
 	type PublicDicegram = { name: string; source: string; updated_at: string };
@@ -93,7 +94,11 @@
 			</p>
 			<div class="mt-3 flex gap-2">
 				<a href="/" class="btn-secondary text-xs">Go to Dicegram home</a>
-				<a href="/signup" class="btn-primary text-xs">Create your own</a>
+				{#if auth.user}
+					<a href="/editor" class="btn-primary text-xs">Open editor</a>
+				{:else}
+					<a href="/signup" class="btn-primary text-xs">Create your own</a>
+				{/if}
 			</div>
 		</div>
 	{:else if data}

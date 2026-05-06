@@ -140,10 +140,11 @@ export async function downloadHtml(name: string, source: string) {
 	triggerDownload(`${safeName(name)}.html`, new Blob([html], { type: 'text/html;charset=utf-8' }));
 }
 
-// Visio Data Visualizer CSV schema (Microsoft's documented column set).
-// Next Step ID and Connector Label use `;` to delimit branches so a decision
-// with Yes/No paths round-trips correctly.
-const VISIO_COLUMNS = [
+// Process-flow CSV — a widely supported column set for diagram-to-CSV
+// pipelines (Process Step ID, shape type, lane, next-step IDs). Next Step
+// ID and Connector Label use `;` to delimit branches so a decision with
+// Yes/No paths round-trips correctly.
+const PROCESS_FLOW_COLUMNS = [
 	'Process Step ID',
 	'Process Step Description',
 	'Shape Type',
@@ -153,7 +154,7 @@ const VISIO_COLUMNS = [
 	'Connector Label'
 ];
 
-function visioShapeFor(shape: string, type: string | undefined): string {
+function processFlowShapeFor(shape: string, type: string | undefined): string {
 	if (type) {
 		switch (type) {
 			case 'process':
@@ -199,7 +200,7 @@ function csvEscape(v: string): string {
 	return v;
 }
 
-export function buildVisioCsv(result: RenderResult): string {
+export function buildProcessFlowCsv(result: RenderResult): string {
 	const outgoing = new Map<string, Array<{ target: string; label: string }>>();
 	for (const e of result.edges) {
 		const arr = outgoing.get(e.source) ?? [];
@@ -207,7 +208,7 @@ export function buildVisioCsv(result: RenderResult): string {
 		outgoing.set(e.source, arr);
 	}
 
-	const rows: string[][] = [VISIO_COLUMNS];
+	const rows: string[][] = [PROCESS_FLOW_COLUMNS];
 	for (const n of result.nodes) {
 		const outs = outgoing.get(n.id) ?? [];
 		const nextIds = outs.map((o) => o.target).join(';');
@@ -215,7 +216,7 @@ export function buildVisioCsv(result: RenderResult): string {
 		rows.push([
 			n.id,
 			n.label,
-			visioShapeFor(n.shape, n.attrs.type),
+			processFlowShapeFor(n.shape, n.attrs.type),
 			n.swimlane ?? '',
 			n.attrs.step ?? '',
 			nextIds,
@@ -225,9 +226,9 @@ export function buildVisioCsv(result: RenderResult): string {
 	return rows.map((r) => r.map(csvEscape).join(',')).join('\r\n') + '\r\n';
 }
 
-export function downloadVisioCsv(name: string, result: RenderResult) {
-	const csv = buildVisioCsv(result);
-	// BOM so Excel opens as UTF-8 rather than Windows-1252.
+export function downloadProcessFlowCsv(name: string, result: RenderResult) {
+	const csv = buildProcessFlowCsv(result);
+	// BOM so spreadsheets open as UTF-8 rather than Windows-1252.
 	const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' });
 	triggerDownload(`${safeName(name)}.csv`, blob);
 }
@@ -326,8 +327,11 @@ box "Label" {fill:#hex, stroke:#hex} { <objects> }
     rewritten to the \`[note]\` bracket form on normalize; always emit
     the bracket form in new content.
 
-    Multi-line note text uses \`[linebreak]\` between quoted segments:
-        [note] n1 "Runs nightly" [linebreak] "via cron" target:service
+    Multi-line note text — both forms work, prefer the between-segments form:
+        GOOD: [note] n1 "Runs nightly" [linebreak] "via cron" target:service
+        OK:   [note] n1 "Runs nightly[linebreak]via cron" target:service
+        BAD:  [note] n1 "Runs nightly [linebreak] via cron" target:service
+              (extra spaces around the token are kept as part of the text)
 
 (Groups are temporarily disabled — do NOT emit \`group "Name" { … }\`
 lines. They still parse for back-compat with old files but are not
@@ -351,10 +355,12 @@ rendered. Use swimlanes + boxes for grouping until groups return.)
     connections. Must be unique across the whole document.
 
     "Display Label": quoted string shown on the node. For multi-line
-    labels, use the \`[linebreak]\` token between quoted segments:
+    labels the canonical form is the linebreak token between segments:
         [rect] api "First part" [linebreak] "Second part" step:0
-    Never emit raw \\n inside a string — that's a programmer-ism. The
-    \`[linebreak]\` token is the authoritative way to split a label.
+    The renderer also accepts the token / \`<br>\` / \\n inside a single
+    quoted string, but DO NOT pad with spaces — \`"Line one [linebreak]
+    Line two"\` will render with the surrounding spaces preserved. Pick
+    one form per file and stick with it.
 
     step:N (required for layout): integer ordering along the flow axis.
     Same step = parallel placement. Start at step:0.

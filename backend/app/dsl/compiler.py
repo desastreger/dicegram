@@ -66,11 +66,11 @@ def normalize(source: str) -> NormalizeResult:
     R6: strip @(x,y) pins from nodes inside a swimlane. The lane layout
         always centers children on the lane axis; letting pins fight that
         produces dissonant, ragged views. Root-level pins stay.
-    R7: force the canonical shape for each semantic type. Visio convention:
-        decision→diamond, start/end→circle, datastore→cylinder,
-        input/output→parallelogram, approval→hexagon, manual→rounded.
-        If the author wrote an inconsistent shape the compiler rewrites it
-        so visuals always match meaning.
+    R7: force the canonical shape for each semantic type. Standard
+        flowchart convention: decision→diamond, start/end→circle,
+        datastore→cylinder, input/output→parallelogram, approval→hexagon,
+        manual→rounded. If the author wrote an inconsistent shape the
+        compiler rewrites it so visuals always match meaning.
     R8: rename retired theme ids in `setting color_scheme <id>` to their
         current equivalents. Quietly migrates user-saved Dicegrams the
         first time they're rendered or saved after a rename.
@@ -79,16 +79,18 @@ def normalize(source: str) -> NormalizeResult:
     if source.startswith("\ufeff"):
         source = source.lstrip("\ufeff")
 
-    # R8: theme-rename migration. Map retired ids to their current equivalents
-    # before splitting the source so downstream rules see the migrated value.
-    _THEME_RENAME = {"anthropic": "warm"}
+    # R8: theme-rename migration. Map retired ids to their current
+    # equivalents before splitting the source so downstream rules see the
+    # migrated value. Add entries here when a theme is renamed; old user
+    # data sees the new name on the next render.
+    _THEME_RENAME: dict[str, str] = {}
     _theme_re = re.compile(r"^(\s*setting\s+color_scheme\s+)(\S+)(\s*)$", re.MULTILINE)
 
     def _migrate_theme(m: re.Match[str]) -> str:
         old = m.group(2).lower()
         return f"{m.group(1)}{_THEME_RENAME[old]}{m.group(3)}" if old in _THEME_RENAME else m.group(0)
 
-    migrated = _theme_re.sub(_migrate_theme, source)
+    migrated = _theme_re.sub(_migrate_theme, source) if _THEME_RENAME else source
     theme_migrated = migrated != source
     source = migrated
 
@@ -215,11 +217,11 @@ def normalize(source: str) -> NormalizeResult:
         else:
             pin_cells[cell] = i
 
-    # R7: force canonical shape per type attribute. Visio convention — a
-    #     reader seeing a diamond expects a decision; a circle expects a
-    #     terminator. Keep author intent visible regardless of [shape].
-    #     `setting free_placement on` opts out (for users who want full
-    #     manual control over shapes and pins).
+    # R7: force canonical shape per type attribute. Standard flowchart
+    #     convention — a reader seeing a diamond expects a decision; a
+    #     circle expects a terminator. Keep author intent visible
+    #     regardless of [shape]. `setting free_placement on` opts out
+    #     (for users who want full manual control over shapes and pins).
     if free_placement:
         new_source = "\n".join(lines)
         return NormalizeResult(source=new_source, notices=notices, changed=changed)
@@ -342,7 +344,7 @@ _R8_EDGE_RE = re.compile(
     r"^(?P<indent>\s*)"
     r"(?P<src>\w+)"
     r"(?:@(?P<src_port>\w+))?"
-    r"\s*(?P<sym>==>|-->|-\.-|---|->)\s*"
+    r"\s*(?P<sym><->|==>|-->|-\.-|---|->)\s*"
     r"(?P<dst>\w+)"
     r"(?:@(?P<dst_port>\w+))?"
     r"(?P<tail>\s*:\s*.*)?"
@@ -359,6 +361,7 @@ _KIND_TO_KEYWORD = {
     "==>": "thick_line",
     "---": "solid_line",
     "-.-": "dotted_line",
+    "<->": "bidirectional",
 }
 _KIND_TO_DEFAULT_TIP = {
     "->": "arrow",
@@ -366,6 +369,13 @@ _KIND_TO_DEFAULT_TIP = {
     "==>": "arrow",
     "---": "none",
     "-.-": "none",
+    "<->": "arrow",
+}
+# Bidirectional kinds also default `back:arrow` so the line gets an
+# arrowhead at BOTH ends without the user having to set `back:arrow`
+# explicitly. Single-directional kinds default `back:none`.
+_KIND_TO_DEFAULT_BACK = {
+    "<->": "arrow",
 }
 _DIR_TO_ANCHORS = {
     "top-to-bottom": ("bottom", "top"),
@@ -440,7 +450,11 @@ def _materialize_inline_edges(lines: list[str], direction: str) -> tuple[list[st
         # Resolve tip / back from the `end:` / `start:` attrs (both names
         # are accepted inline), falling back to the kind's default tip.
         tip = attrs.pop("end", None) or attrs.pop("tip", None) or _KIND_TO_DEFAULT_TIP.get(sym, "arrow")
-        back = attrs.pop("start", None) or attrs.pop("back", None) or "none"
+        back = (
+            attrs.pop("start", None)
+            or attrs.pop("back", None)
+            or _KIND_TO_DEFAULT_BACK.get(sym, "none")
+        )
         tip = tip.strip('"').lower()
         back = back.strip('"').lower()
 

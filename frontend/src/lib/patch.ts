@@ -24,7 +24,17 @@ export function joinLabelParts(raw: string): string {
 		if (tok === '[linebreak]') {
 			out.push('\n');
 		} else {
-			out.push(tok.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/\\n/g, '\n'));
+			// Mirror parser._join_label_parts: linebreak sentinel / <br> / \n
+			// inside a quoted string all become newlines, so users / LLMs
+			// can write either form without producing literal text.
+			const inner = tok
+				.slice(1, -1)
+				.replace(/\[linebreak\]/g, '\n')
+				.replace(/<br\s*\/?>/g, '\n')
+				.replace(/\\"/g, '"')
+				.replace(/\\\\/g, '\\')
+				.replace(/\\n/g, '\n');
+			out.push(inner);
 		}
 	}
 	return out.join('');
@@ -244,6 +254,70 @@ export function removeNode(source: string, id: string): string {
 	return result.join('\n');
 }
 
+// Default per-direction (exit, entry) anchor pair — must agree with the
+// backend's `_DIR_TO_ANCHORS` table in `compiler.py`. When the user flips
+// the canvas direction, every connector line whose anchors STILL match
+// the previous direction's defaults gets rewritten to the new pair so
+// arrows actually exit/enter the right faces. User-set non-default
+// anchors (e.g. an arrow that was hand-routed `from_anchor:left` to side-
+// step around a swimlane) are preserved — only "untouched" defaults flip.
+const DIR_DEFAULT_ANCHORS: Record<string, [string, string]> = {
+	'top-to-bottom': ['bottom', 'top'],
+	'left-to-right': ['right', 'left'],
+	'bottom-to-top': ['top', 'bottom'],
+	'right-to-left': ['left', 'right']
+};
+
+// Single-letter aliases used in inline `A@b -> B@t` shorthand.
+const ANCHOR_TO_SHORT: Record<string, string> = {
+	top: 't', bottom: 'b', left: 'l', right: 'r'
+};
+const SHORT_TO_ANCHOR: Record<string, string> = {
+	t: 'top', b: 'bottom', l: 'left', r: 'right'
+};
+
+function flipAnchorsInLine(line: string, oldFrom: string, oldTo: string, newFrom: string, newTo: string): string {
+	let out = line;
+	// Bracket form — `from_anchor:bottom` / `to_anchor:top`. Word-boundary on
+	// the value side so `top` doesn't match `topology`. Case-insensitive.
+	const fromRe = new RegExp(`(\\bfrom_anchor:)${oldFrom}\\b`, 'i');
+	const toRe = new RegExp(`(\\bto_anchor:)${oldTo}\\b`, 'i');
+	out = out.replace(fromRe, `$1${newFrom}`);
+	out = out.replace(toRe, `$1${newTo}`);
+	// Inline `A@b -> B@t` shorthand. The single-letter port alias sits
+	// directly after `@` and runs until whitespace or arrow terminator.
+	const oldFromShort = ANCHOR_TO_SHORT[oldFrom];
+	const oldToShort = ANCHOR_TO_SHORT[oldTo];
+	const newFromShort = ANCHOR_TO_SHORT[newFrom];
+	const newToShort = ANCHOR_TO_SHORT[newTo];
+	if (oldFromShort && newFromShort) {
+		// `A@b ` (followed by space-or-arrow before the edge symbol)
+		const inlineFromRe = new RegExp(`(@)${oldFromShort}(?=\\s|$|[-=])`, 'g');
+		// We can't know which side is "from" without parsing; rewrite both
+		// sides with their respective new anchors. Use a single-pass scan:
+		// the FIRST `@x` on the line is the from-side, the SECOND is the
+		// to-side (matches how the parser walks left-to-right).
+		let count = 0;
+		out = out.replace(inlineFromRe, (_match) => {
+			count += 1;
+			return count === 1 ? `@${newFromShort}` : `@${oldFromShort}`;
+		});
+	}
+	if (oldToShort && newToShort) {
+		const inlineToRe = new RegExp(`(@)${oldToShort}(?=\\s|$|[-=:])`, 'g');
+		// Only rewrite `@<oldToShort>` where it appears on the right-hand
+		// side. The cleanest signal is "after the arrow symbol" — find
+		// the arrow first.
+		const arrowM = out.match(/(->|-->|==>|---|-\.-)/);
+		if (arrowM && arrowM.index !== undefined) {
+			const head = out.slice(0, arrowM.index + arrowM[0].length);
+			const tail = out.slice(arrowM.index + arrowM[0].length);
+			out = head + tail.replace(inlineToRe, `@${newToShort}`);
+		}
+	}
+	return out;
+}
+
 export function setDirection(source: string, dir: string): string {
 	const lines = source.split('\n');
 	const idx = lines.findIndex((l) => /^\s*direction\s+\S+\s*$/.test(l));
@@ -255,7 +329,17 @@ export function setDirection(source: string, dir: string): string {
 	// direction makes them nonsensical, so strip them and let auto-layout
 	// reflow everything in the new direction.
 	const POS_RE = /\s*@\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/g;
-	return lines.map((l) => l.replace(POS_RE, '')).join('\n');
+	const oldAnchors = DIR_DEFAULT_ANCHORS[current] ?? ['bottom', 'top'];
+	const newAnchors = DIR_DEFAULT_ANCHORS[dir] ?? ['bottom', 'top'];
+	return lines
+		.map((l) => l.replace(POS_RE, ''))
+		.map((l) => {
+			// Only touch lines that look like connectors. Cheap pre-filter
+			// — avoids the regex churn on node lines and prose comments.
+			if (!/from_anchor:|to_anchor:|@[tblr]\b|@[tblr](?=\s|[-=:])/i.test(l)) return l;
+			return flipAnchorsInLine(l, oldAnchors[0], oldAnchors[1], newAnchors[0], newAnchors[1]);
+		})
+		.join('\n');
 }
 
 export function setSetting(source: string, key: string, value: string | number): string {
@@ -710,14 +794,16 @@ export const EDGE_KIND_SYM: Record<string, string> = {
 	dashed: '-->',
 	thick: '==>',
 	solid_line: '---',
-	dotted_line: '-.-'
+	dotted_line: '-.-',
+	bidirectional: '<->'
 };
 export const EDGE_SYM_KIND: Record<string, string> = {
 	'->': 'solid',
 	'-->': 'dashed',
 	'==>': 'thick',
 	'---': 'solid_line',
-	'-.-': 'dotted_line'
+	'-.-': 'dotted_line',
+	'<->': 'bidirectional'
 };
 
 const PORT_ALIASES: Record<string, 't' | 'b' | 'l' | 'r'> = {

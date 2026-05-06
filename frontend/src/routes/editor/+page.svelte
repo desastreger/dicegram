@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, beforeNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ApiError } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
+	import ConfirmDialog from '$lib/ConfirmDialog.svelte';
 	import { dicegrams as api, type Dicegram } from '$lib/dicegrams';
 	import {
 		addEdge,
@@ -186,6 +187,25 @@
 	let suppressNormalizeOnce = $state(false);
 	let lastSeenSource = '';
 
+	// `userEdited` flips true on the first keystroke after a load. Until
+	// then, normalize rewrites are silent — opening a dicegram (or hot-
+	// loading the demo source) used to fire a "0 auto-fixes applied" toast
+	// every time, which read as noise (UAT bug #26). The flag stays sticky
+	// for the lifetime of the open file; any keystroke after that is "real".
+	let userEdited = $state(false);
+	let lastLoadSourceMark = $state<string | null>(null);
+	$effect(() => {
+		const id = currentId;
+		void id;
+		userEdited = false;
+		lastLoadSourceMark = source;
+	});
+	$effect(() => {
+		if (source !== lastLoadSourceMark && lastLoadSourceMark !== null) {
+			userEdited = true;
+		}
+	});
+
 	$effect(() => {
 		const src = source;
 		clearTimeout(debounceTimer);
@@ -214,18 +234,27 @@
 					res.source_changed &&
 					res.normalized_source !== src
 				) {
-					preNormalizeSource = src;
 					const count = res.notices.length;
-					normalizeToast =
-						count === 1
-							? `1 auto-fix applied: ${res.notices[0].message}`
-							: `${count} auto-fixes applied`;
-					if (normalizeToastTimer) clearTimeout(normalizeToastTimer);
-					normalizeToastTimer = setTimeout(() => {
-						normalizeToast = null;
-						preNormalizeSource = null;
-					}, 6000);
+					// Only surface a toast if (a) the user actually edited
+					// something AND (b) at least one notice was produced.
+					// Both conditions together kill the "0 auto-fixes
+					// applied on every open" noise (UAT bugs #25 + #26).
+					if (userEdited && count > 0) {
+						preNormalizeSource = src;
+						normalizeToast =
+							count === 1
+								? `1 auto-fix applied: ${res.notices[0].message}`
+								: `${count} auto-fixes applied`;
+						if (normalizeToastTimer) clearTimeout(normalizeToastTimer);
+						normalizeToastTimer = setTimeout(() => {
+							normalizeToast = null;
+							preNormalizeSource = null;
+						}, 6000);
+					}
 					source = res.normalized_source;
+					// Re-mark so the silent rewrite isn't itself counted as
+					// an edit on the next pass.
+					lastLoadSourceMark = res.normalized_source;
 				}
 			} catch (err) {
 				renderError = err instanceof ApiError ? err.message : 'render failed';
@@ -309,15 +338,17 @@
 		if (typeof document === 'undefined') return;
 		if (themeId === 'auto') return;
 		// When mounted as an iframe (landing / embed), don't sync the chrome
-		// — the parent page owns its own theme, and `appTheme.set` writes to
-		// localStorage which is shared across iframes and would overwrite the
-		// user's preference next time they reload.
+		// — the parent page owns its own theme, and writing to localStorage
+		// from inside an iframe would mutate the parent's stored preference.
 		if (mode === 'landing' || mode === 'embed') return;
+		// `setEphemeral` updates the DOM + in-memory store WITHOUT writing
+		// to localStorage, so the user's persistent chrome preference
+		// (warm-light vs default-dark) survives opening a Dicegram with a
+		// pinned `color_scheme`. The chrome flips visually for the duration
+		// of the editor session; navigating elsewhere re-applies the saved
+		// preference.
 		const target = theme.mode;
-		if (document.documentElement.getAttribute('data-theme') !== target) {
-			document.documentElement.setAttribute('data-theme', target);
-		}
-		if (appTheme.current !== target) appTheme.set(target);
+		if (appTheme.current !== target) appTheme.setEphemeral(target);
 	});
 
 	// Nav-bar sun/moon toggle behaviour while the editor is mounted:
@@ -347,6 +378,11 @@
 	});
 	onDestroy(() => {
 		if (appTheme.override === swapCanvasMode) appTheme.override = null;
+		// If a pinned `color_scheme` flipped the chrome ephemerally, snap
+		// it back to the user's persisted preference now that we're
+		// leaving the editor. Stops "open dark Dicegram, then chrome stays
+		// dark on the dicegrams list" from happening.
+		appTheme.restoreFromStorage();
 	});
 
 	const revealLine = $derived(
@@ -472,15 +508,39 @@
 
 	onMount(() => {
 		window.addEventListener('keydown', handleKeydown);
-		const beforeUnload = (e: BeforeUnloadEvent) => {
-			if (!dirty) return;
-			e.preventDefault();
-			e.returnValue = '';
-		};
-		window.addEventListener('beforeunload', beforeUnload);
 		return () => {
 			window.removeEventListener('keydown', handleKeydown);
-			window.removeEventListener('beforeunload', beforeUnload);
+		};
+	});
+
+	// In-page unsaved-changes prompt for SPA navigation. We do NOT install
+	// a native `beforeunload` handler — that surfaces an OS dialog that
+	// blocks Playwright UAT and reads as system chrome instead of the
+	// product. Tab close / hard refresh fall through; autosave covers the
+	// 2s window where dirty state would actually matter (full mode), and
+	// landing/embed modes never persist anyway.
+	let pendingNav: { url: URL; cancel: () => void; resume: () => void } | null = $state(null);
+	beforeNavigate((nav) => {
+		if (!dirty) return;
+		if (mode !== 'full') return;
+		// Same-document hash / search nav: no risk of losing state.
+		if (nav.from && nav.to && nav.from.url.pathname === nav.to.url.pathname) return;
+		// We're guarding navigation; cancel for now and stash the resume
+		// so the modal's Confirm button can run it.
+		nav.cancel();
+		if (!nav.to) return;
+		pendingNav = {
+			url: nav.to.url,
+			cancel: () => (pendingNav = null),
+			resume: () => {
+				const target = pendingNav?.url;
+				pendingNav = null;
+				if (target) {
+					savedSourceSnapshot = source;
+					savedNameSnapshot = name;
+					goto(target.pathname + target.search + target.hash);
+				}
+			}
 		};
 	});
 
@@ -499,6 +559,7 @@
 				name = d.name;
 				source = d.source;
 				savedSourceSnapshot = d.source;
+				savedNameSnapshot = d.name;
 				selectedNodeId = null;
 			})
 			.catch((err) => {
@@ -547,11 +608,13 @@
 				const d = await api.update(currentId, { name, source });
 				currentId = d.id;
 				savedSourceSnapshot = d.source;
+				savedNameSnapshot = d.name;
 				showSaveToast({ kind: 'ok', message: `Saved "${d.name}"` });
 			} else {
 				const d = await api.create({ name, source });
 				currentId = d.id;
 				savedSourceSnapshot = d.source;
+				savedNameSnapshot = d.name;
 				showSaveToast({ kind: 'ok', message: `Created "${d.name}"` });
 			}
 			saveMsg = 'saved';
@@ -662,6 +725,15 @@
 		savedSourceSnapshot = d.source;
 		showOpen = false;
 		selectedNodeId = null;
+		// Stabilize the URL so a reload lands back on the same dicegram
+		// instead of resurrecting the prior `?id=` (UAT bug #10).
+		try {
+			const url = new URL(window.location.href);
+			url.searchParams.set('id', String(d.id));
+			history.replaceState(null, '', url.toString());
+		} catch {
+			/* history API unavailable */
+		}
 	}
 
 	function newDicegram(template: DicegramTemplate | null = null) {
@@ -678,7 +750,13 @@
 	const leftTreeOpen = $derived(treeOpen);
 
 	let savedSourceSnapshot = $state<string>('');
-	const dirty = $derived(currentId != null && source !== savedSourceSnapshot);
+	let savedNameSnapshot = $state<string>('');
+	// Dirty if EITHER the body or the title has drifted from the last
+	// server-saved snapshot — name-only edits used to skip autosave
+	// because dirty only watched source (UAT bug #13).
+	const dirty = $derived(
+		currentId != null && (source !== savedSourceSnapshot || name !== savedNameSnapshot)
+	);
 
 	$effect(() => {
 		const base = name || 'Untitled';
@@ -875,16 +953,10 @@
 	<h1 class="sr-only">{name || 'Untitled dicegram'} — editor</h1>
 	<EdgeMarkers />
 	{#if demoMode}
-		<div
-			class="flex items-center justify-center gap-3 border-b border-blue-800/60 bg-blue-950/50 px-3 py-1 text-[11px] text-blue-100"
-		>
+		<div class="dg-demo-bar">
+			<span class="dg-demo-dot" aria-hidden="true"></span>
 			<span>Demo mode — your changes stay in this browser only.</span>
-			<a
-				href="/signup"
-				class="rounded border border-blue-700 px-2 py-0.5 text-[11px] font-medium text-blue-50 hover:bg-blue-900"
-			>
-				Sign up to save
-			</a>
+			<a href="/signup" class="dg-demo-cta">Sign up to save</a>
 		</div>
 	{/if}
 	{#if showChrome}
@@ -1095,19 +1167,11 @@
 <LlmPromptDialog bind:open={llmDialogOpen} promptText={llmPromptText} />
 
 {#if normalizeToast}
-	<div
-		role="status"
-		aria-live="polite"
-		class="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-md border border-neutral-700 bg-neutral-900/95 px-3 py-1.5 text-xs text-neutral-100 shadow-lg"
-	>
+	<div role="status" aria-live="polite" class="dg-norm-toast toast">
 		<Icon name="sparkles" size={13} />
 		<span>{normalizeToast}</span>
 		{#if preNormalizeSource}
-			<button
-				type="button"
-				onclick={undoNormalize}
-				class="rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800"
-			>
+			<button type="button" onclick={undoNormalize} class="dg-norm-undo">
 				Undo
 			</button>
 		{/if}
@@ -1136,17 +1200,38 @@
 
 <svelte:window onkeydown={(e) => showOpen && e.key === 'Escape' && (showOpen = false)} />
 
+<ConfirmDialog
+	open={pendingNav !== null}
+	title="Leave with unsaved changes?"
+	message="Autosave hasn't caught this edit yet. Leaving now may lose the most recent change."
+	confirmLabel="Leave anyway"
+	tone="danger"
+	onConfirm={() => pendingNav?.resume()}
+	onCancel={() => pendingNav?.cancel()}
+/>
+
 {#if showOpen}
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div
 		class="modal-backdrop"
 		onclick={() => (showOpen = false)}
+		onkeydown={(e) => { if (e.key === 'Escape') showOpen = false; }}
 	>
 		<div
 			bind:this={openDialogPanel}
 			class="modal-panel w-[480px] max-w-[90vw] p-4 focus:outline-none"
 			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.stopPropagation()}
+			onkeydown={(e) => {
+				// Esc closes; everything else (Tab navigation, typing
+				// in inputs) keeps bubbling normally. UAT bug #9: the
+				// previous blanket stopPropagation killed the modal Esc
+				// handler too.
+				if (e.key === 'Escape') {
+					showOpen = false;
+					return;
+				}
+				e.stopPropagation();
+			}}
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby="open-dialog-title"
@@ -1195,4 +1280,60 @@
 		background: var(--th-accent, var(--app-accent));
 		outline: none;
 	}
+
+	.dg-demo-bar {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.55rem;
+		padding: 0.3rem 0.85rem;
+		font-size: 0.7rem;
+		color: var(--app-text);
+		background: var(--app-accent-soft);
+		border-bottom: 1px solid color-mix(in srgb, var(--app-accent) 30%, var(--app-border) 70%);
+	}
+	.dg-demo-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 9999px;
+		background: var(--app-accent);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 22%, transparent);
+	}
+	.dg-demo-cta {
+		padding: 0.15rem 0.55rem;
+		font-size: 0.7rem;
+		font-weight: 500;
+		color: var(--app-accent);
+		border: 1px solid color-mix(in srgb, var(--app-accent) 45%, var(--app-border) 55%);
+		border-radius: var(--app-radius-sm);
+		transition: background-color var(--app-dur-fast) var(--app-ease);
+	}
+	.dg-demo-cta:hover {
+		background: color-mix(in srgb, var(--app-accent) 12%, transparent);
+	}
+
+	.dg-norm-toast {
+		position: fixed;
+		bottom: 1rem;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 50;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.6rem;
+		padding: 0.4rem 0.8rem;
+		font-size: 0.72rem;
+	}
+	.dg-norm-undo {
+		padding: 0.15rem 0.55rem;
+		font-size: 0.65rem;
+		font-weight: 500;
+		color: var(--app-text);
+		background: transparent;
+		border: 1px solid var(--app-border-strong);
+		border-radius: var(--app-radius-sm);
+		cursor: pointer;
+		transition: background-color var(--app-dur-fast) var(--app-ease);
+	}
+	.dg-norm-undo:hover { background: var(--app-hover); }
 </style>

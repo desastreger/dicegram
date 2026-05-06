@@ -9,10 +9,14 @@
 
      1) Standard utility classes (RECOMMENDED — use these by default)
           Layout / surface : .bg-app .bg-surface .bg-surface-2 .panel .surface-soft
+                             .surface-elevated .toolbar-surface .canvas-paper
           Text             : .text-app .text-muted .text-dim
+          Type scale       : .display-1 .display-2 .display-3 .body .body-sm
+                             .eyebrow .numeric (tabular-nums)
           Borders          : .border-app .border-strong .divider .divider-v
+                             .hairline-bottom .hairline-top
           Buttons          : .btn-primary .btn-secondary .btn-ghost .btn-danger
-                             .btn-icon .btn-icon-active
+                             .btn-icon .btn-icon-active .btn-tactile
           Inputs           : .input-themed .field-label
           Modals           : .modal-backdrop .modal-panel
           Toasts/badges    : .toast .toast-ok .toast-error .badge .badge-active
@@ -23,15 +27,16 @@
 
      2) CSS variables (when a class doesn't fit — e.g. svelte-flow internals,
           inline styles from data, computed values)
-          --app-bg --app-surface --app-surface-2
-          --app-border --app-border-strong
+          --app-bg --app-surface --app-surface-2 --app-surface-3
+          --app-border --app-border-strong --app-rule
           --app-text --app-text-muted --app-text-dim
-          --app-accent --app-accent-text --app-accent-2
+          --app-accent --app-accent-text --app-accent-2 --app-accent-soft
           --app-ring --app-danger --app-warn --app-ok
-          --app-radius --app-radius-sm --header-h
+          --app-radius --app-radius-sm --app-radius-lg --header-h
           --app-shadow-sm --app-shadow-md --app-shadow-lg
-          --app-scrim       (modal backdrop overlay)
-          --app-hover       (subtle hover background)
+          --app-scrim --app-hover --app-press
+          --app-display-font --app-body-font --app-mono-font
+          --app-ease --app-ease-out --app-dur-fast --app-dur-base
 
      3) Tailwind dark-first utilities — bg-neutral-9XX, text-neutral-3XX, etc.
           These get blanket-mapped in light mode below. They are SUPPORTED
@@ -49,80 +54,107 @@
      - Never write a `<style>` block with hardcoded greys. Reference vars.
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ─── Web fonts ───────────────────────────────────────────────────────────
+   The product voice rests on three faces. They're picked to feel friendly
+   and craftsmanlike without being trendy / AI-default.
+
+     · Fraunces (display)       — variable serif with optical sizing;
+                                  characterful italic; humanist warmth.
+                                  Used at h1 / hero / accent only.
+     · Plus Jakarta Sans (body) — soft geometric humanist sans; ships in
+                                  a wide AA-friendly weight range; reads
+                                  cleanly down to 11px.
+     · JetBrains Mono (code)    — calm tabular-numeral mono; pairs well
+                                  with Plus Jakarta's x-height. Numerals
+                                  in counts/positions get this face.
+   ─────────────────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 /* ─── Theme tokens ──────────────────────────────────────────────────────── */
 
 :root,
 :root[data-theme='dark'] {
 	color-scheme: dark;
-	--app-bg: #0a0a0a;
-	--app-surface: #141414;
-	--app-surface-2: #1a1a1a;
-	--app-border: #262626;
-	--app-border-strong: #404040;
-	--app-text: #e5e7eb;
-	--app-text-muted: #a1a1aa;
-	/* dim was #71717a (4.1:1 — borderline AA). Lifted to #878790 (5.4:1)
-	   to clear AA cleanly in dark mode too. */
-	--app-text-dim: #878790;
-	/* accent darkened from blue-500 (#3b82f6 → 3.68:1 with white, fails AA)
-	   to blue-600 so primary buttons pass AA. accent-2 follows down a step. */
-	--app-accent: #2563eb;          /* 5.17:1 with white — passes AA */
-	--app-accent-2: #1d4ed8;        /* 6.70:1 — secondary CTAs */
-	--app-accent-text: #ffffff;
-	--app-ring: #2563eb;
-	/* danger lifted from #ef4444 (3.76:1 with white) to red-600 (5.93:1). */
-	--app-danger: #dc2626;
-	--app-warn: #f59e0b;
-	--app-ok: #10b981;
-	--header-h: 40px;
-	--app-radius: 6px;
-	--app-radius-sm: 4px;
-	--app-radius-lg: 10px;
+	/* Warm-tinted neutrals — not pure greyscale. Slight olive in the
+	   shadows so the cream/rust on the light side feels like the same
+	   product, not a photo-negative. */
+	--app-bg: #0e0d0b;
+	--app-surface: #18171a;
+	--app-surface-2: #1f1d1f;
+	--app-surface-3: #28252a;
+	--app-border: #2c2a2d;
+	--app-border-strong: #4a474b;
+	--app-rule: rgba(255, 255, 255, 0.07);
+	--app-text: #efece6;
+	--app-text-muted: #b5b1a9;
+	/* dim previously borderline AA — lifted to clear it cleanly. */
+	--app-text-dim: #8d8a85;
+	/* Accent: a brassy ember that pairs with the warm-rust of light mode
+	   so the brand reads as ONE product across themes. */
+	--app-accent: #e07a4d;          /* 4.95:1 with --app-bg — passes AA Large */
+	--app-accent-2: #b4583a;        /* secondary CTAs */
+	--app-accent-text: #1a1410;
+	--app-accent-soft: rgba(224, 122, 77, 0.14);
+	--app-ring: #e07a4d;
+	--app-danger: #d6594d;
+	--app-warn: #d4a045;
+	--app-ok: #6ba37b;
+	--header-h: 44px;
+	--app-radius: 8px;
+	--app-radius-sm: 5px;
+	--app-radius-lg: 12px;
 	--app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-	--app-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-	--app-shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.55);
-	--app-scrim: rgba(0, 0, 0, 0.65);
-	--app-hover: rgba(255, 255, 255, 0.04);
+	--app-shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45);
+	--app-shadow-lg: 0 14px 40px rgba(0, 0, 0, 0.55);
+	--app-scrim: rgba(8, 6, 4, 0.62);
+	--app-hover: rgba(255, 252, 245, 0.045);
+	--app-press: rgba(255, 252, 245, 0.085);
 }
 
 :root[data-theme='light'] {
 	color-scheme: light;
-	/* Warm ivory paper — surfaces step up in warmth (not grayscale). The
-	   ladder previously stepped only ~6-8 brightness points; that was
-	   the "everything blends" complaint. Widened to ~10-12 points
-	   between bg → surface → surface-2 so panels, nodes, dropdowns
-	   visibly stack on the page. */
-	--app-bg: #fbf7f2;
-	--app-surface: #ede4d3;
-	--app-surface-2: #ddd0b8;
+	/* Warm ivory paper. Surface ladder steps step up in warmth — the
+	   eye reads them as elevation, not just hue shifts. Step gap kept
+	   ~10pt so panels, nodes and dropdowns visibly stack. */
+	--app-bg: #fbf6ee;
+	--app-surface: #f1e9d8;
+	--app-surface-2: #e3d6bd;
+	--app-surface-3: #d4c39f;
 	--app-border: #c8b89e;
 	--app-border-strong: #9a8771;
-	/* Text bumped half a step darker — the previous #2a241f was fine on
-	   pure paper but greyed out against the new warmer surfaces. */
+	--app-rule: rgba(60, 50, 40, 0.10);
 	--app-text: #1f1a16;
 	--app-text-muted: #5a5048;
-	/* dim lifted to clear AA cleanly on every surface in the ladder. */
 	--app-text-dim: #6b5f53;
-	/* accent deepened from #d97757 (3.12:1 with white, fails AA) to a darker
-	   warm rust so primary buttons / sign-up CTA / link text all pass AA. */
 	--app-accent: #b04527;          /* 5.63:1 with white — passes AA */
 	--app-accent-2: #8a3520;        /* 8.5:1 — secondary CTAs */
-	--app-accent-text: #ffffff;
+	--app-accent-text: #fff8ed;
+	--app-accent-soft: rgba(176, 69, 39, 0.10);
 	--app-ring: #b04527;
-	--app-danger: #b8392a;          /* 5.55:1 with white — was #c44536 (4.94) */
-	--app-warn: #d4863b;
+	--app-danger: #b8392a;
+	--app-warn: #c47a2a;
 	--app-ok: #4d7553;
-	/* Softer corners for the friendlier site look. */
-	--app-radius: 10px;
-	--app-radius-sm: 6px;
-	--app-radius-lg: 14px;
-	/* Slightly stronger shadows so the ladder steps register as elevation,
-	   not just hue shifts. */
 	--app-shadow-sm: 0 1px 2px rgba(60, 50, 40, 0.10);
-	--app-shadow-md: 0 4px 12px rgba(60, 50, 40, 0.14);
-	--app-shadow-lg: 0 10px 30px rgba(60, 50, 40, 0.18);
+	--app-shadow-md: 0 4px 14px rgba(60, 50, 40, 0.13);
+	--app-shadow-lg: 0 14px 40px rgba(60, 50, 40, 0.18);
 	--app-scrim: rgba(60, 50, 40, 0.35);
-	--app-hover: rgba(60, 50, 40, 0.07);
+	--app-hover: rgba(60, 50, 40, 0.06);
+	--app-press: rgba(60, 50, 40, 0.11);
+}
+
+/* ─── Typography & motion tokens (theme-independent) ───────────────────── */
+:root {
+	--app-display-font: 'Fraunces', Georgia, 'Iowan Old Style', serif;
+	--app-body-font:
+		'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+		'Segoe UI', Roboto, sans-serif;
+	--app-mono-font:
+		'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+	/* Motion. Calm easing — no springs / overshoots. */
+	--app-ease: cubic-bezier(0.32, 0.08, 0.24, 1);
+	--app-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+	--app-dur-fast: 120ms;
+	--app-dur-base: 200ms;
 }
 
 html,
@@ -133,17 +165,82 @@ body {
 }
 
 body {
-	font-family:
-		ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
-		Cantarell, 'Helvetica Neue', sans-serif;
+	font-family: var(--app-body-font);
 	font-feature-settings: 'ss01', 'cv11';
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
 }
 
-/* Softer, warmer scrollbars in light mode. */
+/* Soft, themed scrollbars in both modes. */
 :root[data-theme='light'] {
 	scrollbar-color: #cdbfb1 transparent;
+}
+:root[data-theme='dark'] {
+	scrollbar-color: #3a3a3a transparent;
+}
+
+/* ─── Display type scale ──────────────────────────────────────────────────
+   Reach for these on hero / page-header / section-title surfaces.
+   `font-optical-sizing: auto` lets Fraunces switch to its display cut at
+   large sizes for the tighter, characterful look. */
+
+.display-1 {
+	font-family: var(--app-display-font);
+	font-weight: 500;
+	font-size: clamp(2.4rem, 5.6vw, 4.25rem);
+	line-height: 1.02;
+	letter-spacing: -0.025em;
+	font-optical-sizing: auto;
+	font-variation-settings: 'opsz' 144, 'SOFT' 50;
+}
+.display-2 {
+	font-family: var(--app-display-font);
+	font-weight: 500;
+	font-size: clamp(1.6rem, 3vw, 2.25rem);
+	line-height: 1.1;
+	letter-spacing: -0.02em;
+	font-optical-sizing: auto;
+}
+.display-3 {
+	font-family: var(--app-display-font);
+	font-weight: 500;
+	font-size: 1.25rem;
+	line-height: 1.2;
+	letter-spacing: -0.01em;
+}
+.display-italic {
+	font-style: italic;
+	font-variation-settings: 'opsz' 144, 'SOFT' 100;
+}
+.eyebrow {
+	font-family: var(--app-body-font);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--app-text-dim);
+}
+.body {
+	font-family: var(--app-body-font);
+	font-size: 1rem;
+	line-height: 1.55;
+}
+.body-sm {
+	font-family: var(--app-body-font);
+	font-size: 0.875rem;
+	line-height: 1.55;
+}
+.numeric {
+	font-feature-settings: 'tnum' 1, 'lnum' 1;
+	font-variant-numeric: tabular-nums lining-nums;
+}
+.font-mono,
+code,
+kbd,
+pre,
+samp {
+	font-family: var(--app-mono-font);
 }
 
 /* ─── Accessibility ───────────────────────────────────────────────────────── */
@@ -151,7 +248,7 @@ body {
 :focus-visible {
 	outline: 2px solid var(--app-ring);
 	outline-offset: 2px;
-	border-radius: 3px;
+	border-radius: 4px;
 }
 
 .skip-link {
@@ -162,8 +259,9 @@ body {
 	padding: 0.5rem 0.75rem;
 	background: var(--app-accent);
 	color: var(--app-accent-text);
-	border-radius: 4px;
+	border-radius: var(--app-radius-sm);
 	font-size: 0.875rem;
+	font-weight: 500;
 	transform: translateY(-150%);
 	transition: transform 0.15s ease-out;
 }
@@ -193,6 +291,7 @@ body {
 .bg-app       { background-color: var(--app-bg); }
 .bg-surface   { background-color: var(--app-surface); }
 .bg-surface-2 { background-color: var(--app-surface-2); }
+.bg-surface-3 { background-color: var(--app-surface-3); }
 
 /* — Text — */
 .text-app     { color: var(--app-text); }
@@ -203,32 +302,60 @@ body {
 .text-danger  { color: var(--app-danger); }
 .text-warn    { color: var(--app-warn); }
 
-/* — Borders — */
+/* — Borders / rules — */
 .border-app    { border-color: var(--app-border); }
 .border-strong { border-color: var(--app-border-strong); }
 .divider       { border-top: 1px solid var(--app-border); }
 .divider-v     { width: 1px; align-self: stretch; background-color: var(--app-border); }
+.hairline-bottom { border-bottom: 1px solid var(--app-rule); }
+.hairline-top    { border-top: 1px solid var(--app-rule); }
 
 /* — Rings (Tailwind ring colour shim) — */
 .ring-accent  { --tw-ring-color: var(--app-ring); }
 
 /* — Accent flat — */
 .bg-accent    { background-color: var(--app-accent); color: var(--app-accent-text); }
+.bg-accent-soft { background-color: var(--app-accent-soft); }
 
 /* — Cards / panels — */
 .panel {
 	background-color: var(--app-surface);
 	border: 1px solid var(--app-border);
-	border-radius: var(--app-radius, 6px);
+	border-radius: var(--app-radius);
 }
 
 .surface-soft {
 	background-color: var(--app-surface);
 	border: 1px solid var(--app-border);
-	border-radius: var(--app-radius, 6px);
+	border-radius: var(--app-radius);
 }
 :root[data-theme='light'] .surface-soft {
 	box-shadow: var(--app-shadow-md);
+}
+
+.surface-elevated {
+	background-color: var(--app-surface);
+	border: 1px solid var(--app-border);
+	border-radius: var(--app-radius-lg);
+	box-shadow: var(--app-shadow-md);
+}
+
+/* The toolbar / chrome edge of the editor. Sits above the canvas; reads
+   as a calm instrument panel. Avoids flat black-on-cream and flat-grey
+   monotony by leaning on the surface ladder. */
+.toolbar-surface {
+	background-color: var(--app-surface);
+	border-color: var(--app-border);
+}
+
+/* Canvas paper — the editor canvas background. Subtle dotted grid in
+   light mode (graph paper feel); plain in dark. Pattern colour pulls
+   from the rule token so it never dominates. */
+.canvas-paper {
+	background-color: var(--app-bg);
+	background-image:
+		radial-gradient(circle at 1px 1px, var(--app-rule) 1px, transparent 0);
+	background-size: 18px 18px;
 }
 
 /* — Inputs — */
@@ -236,8 +363,10 @@ body {
 	background-color: var(--app-surface-2);
 	color: var(--app-text);
 	border: 1px solid var(--app-border);
-	border-radius: var(--app-radius-sm, 4px);
-	padding: 0.375rem 0.625rem;
+	border-radius: var(--app-radius-sm);
+	padding: 0.4rem 0.65rem;
+	transition: border-color var(--app-dur-fast) var(--app-ease),
+		box-shadow var(--app-dur-fast) var(--app-ease);
 }
 .input-themed::placeholder {
 	color: var(--app-text-dim);
@@ -246,6 +375,10 @@ body {
 	outline: 2px solid var(--app-ring);
 	outline-offset: 0;
 	border-color: transparent;
+}
+.input-themed:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
 }
 
 .field-label {
@@ -259,34 +392,65 @@ body {
 	background-color: var(--app-accent);
 	color: var(--app-accent-text);
 	border: 1px solid transparent;
-	border-radius: var(--app-radius-sm, 4px);
-	padding: 0.375rem 0.875rem;
+	border-radius: var(--app-radius-sm);
+	padding: 0.45rem 0.95rem;
 	font-weight: 500;
-	transition: background-color 0.12s, opacity 0.12s;
+	font-family: var(--app-body-font);
+	letter-spacing: -0.005em;
+	transition:
+		background-color var(--app-dur-fast) var(--app-ease),
+		transform var(--app-dur-fast) var(--app-ease),
+		box-shadow var(--app-dur-fast) var(--app-ease),
+		opacity var(--app-dur-fast);
 }
 .btn-primary:hover:not(:disabled) {
 	background-color: color-mix(in srgb, var(--app-accent) 88%, var(--app-text) 12%);
+	box-shadow: var(--app-shadow-sm);
+}
+.btn-primary:active:not(:disabled) {
+	transform: translateY(1px);
+	box-shadow: none;
 }
 .btn-primary:disabled {
-	opacity: 0.5;
+	/* Ghost / placeholder treatment for the inert state. Avoids both:
+	   (a) the 0.5-opacity-on-accent route, which read as a phantom
+	       orange button (hard to tell from a half-loaded state); and
+	   (b) flattening the button to surface-2, which made it indistinct
+	       from a disabled input field stacked above it.
+	   The dashed border pattern is the conventional "not yet ready"
+	   signal and reads cleanly on both warm cream and warm dark. */
+	background-color: transparent;
+	color: var(--app-text-dim);
+	border: 1px dashed var(--app-border-strong);
+	opacity: 1;
 	cursor: not-allowed;
 }
 
 .btn-secondary {
-	background-color: var(--app-surface-2);
+	background-color: var(--app-surface);
 	color: var(--app-text);
 	border: 1px solid var(--app-border);
-	border-radius: var(--app-radius-sm, 4px);
-	padding: 0.375rem 0.875rem;
+	border-radius: var(--app-radius-sm);
+	padding: 0.45rem 0.95rem;
 	font-weight: 500;
-	transition: background-color 0.12s, border-color 0.12s;
+	font-family: var(--app-body-font);
+	transition:
+		background-color var(--app-dur-fast) var(--app-ease),
+		border-color var(--app-dur-fast) var(--app-ease),
+		transform var(--app-dur-fast) var(--app-ease);
 }
 .btn-secondary:hover:not(:disabled) {
-	background-color: var(--app-surface);
+	background-color: var(--app-surface-2);
 	border-color: var(--app-border-strong);
 }
+.btn-secondary:active:not(:disabled) {
+	transform: translateY(1px);
+}
 .btn-secondary:disabled {
-	opacity: 0.5;
+	background-color: transparent;
+	color: var(--app-text-dim);
+	border: 1px dashed var(--app-border-strong);
+	opacity: 1;
 	cursor: not-allowed;
 }
 
@@ -294,9 +458,10 @@ body {
 	background-color: transparent;
 	color: var(--app-text-muted);
 	border: 1px solid transparent;
-	border-radius: var(--app-radius-sm, 4px);
-	padding: 0.375rem 0.625rem;
-	transition: background-color 0.12s, color 0.12s;
+	border-radius: var(--app-radius-sm);
+	padding: 0.4rem 0.65rem;
+	transition: background-color var(--app-dur-fast) var(--app-ease),
+		color var(--app-dur-fast) var(--app-ease);
 }
 .btn-ghost:hover:not(:disabled) {
 	background-color: var(--app-hover);
@@ -308,23 +473,32 @@ body {
 	background-color: var(--app-danger);
 	color: var(--app-accent-text);
 	border: 1px solid transparent;
-	border-radius: var(--app-radius-sm, 4px);
-	padding: 0.375rem 0.875rem;
+	border-radius: var(--app-radius-sm);
+	padding: 0.45rem 0.95rem;
 	font-weight: 500;
-	transition: background-color 0.12s;
+	transition: background-color var(--app-dur-fast) var(--app-ease),
+		transform var(--app-dur-fast) var(--app-ease);
 }
 .btn-danger:hover:not(:disabled) {
 	background-color: color-mix(in srgb, var(--app-danger) 88%, var(--app-text) 12%);
 }
-.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-danger:active:not(:disabled) { transform: translateY(1px); }
+.btn-danger:disabled {
+	background-color: transparent;
+	color: var(--app-text-dim);
+	border: 1px dashed var(--app-border-strong);
+	opacity: 1;
+	cursor: not-allowed;
+}
 
 .btn-icon {
 	background-color: transparent;
 	color: var(--app-text-muted);
 	border: 1px solid transparent;
-	border-radius: var(--app-radius-sm, 4px);
-	padding: 0.25rem;
-	transition: background-color 0.12s, color 0.12s;
+	border-radius: var(--app-radius-sm);
+	padding: 0.3rem;
+	transition: background-color var(--app-dur-fast) var(--app-ease),
+		color var(--app-dur-fast) var(--app-ease);
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -338,14 +512,105 @@ body {
 	color: var(--app-text);
 }
 
+/* Tactile "mini button" used in the editor toolbar. Smaller hit area but
+   keeps the press-feedback that makes the chrome feel responsive. */
+.btn-tactile {
+	background-color: transparent;
+	color: var(--app-text-muted);
+	border: 1px solid var(--app-border);
+	border-radius: var(--app-radius-sm);
+	padding: 0.2rem 0.5rem;
+	font-size: 0.75rem;
+	font-weight: 500;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	transition: background-color var(--app-dur-fast) var(--app-ease),
+		color var(--app-dur-fast) var(--app-ease),
+		border-color var(--app-dur-fast) var(--app-ease),
+		transform var(--app-dur-fast) var(--app-ease);
+}
+.btn-tactile:hover:not(:disabled) {
+	background-color: var(--app-surface-2);
+	border-color: var(--app-border-strong);
+	color: var(--app-text);
+}
+.btn-tactile:active:not(:disabled) { transform: translateY(1px); }
+.btn-tactile:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-tactile[aria-pressed='true'] {
+	background-color: var(--app-surface-2);
+	color: var(--app-text);
+	border-color: var(--app-border-strong);
+}
+
+/* — Auth surfaces (login / signup / forgot / reset / verify) —
+   A small framed card so the form has somewhere to land instead of
+   floating in the middle of the page. Centred vertically against the
+   chrome edges; on mobile it relaxes to full width minus the gutter. */
+.auth-shell {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 1.25rem;
+	padding: clamp(2rem, 5vw, 4rem) 1rem;
+	min-height: 100%;
+}
+.auth-card {
+	width: min(28rem, 100%);
+	padding: clamp(1.5rem, 3vw, 2.25rem);
+	background-color: var(--app-surface);
+	border: 1px solid var(--app-border);
+	border-radius: var(--app-radius-lg);
+	box-shadow: var(--app-shadow-md);
+}
+.auth-eyebrow {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.55rem;
+	color: var(--app-text-dim);
+	margin-bottom: 1rem;
+}
+.auth-title {
+	font-family: var(--app-display-font);
+	font-weight: 500;
+	font-size: clamp(1.5rem, 2.4vw, 1.85rem);
+	line-height: 1.15;
+	letter-spacing: -0.015em;
+	color: var(--app-text);
+	margin: 0 0 0.4rem;
+}
+.auth-lede {
+	font-size: 0.875rem;
+	line-height: 1.5;
+	color: var(--app-text-muted);
+	margin: 0 0 1.4rem;
+}
+.auth-divider {
+	border: 0;
+	border-top: 1px solid var(--app-rule);
+	margin: 1.1rem 0 0.85rem;
+}
+.auth-foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	font-size: 0.8rem;
+	color: var(--app-text-muted);
+}
+.auth-foot.center {
+	justify-content: center;
+}
+
 /* — Modals — */
 .modal-backdrop {
 	position: fixed;
 	inset: 0;
 	z-index: 50;
 	background-color: var(--app-scrim);
-	backdrop-filter: blur(2px);
-	-webkit-backdrop-filter: blur(2px);
+	backdrop-filter: blur(3px);
+	-webkit-backdrop-filter: blur(3px);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -355,7 +620,7 @@ body {
 	background-color: var(--app-surface);
 	color: var(--app-text);
 	border: 1px solid var(--app-border);
-	border-radius: var(--app-radius, 6px);
+	border-radius: var(--app-radius-lg);
 	box-shadow: var(--app-shadow-lg);
 }
 
@@ -364,10 +629,10 @@ body {
 	background-color: var(--app-surface);
 	color: var(--app-text);
 	border: 1px solid var(--app-border);
-	border-radius: var(--app-radius-sm, 4px);
+	border-radius: var(--app-radius-sm);
 	box-shadow: var(--app-shadow-md);
-	padding: 0.375rem 0.75rem;
-	font-size: 0.75rem;
+	padding: 0.4rem 0.8rem;
+	font-size: 0.78rem;
 }
 .toast-ok {
 	background-color: color-mix(in srgb, var(--app-ok) 18%, var(--app-bg) 82%);
@@ -383,16 +648,17 @@ body {
 .badge {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.25rem;
-	padding: 0.125rem 0.5rem;
+	gap: 0.3rem;
+	padding: 0.15rem 0.55rem;
 	border-radius: 9999px;
 	font-size: 0.6875rem;
+	font-weight: 500;
 	background-color: var(--app-surface-2);
 	color: var(--app-text-muted);
 	border: 1px solid var(--app-border);
 }
 .badge-active {
-	background-color: color-mix(in srgb, var(--app-accent) 18%, var(--app-bg) 82%);
+	background-color: var(--app-accent-soft);
 	color: var(--app-text);
 	border-color: color-mix(in srgb, var(--app-accent) 50%, var(--app-border) 50%);
 }
@@ -401,13 +667,14 @@ body {
 .toggle-track {
 	display: inline-flex;
 	align-items: center;
-	height: 1.25rem;          /* h-5 */
-	width: 2.25rem;           /* w-9 */
+	height: 1.25rem;
+	width: 2.25rem;
 	flex-shrink: 0;
 	border-radius: 9999px;
 	border: 1px solid var(--app-border);
 	background-color: var(--app-surface-2);
-	transition: background-color 0.12s, border-color 0.12s;
+	transition: background-color var(--app-dur-fast) var(--app-ease),
+		border-color var(--app-dur-fast) var(--app-ease);
 	cursor: pointer;
 }
 .toggle-track-on {
@@ -423,7 +690,7 @@ body {
 	background-color: var(--app-accent-text);
 	box-shadow: var(--app-shadow-sm);
 	transform: translateX(0);
-	transition: transform 0.15s ease-out;
+	transition: transform var(--app-dur-base) var(--app-ease-out);
 }
 .toggle-track-on .toggle-knob {
 	transform: translateX(1rem);
@@ -432,18 +699,22 @@ body {
 /* — Links — */
 .link {
 	color: var(--app-accent);
-	transition: color 0.12s;
+	text-decoration: underline;
+	text-decoration-color: transparent;
+	text-underline-offset: 0.2em;
+	transition: color var(--app-dur-fast) var(--app-ease),
+		text-decoration-color var(--app-dur-fast) var(--app-ease);
 }
 .link:hover {
 	color: color-mix(in srgb, var(--app-accent) 70%, var(--app-text) 30%);
-	text-decoration: underline;
+	text-decoration-color: currentColor;
 }
 
 /* — Dropdown / menu rows — */
 .menu-panel {
 	background-color: var(--app-surface);
 	border: 1px solid var(--app-border);
-	border-radius: var(--app-radius-sm, 4px);
+	border-radius: var(--app-radius);
 	box-shadow: var(--app-shadow-md);
 	overflow: hidden;
 }
@@ -452,14 +723,14 @@ body {
 	align-items: center;
 	gap: 0.5rem;
 	width: 100%;
-	padding: 0.375rem 0.75rem;
+	padding: 0.4rem 0.8rem;
 	color: var(--app-text);
 	text-align: left;
-	font-size: 0.75rem;
+	font-size: 0.8rem;
 	background: transparent;
 	border: 0;
 	cursor: pointer;
-	transition: background-color 0.1s;
+	transition: background-color var(--app-dur-fast) var(--app-ease);
 }
 .menu-item:hover:not(:disabled) {
 	background-color: var(--app-hover);
@@ -468,6 +739,35 @@ body {
 	color: var(--app-text-dim);
 	cursor: not-allowed;
 }
+
+/* — The dot-mark monogram —
+   Three dots on the diagonal of a die's face — the brand glyph. Keep
+   small (≤ 28px) and use sparingly; one per page is the rule. The shape
+   reads as "D" + dice in one mark. */
+.brand-mark {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1em;
+	height: 1em;
+	color: var(--app-accent);
+}
+
+/* — Step glyph: four small rounded squares stepping diagonally —
+   Subtle texture motif; used as a section marker in the marketing surfaces. */
+.step-glyph {
+	display: inline-grid;
+	grid-template-columns: repeat(2, 1fr);
+	grid-template-rows: repeat(2, 1fr);
+	width: 0.875rem;
+	height: 0.875rem;
+	gap: 1px;
+}
+.step-glyph > i {
+	background-color: var(--app-text-dim);
+	border-radius: 1px;
+}
+.step-glyph > i:nth-child(1) { background-color: var(--app-accent); }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    BLANKET TAILWIND OVERRIDES (group #3)
@@ -479,7 +779,7 @@ body {
    instead of neutral.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ─── Neutral palette mappings ──────────────────────────────────────────── */
+/* ─── Neutral palette mappings (LIGHT) ──────────────────────────────────── */
 :root[data-theme='light'] .bg-neutral-950,
 :root[data-theme='light'] [class*='bg-neutral-950'] { background-color: var(--app-bg); }
 :root[data-theme='light'] .bg-neutral-900,
@@ -489,25 +789,25 @@ body {
 :root[data-theme='light'] .bg-neutral-700 { background-color: var(--app-surface-2); }
 :root[data-theme='light'] .bg-neutral-600 { background-color: var(--app-border-strong); }
 
-:root[data-theme='light'] .text-neutral-100 { color: var(--app-text); }
-:root[data-theme='light'] .text-neutral-200 { color: var(--app-text); }
+:root[data-theme='light'] .text-neutral-100,
+:root[data-theme='light'] .text-neutral-200,
 :root[data-theme='light'] .text-neutral-300 { color: var(--app-text); }
 :root[data-theme='light'] .text-neutral-400 { color: var(--app-text-muted); }
-:root[data-theme='light'] .text-neutral-500 { color: var(--app-text-dim); }
+:root[data-theme='light'] .text-neutral-500,
 :root[data-theme='light'] .text-neutral-600 { color: var(--app-text-dim); }
 
 :root[data-theme='light'] .border-neutral-600 { border-color: var(--app-border-strong); }
 :root[data-theme='light'] .border-neutral-700 { border-color: var(--app-border-strong); }
-:root[data-theme='light'] .border-neutral-800 { border-color: var(--app-border); }
+:root[data-theme='light'] .border-neutral-800,
 :root[data-theme='light'] .border-neutral-900 { border-color: var(--app-border); }
 
 :root[data-theme='light'] .hover\:bg-neutral-900:hover { background-color: var(--app-surface-2); }
 :root[data-theme='light'] .hover\:bg-neutral-800:hover { background-color: var(--app-surface-2); }
 :root[data-theme='light'] .hover\:bg-neutral-700:hover { background-color: var(--app-surface); }
-:root[data-theme='light'] .hover\:text-neutral-100:hover { color: var(--app-text); }
+:root[data-theme='light'] .hover\:text-neutral-100:hover,
 :root[data-theme='light'] .hover\:text-neutral-200:hover { color: var(--app-text); }
 
-/* ─── Gray / zinc / stone / slate palettes (Tailwind has 5 grayscales) ──── */
+/* ─── Gray / zinc / stone / slate (Tailwind has 5 grayscales) ──── */
 :root[data-theme='light'] [class*='bg-gray-9'],
 :root[data-theme='light'] [class*='bg-zinc-9'],
 :root[data-theme='light'] [class*='bg-stone-9'],
@@ -545,6 +845,17 @@ body {
 :root[data-theme='light'] [class*='border-slate-7'],
 :root[data-theme='light'] [class*='border-slate-8'] { border-color: var(--app-border); }
 
+/* The slate-900 panel background used in dark-first chrome (Inspector
+   header etc.) needs to read as a panel surface in BOTH modes. The
+   light mapping is handled by the wildcard above; here we just nudge
+   the dark mode so the slate hardcode reads as a proper inset against
+   the warm-tinted surfaces. */
+:root[data-theme='dark'] .bg-slate-900,
+:root[data-theme='dark'] .bg-slate-950 { background-color: var(--app-surface); }
+:root[data-theme='dark'] .bg-slate-800 { background-color: var(--app-surface-2); }
+:root[data-theme='dark'] .border-slate-800,
+:root[data-theme='dark'] .border-slate-900 { border-color: var(--app-border); }
+
 /* ─── White / black hardcoded utilities ─────────────────────────────────────
    text-white and bg-white render the same in both themes by default,
    which is fine on coloured buttons but jarring on plain surfaces. We map
@@ -573,7 +884,7 @@ body {
 }
 
 /* Tinted backgrounds — flatten deep *-950/-900 tints down to the regular
-   surface so we don't get dark blocks on a white page. */
+   surface so we don't get dark blocks on a warm page. */
 :root[data-theme='light'] [class*='bg-red-9'],
 :root[data-theme='light'] [class*='bg-emerald-9'],
 :root[data-theme='light'] [class*='bg-amber-9'],
@@ -598,7 +909,7 @@ body {
 }
 :root[data-theme='light'] [class*='bg-blue-7'],
 :root[data-theme='light'] [class*='bg-blue-8'] {
-	background-color: color-mix(in srgb, var(--app-accent) 18%, var(--app-bg) 82%);
+	background-color: var(--app-accent-soft);
 }
 :root[data-theme='light'] [class*='bg-emerald-7'],
 :root[data-theme='light'] [class*='bg-emerald-8'] {
@@ -623,62 +934,64 @@ body {
 	-webkit-text-fill-color: var(--app-text);
 }
 
-/* ─── Solid accent buttons — bg-blue-* / bg-purple-* / bg-red-* / bg-emerald-*
+/* ─── Solid accent buttons — track the active theme accent ──────────────
    The codebase ships several pages with `bg-blue-600 text-white` as the
-   primary CTA. In dark mode that's a saturated blue that reads well; in
-   light mode (warm cream chrome) the same blue clashes. Map every solid
-   coloured-button utility to the matching theme token so accents track
-   the active theme. */
-:root[data-theme='light'] .bg-blue-500,
-:root[data-theme='light'] .bg-blue-600,
-:root[data-theme='light'] .bg-blue-700 {
+   primary CTA. In dark mode that reads as a saturated blue; in light mode
+   (warm cream chrome) the same blue clashes. Map every solid coloured-
+   button utility to the matching theme token so accents track the
+   active theme — in BOTH modes (the warm-rust accent is the brand). */
+.bg-blue-500,
+.bg-blue-600,
+.bg-blue-700 {
 	background-color: var(--app-accent);
+	color: var(--app-accent-text);
 }
-:root[data-theme='light'] .hover\:bg-blue-400:hover,
-:root[data-theme='light'] .hover\:bg-blue-500:hover,
-:root[data-theme='light'] .hover\:bg-blue-600:hover {
+.hover\:bg-blue-400:hover,
+.hover\:bg-blue-500:hover,
+.hover\:bg-blue-600:hover {
 	background-color: color-mix(in srgb, var(--app-accent) 88%, var(--app-text) 12%);
 }
-:root[data-theme='light'] .border-blue-500,
-:root[data-theme='light'] .border-blue-600,
-:root[data-theme='light'] .border-blue-700,
-:root[data-theme='light'] .border-blue-800 {
+.border-blue-500,
+.border-blue-600,
+.border-blue-700,
+.border-blue-800 {
 	border-color: var(--app-accent);
 }
-:root[data-theme='light'] .bg-purple-600,
-:root[data-theme='light'] .bg-purple-700 {
+.bg-purple-600,
+.bg-purple-700 {
 	background-color: var(--app-accent-2);
 }
-:root[data-theme='light'] .hover\:bg-purple-500:hover,
-:root[data-theme='light'] .hover\:bg-purple-600:hover {
+.hover\:bg-purple-500:hover,
+.hover\:bg-purple-600:hover {
 	background-color: color-mix(in srgb, var(--app-accent-2) 88%, var(--app-text) 12%);
 }
-:root[data-theme='light'] .border-purple-600,
-:root[data-theme='light'] .border-purple-700 {
+.border-purple-600,
+.border-purple-700 {
 	border-color: var(--app-accent-2);
 }
-:root[data-theme='light'] .bg-red-600,
-:root[data-theme='light'] .bg-red-700,
-:root[data-theme='light'] .bg-red-800 {
+.bg-red-600,
+.bg-red-700,
+.bg-red-800 {
 	background-color: var(--app-danger);
+	color: var(--app-accent-text);
 }
-:root[data-theme='light'] .hover\:bg-red-500:hover,
-:root[data-theme='light'] .hover\:bg-red-600:hover,
-:root[data-theme='light'] .hover\:bg-red-700:hover,
-:root[data-theme='light'] .hover\:bg-red-800:hover {
+.hover\:bg-red-500:hover,
+.hover\:bg-red-600:hover,
+.hover\:bg-red-700:hover,
+.hover\:bg-red-800:hover {
 	background-color: color-mix(in srgb, var(--app-danger) 88%, var(--app-text) 12%);
 }
-:root[data-theme='light'] .border-red-600,
-:root[data-theme='light'] .border-red-700,
-:root[data-theme='light'] .border-red-800 {
+.border-red-600,
+.border-red-700,
+.border-red-800 {
 	border-color: var(--app-danger);
 }
-:root[data-theme='light'] .bg-emerald-600,
-:root[data-theme='light'] .bg-emerald-700 {
+.bg-emerald-600,
+.bg-emerald-700 {
 	background-color: var(--app-ok);
 }
-:root[data-theme='light'] .border-emerald-600,
-:root[data-theme='light'] .border-emerald-700 {
+.border-emerald-600,
+.border-emerald-700 {
 	border-color: var(--app-ok);
 }
 
@@ -695,11 +1008,11 @@ body {
 	color: var(--app-accent-text);
 }
 
-/* Focus ring colours — keep coloured rings in light mode rather than
-   collapsing them to neutral. */
-:root[data-theme='light'] .focus\:border-blue-500:focus,
-:root[data-theme='light'] .focus\:border-blue-600:focus,
-:root[data-theme='light'] .focus\:border-blue-700:focus {
+/* Focus ring colours — keep coloured rings rather than collapsing
+   them to neutral. */
+.focus\:border-blue-500:focus,
+.focus\:border-blue-600:focus,
+.focus\:border-blue-700:focus {
 	border-color: var(--app-accent) !important;
 }
 
@@ -710,3 +1023,50 @@ aside.inspector-scroll,
 .svelte-flow {
 	overscroll-behavior: contain;
 }
+
+/* ─── xyflow surface tokens ──────────────────────────────────────────────
+   xyflow ships hardcoded dark defaults for its background and controls.
+   Override them so the editor canvas tracks our chrome (light cream in
+   light mode, warm dark in dark) without a per-theme stylesheet. */
+.svelte-flow {
+	--xy-background-color: var(--app-bg);
+	--xy-background-color-default: var(--app-bg);
+	--xy-background-pattern-color: color-mix(in srgb, var(--app-text) 22%, transparent);
+	--xy-background-pattern-color-default: color-mix(in srgb, var(--app-text) 22%, transparent);
+	--xy-edge-stroke: var(--app-text-muted);
+	--xy-edge-stroke-default: var(--app-text-muted);
+	--xy-edge-stroke-selected: var(--app-accent);
+	--xy-edge-stroke-selected-default: var(--app-accent);
+	--xy-controls-button-background-color: var(--app-surface);
+	--xy-controls-button-background-color-default: var(--app-surface);
+	--xy-controls-button-background-color-hover: var(--app-surface-2);
+	--xy-controls-button-background-color-hover-default: var(--app-surface-2);
+	--xy-controls-button-color: var(--app-text);
+	--xy-controls-button-color-default: var(--app-text);
+	--xy-controls-button-color-hover: var(--app-text);
+	--xy-controls-button-color-hover-default: var(--app-text);
+	--xy-controls-button-border-color: var(--app-border);
+	--xy-controls-button-border-color-default: var(--app-border);
+	--xy-minimap-background-color: var(--app-surface);
+	--xy-minimap-background-color-default: var(--app-surface);
+	--xy-minimap-mask-background-color: color-mix(in srgb, var(--app-bg) 60%, transparent);
+	--xy-minimap-mask-background-color-default: color-mix(in srgb, var(--app-bg) 60%, transparent);
+	--xy-minimap-mask-stroke-color: var(--app-border-strong);
+	--xy-minimap-mask-stroke-color-default: var(--app-border-strong);
+}
+
+/* ─── Animation primitives ──────────────────────────────────────────────
+   Calm staggered reveal used on the landing hero. Reduced-motion users
+   see the content immediately. */
+@keyframes app-rise {
+	from { opacity: 0; transform: translateY(8px); }
+	to   { opacity: 1; transform: translateY(0); }
+}
+.app-rise {
+	animation: app-rise 600ms var(--app-ease-out) both;
+}
+.app-rise-delay-1 { animation-delay: 80ms; }
+.app-rise-delay-2 { animation-delay: 160ms; }
+.app-rise-delay-3 { animation-delay: 240ms; }
+.app-rise-delay-4 { animation-delay: 320ms; }
+.app-rise-delay-5 { animation-delay: 400ms; }

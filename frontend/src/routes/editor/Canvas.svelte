@@ -16,13 +16,12 @@
 	import BoxNode from './BoxNode.svelte';
 	import GroupOverlay from './GroupOverlay.svelte';
 	import NoteNode from './NoteNode.svelte';
-	import SmartEdge from './SmartEdge.svelte';
+	import EdgeRenderer from './EdgeRenderer.svelte';
 	import CanvasFocus from './CanvasFocus.svelte';
 	import CanvasDropZone from './CanvasDropZone.svelte';
 	import ViewportRegister from './ViewportRegister.svelte';
 	import type { RenderResult, RenderNode } from '$lib/render';
 	import type { Theme } from '$lib/themes';
-	import type { Rect } from '$lib/obstacle-routing';
 
 	import type { ParentTarget } from '$lib/patch';
 
@@ -118,7 +117,7 @@
 	};
 
 	const edgeTypes = {
-		smart: SmartEdge
+		smart: EdgeRenderer
 	};
 
 	function edgeStyle(kind: string): { strokeDasharray?: string; strokeWidth: number } {
@@ -186,51 +185,12 @@
 		return undefined;
 	}
 
-	function centerOf(n: RenderNode | undefined) {
-		if (!n) return { cx: 0, cy: 0 };
-		return { cx: n.x + n.width / 2, cy: n.y + n.height / 2 };
-	}
-
-	function pickHandles(
-		sx: number,
-		sy: number,
-		tx: number,
-		ty: number,
-		direction: string,
-		selfLoop = false
-	) {
-		if (selfLoop) {
-			// Bow from right back to top so the loop visibly curls around the node.
-			return { sourceHandle: 'r', targetHandle: 't' };
-		}
-		const horizontal = direction === 'left-to-right' || direction === 'right-to-left';
-		const dx = tx - sx;
-		const dy = ty - sy;
-		// Geometry-based: whichever axis has the larger |delta| wins.
-		// A vertically-offset pair connects top↔bottom even under a
-		// horizontal chart, which matches user expectation ("a connector
-		// coming from above should enter the top, not the left").
-		// Tie-break toward the chart axis.
-		if (Math.abs(dx) > Math.abs(dy) || (Math.abs(dx) === Math.abs(dy) && horizontal)) {
-			return dx >= 0
-				? { sourceHandle: 'r', targetHandle: 'l' }
-				: { sourceHandle: 'l', targetHandle: 'r' };
-		}
-		return dy >= 0
-			? { sourceHandle: 'b', targetHandle: 't' }
-			: { sourceHandle: 't', targetHandle: 'b' };
-	}
-
-	// Normalize a caller-supplied port to the canonical 't/b/l/r'.
-	function normPort(p: string | null | undefined): 't' | 'b' | 'l' | 'r' | null {
-		if (!p) return null;
-		const s = p.trim().toLowerCase();
-		if (s === 't' || s === 'top' || s === 'n' || s === 'north') return 't';
-		if (s === 'b' || s === 'bottom' || s === 's' || s === 'south') return 'b';
-		if (s === 'l' || s === 'left' || s === 'w' || s === 'west') return 'l';
-		if (s === 'r' || s === 'right' || s === 'e' || s === 'east') return 'r';
-		return null;
-	}
+	// All routing logic now lives in the backend route planner. Canvas
+	// just wires up nodes, lanes, boxes, and hands edge plans straight
+	// to EdgeRenderer. The previous helpers (`pickHandles`, `decodePort`,
+	// `portAgreesWithGeometry`, lane-index pre-pass, A* fallback) are
+	// gone — every connector decision is now deterministic and made in
+	// one place.
 
 	$effect(() => {
 		if (!result) {
@@ -356,80 +316,58 @@
 		};
 
 		const nodeById = new Map(result.nodes.map((n) => [n.id, n]));
+		void nodeById;
 
-		const shapeRects = new Map<string, Rect>(
-			result.nodes.map((n) => [n.id, { x: n.x, y: n.y, w: n.width, h: n.height }])
-		);
-		const boxRects: Array<Rect & { members: string[] }> = result.boxes
-			.filter(
-				(b) => b.x != null && b.y != null && b.width != null && b.height != null
-			)
-			.map((b) => ({
-				x: b.x as number,
-				y: b.y as number,
-				w: b.width as number,
-				h: b.height as number,
-				members: b.members
-			}));
-
-		const dataEdges: Edge[] = result.edges.map((e) => {
-			const s = nodeById.get(e.source);
-			const t = nodeById.get(e.target);
-			const { cx: sx, cy: sy } = centerOf(s);
-			const { cx: tx, cy: ty } = centerOf(t);
-			const auto = pickHandles(sx, sy, tx, ty, result.direction, e.source === e.target);
-			// Explicit port authored in DSL (`A@r -> B@l`) always wins over
-			// the smart picker.
-			const explicitSource = normPort(e.source_port);
-			const explicitTarget = normPort(e.target_port);
-			const sourceHandle = explicitSource ?? auto.sourceHandle;
-			const targetHandle = explicitTarget ?? auto.targetHandle;
-			const strokeOverride = e.attrs?.color;
-			const edgeDimmed = dimmedIds.has(e.source) || dimmedIds.has(e.target);
-
-			const obstacles: Rect[] = [];
-			for (const [id, r] of shapeRects) {
-				if (id === e.source || id === e.target) continue;
-				obstacles.push({ x: r.x - 4, y: r.y - 4, w: r.w + 8, h: r.h + 8 });
-			}
-			for (const b of boxRects) {
-				if (b.members.includes(e.source) || b.members.includes(e.target)) continue;
-				obstacles.push({ x: b.x, y: b.y, w: b.w, h: b.h });
-			}
-
-			const baseStyle = styleFor(e.kind, strokeOverride);
-			const edgeColour = strokeOverride || edgeColor;
-			const opacityAttr = e.attrs?.opacity;
-			const opacityStyle = (() => {
-				const n = opacityAttr ? Number(opacityAttr) : NaN;
-				if (!Number.isFinite(n) || n < 0 || n > 1) return '';
-				return ` opacity: ${n};`;
-			})();
-			return {
-				id: e.id,
-				source: e.source,
-				target: e.target,
-				sourceHandle,
-				targetHandle,
-				type: 'smart',
-				label: e.label || undefined,
-				style:
-					(edgeDimmed ? `${baseStyle} opacity: 0.2;` : baseStyle) + opacityStyle,
-				markerEnd: endMarkerFor(e.kind, e.attrs?.end, edgeColour),
-				markerStart: startMarkerFor(e.attrs?.start, edgeColour),
-				data: {
-					obstacles,
-					labelFill: theme.text,
-					labelBg: theme.panel,
-					lineStyle,
-					axis:
-						result.direction === 'left-to-right' ||
-						result.direction === 'right-to-left'
-							? 'horizontal'
-							: 'vertical'
-				}
-			};
-		});
+		// One pass: every edge already comes with a complete routing
+		// plan from the backend (waypoints, label position, port
+		// codes). The frontend just packages that into the xyflow Edge
+		// shape and hands it to EdgeRenderer.
+		const dataEdges: Edge[] = result.edges
+			.filter((e) => e.waypoints && e.waypoints.length > 0)
+			.map((e) => {
+				const strokeOverride = e.attrs?.color;
+				const edgeDimmed = dimmedIds.has(e.source) || dimmedIds.has(e.target);
+				const baseStyle = styleFor(e.kind, strokeOverride);
+				const edgeColour = strokeOverride || edgeColor;
+				const opacityAttr = e.attrs?.opacity;
+				const opacityStyle = (() => {
+					const n = opacityAttr ? Number(opacityAttr) : NaN;
+					if (!Number.isFinite(n) || n < 0 || n > 1) return '';
+					return ` opacity: ${n};`;
+				})();
+				// First/last waypoint = attachment points on each shape.
+				// Map `source_port` (which can include an offset suffix
+				// like `b+1`) to its bare side letter so xyflow knows
+				// which cardinal handle to emit on the source/target
+				// node — the offset is already baked into the waypoint
+				// pixel coords so this is purely a node-side hookup.
+				const sideOnly = (p: string | null): 't' | 'b' | 'l' | 'r' | null => {
+					const c = p?.charAt(0).toLowerCase() ?? '';
+					return c === 't' || c === 'b' || c === 'l' || c === 'r' ? c : null;
+				};
+				return {
+					id: e.id,
+					source: e.source,
+					target: e.target,
+					sourceHandle: sideOnly(e.source_port) ?? 'b',
+					targetHandle: sideOnly(e.target_port) ?? 't',
+					type: 'smart',
+					label: e.label || undefined,
+					style:
+						(edgeDimmed ? `${baseStyle} opacity: 0.2;` : baseStyle) + opacityStyle,
+					markerEnd: endMarkerFor(e.kind, e.attrs?.end, edgeColour),
+					markerStart: startMarkerFor(e.attrs?.start, edgeColour),
+					data: {
+						waypoints: e.waypoints,
+						labelX: e.label_x,
+						labelY: e.label_y,
+						labelAxis: e.label_axis,
+						cornerRadius: e.corner_radius,
+						labelFill: theme.text,
+						labelBg: theme.panel
+					}
+				} as Edge;
+			});
 
 		const noteEdges: Edge[] = result.notes.map((n, i) => ({
 			id: `__nedge_${i}`,

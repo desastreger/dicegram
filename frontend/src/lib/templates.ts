@@ -6,17 +6,17 @@ export type DicegramTemplate = {
 };
 
 const META_SOURCE = `direction top-to-bottom
-setting color_scheme warm
+setting color_scheme auto
 
 // A meta-Dicegram: the loop we use to build Dicegram itself.
 
-swimlane "User" {
+swimlane "Author" {
 	[circle] spark "Spark" step:0 type:start
 	[rounded] ask "Describe\\nthe feature" step:1 type:process owner:"you" status:active
 	[diamond] happy "Happy?" step:8 type:decision priority:high
 }
 
-swimlane "Claude" {
+swimlane "Assistant" {
 	box "Think" {fill: rgba(56, 70, 95, 0.25)} {
 		[rect] plan "Draft a plan" step:2 type:process
 		[rect] scope "Scope & trade-offs" step:3 type:process
@@ -49,7 +49,7 @@ group "inner loop" { plan scope edit check }
 `;
 
 const FLOWCHART_SOURCE = `direction top-to-bottom
-setting color_scheme warm
+setting color_scheme auto
 
 [circle] start "Start" step:0 type:start
 [rect] step1 "Do the thing" step:1 type:process
@@ -65,7 +65,7 @@ step2 -> end
 `;
 
 const SDLC_SOURCE = `direction left-to-right
-setting color_scheme warm
+setting color_scheme auto
 
 swimlane "Product" {
 	[circle] idea "Idea" step:0 type:start
@@ -95,7 +95,7 @@ stage -> live
 `;
 
 const EMPTY_SOURCE = `direction top-to-bottom
-setting color_scheme warm
+setting color_scheme auto
 
 [rect] start "Start" step:0
 `;

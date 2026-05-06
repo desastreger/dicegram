@@ -100,6 +100,34 @@ class ThemeStore {
 		}
 	}
 
+	// Update the chrome mode WITHOUT touching localStorage. Used by the
+	// editor when a Dicegram has pinned `setting color_scheme` to a fixed
+	// canvas style and we want the chrome to follow visually — but the
+	// user's persistent preference (set via the nav sun/moon button) must
+	// not be silently overwritten by whichever Dicegram they happen to
+	// open. Re-loading the page restores the saved preference.
+	setEphemeral(next: Theme) {
+		this.current = next;
+		if (typeof document !== 'undefined') {
+			document.documentElement.setAttribute('data-theme', next);
+		}
+	}
+
+	// Pull the user's persistent preference back from localStorage and
+	// apply it to the DOM. Called when the editor unmounts so any
+	// chrome-flip the dicegram induced is reverted.
+	restoreFromStorage() {
+		if (typeof localStorage === 'undefined') return;
+		try {
+			const saved = localStorage.getItem(KEY);
+			if (saved === 'light' || saved === 'dark') {
+				this.setEphemeral(saved);
+			}
+		} catch {
+			/* ignore */
+		}
+	}
+
 	toggle() {
 		if (this.override) {
 			this.override();
