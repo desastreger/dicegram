@@ -22,6 +22,10 @@ backend/*.sqlite3
 .playwright-mcp/
 a11y-*.png
 
+# Playwright UAT screenshots — keep in uat/ subdirs, not repo root
+walk*.png
+page-*.png
+
 # frontend (SvelteKit) — node_modules etc. are handled by frontend/.gitignore
 frontend/.env
 
