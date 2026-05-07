@@ -4,6 +4,7 @@ from sqlmodel import Session
 
 from ..config import settings
 from ..db import get_session
+from ..dsl.compiler import normalize
 from ..dsl.export_svg import render_svg
 from ..dsl.parser import parse
 from ..models import User
@@ -28,7 +29,12 @@ def export_svg(
     # (demo-mode) exports use the shipped default palette.
     user_id = request.session.get("user_id") if request else None
     user = session.get(User, user_id) if user_id else None
-    parsed = parse(body.source)
+    # Normalize first so the export sees the same DSL the editor parses —
+    # auto-fixes (shape coercion to match `type:end`, brand renames,
+    # inline-connector rewrites) must apply identically or the export will
+    # diverge from what the user sees on screen.
+    normalized = normalize(body.source).source
+    parsed = parse(normalized)
     theme_id = parsed.settings.get("color_scheme") if isinstance(parsed.settings, dict) else None
     dicegram_overrides = _palette_overrides_from_settings(parsed.settings)
     user_palette = user.branding_palette if user else None

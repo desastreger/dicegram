@@ -17,8 +17,8 @@ DEFAULTS = {
     "box_padding":         2 * G,       # 40  box inset — capped at container_padding-G
     "group_padding":       1 * G,       # 20
     "note_offset":         1 * G,       # 20  gap from node right edge to note left edge
-    "note_width":          6 * G,       # 120 narrower than default node
-    "note_height":         2 * G,       # 40  base — grows to match target node height
+    "note_width":          4 * G,       # 80  narrower than default node — encourages wrap
+    "note_height":         2 * G,       # 40  base — grows to target_h + 2G clearance
     "margin":              3 * G,       # 60  canvas margin around entire diagram
     "snap_grid":           G // 2,      # 10  position/size snap quantum
 }
@@ -77,6 +77,16 @@ def _snap_up(value: float, grid: int) -> float:
     return ((int(value) + grid - 1) // grid) * grid
 
 
+def _compute_G(cfg: dict, snap: int) -> int:
+    """Resolve the visual grid unit G from the configured font size.
+    Scales 1.8× the font size, snapped up to 2*snap so G stays an
+    integer multiple of the snap quantum (and thus an integer)."""
+    font_size = int(cfg.get("font_size", 11))
+    line_height = font_size * 1.8
+    quantum = max(1, snap * 2)
+    return max(quantum, int(_snap_up(line_height, quantum)))
+
+
 def _label_run_px(label: str) -> int:
     """Approximate rendered width of a connector label: ~6 px/glyph + 12 px
     horizontal padding.  Returns 0 for empty labels."""
@@ -113,6 +123,7 @@ def compute_layout(parsed: Parsed) -> dict:
     direction = parsed.direction
     nodes = parsed.nodes
     snap: int = int(cfg["snap_grid"]) if int(cfg.get("snap_grid", 1)) > 0 else 1
+    G = _compute_G(cfg, snap)
 
     # Shift type:end nodes without an explicit step past the last explicit step.
     explicit_steps = [n.step for n in nodes if n.step_explicit]
@@ -137,7 +148,7 @@ def compute_layout(parsed: Parsed) -> dict:
         by_lane_step.setdefault((n.swimlane or "", n.step), []).append(n)
 
     sizes = {
-        n.name: _measure(n, cfg["node_width"], cfg["node_height"], cfg["snap_grid"])
+        n.name: _measure(n, cfg["node_width"], cfg["node_height"], G)
         for n in nodes
     }
 
@@ -190,7 +201,7 @@ def compute_layout(parsed: Parsed) -> dict:
     if cross_lane_label_max > 0:
         needed_gap = cross_lane_label_max + 2 * G
         base_swimlane_gap = max(base_swimlane_gap, needed_gap)
-    swimlane_gap_px: int = int(_snap_up(base_swimlane_gap, snap))
+    swimlane_gap_px: int = int(_snap_up(base_swimlane_gap, G))
 
     # ── Per-lane padding ─────────────────────────────────────────────────
     # container_padding is the minimum; multi-line lane names need more.
@@ -201,7 +212,7 @@ def compute_layout(parsed: Parsed) -> dict:
 
     lane_pad: dict[str, int] = {}
     for sl in parsed.swimlanes:
-        lane_pad[sl.name] = _container_pad(sl.name, container_pad_int, snap)
+        lane_pad[sl.name] = _container_pad(sl.name, container_pad_int, G)
     if "" not in lane_pad:
         lane_pad[""] = container_pad_int
 
@@ -226,13 +237,26 @@ def compute_layout(parsed: Parsed) -> dict:
 
     horizontal    = direction in ("left-to-right", "right-to-left")
     reverse_steps = direction in ("bottom-to-top", "right-to-left")
-    margin        = int(_snap_up(cfg["margin"], snap))
+    margin        = int(_snap_up(cfg["margin"], G))
     steps_ordered = list(reversed(all_steps)) if reverse_steps else all_steps
     base_gap      = cfg["h_gap"] if horizontal else cfg["v_gap"]
 
     # Per-edge corridor uses G/2 so three parallel connectors occupy 3G of gap.
     corridor_px = G // 2      # 10 px per corridor slot
     label_pad_px = G          # padding around the label rect
+
+    # Box-edge detection — when adjacent steps belong to different boxes, the
+    # default step gap leaves zero pixels between the two box borders (each
+    # box extends `box_padding` past its members). Track which steps each
+    # box covers so step_gap() can bump the gap to clear both paddings + G.
+    box_pad_value = int(cfg["box_padding"])
+    box_steps: dict[str, set[int]] = {}
+    for n in nodes:
+        if n.box:
+            box_steps.setdefault(n.box, set()).add(n.step)
+    boxes_at: dict[int, frozenset[str]] = {}
+    for s in all_steps:
+        boxes_at[s] = frozenset(b for b, ss in box_steps.items() if s in ss)
 
     def step_gap(boundary_idx: int) -> int:
         if reverse_steps:
@@ -243,14 +267,29 @@ def compute_layout(parsed: Parsed) -> dict:
         edge_count = edges_crossing.get(natural_i, 0)
         edge_need  = (edge_count + 1) * corridor_px if edge_count > 0 else 0
         needed     = max(label_need + label_pad_px, edge_need)
+        # If this boundary crosses different box memberships (e.g. one box
+        # ends and another begins), reserve enough for both boxes' inner
+        # padding plus a G of visible separation between their borders.
+        if natural_i + 1 < len(all_steps):
+            s_lo = all_steps[natural_i]
+            s_hi = all_steps[natural_i + 1]
+            boxes_lo = boxes_at.get(s_lo, frozenset())
+            boxes_hi = boxes_at.get(s_hi, frozenset())
+            # Different non-empty box sets that don't share a box → adjacent
+            # boxes meet here. (Same-set means we're staying in the same
+            # box; one-side-empty means a box meeting unboxed nodes, which
+            # the default step gap already handles.)
+            both_boxed = bool(boxes_lo) and bool(boxes_hi)
+            if both_boxed and boxes_lo.isdisjoint(boxes_hi):
+                needed = max(needed, 2 * box_pad_value + G)
         gap = max(base_gap, needed) if needed > 0 else base_gap
-        return int(_snap_up(gap, snap))
+        return int(_snap_up(gap, G))
 
     positions:  dict[str, dict] = {}
     lane_rects: dict[str, dict] = {}
 
     if not horizontal:
-        lane_quantum = snap * 2
+        lane_quantum = G * 2
         for lane in lane_order:
             lane_breadth[lane] = (
                 (lane_breadth[lane] + lane_quantum - 1) // lane_quantum
@@ -277,7 +316,12 @@ def compute_layout(parsed: Parsed) -> dict:
             cy = step_center[step]
             widths  = [sizes[cn.name][0] for cn in cell]
             cell_w  = sum(widths) + cfg["h_gap"] * (len(cell) - 1)
-            x_cursor = cx - cell_w / 2
+            # Snap the leading edge to G so multi-node cells whose total
+            # width is an odd-G multiple (e.g. two 2G-wide nodes + 3G gap
+            # = 7G) don't shift the cell off-grid. Subsequent nodes inherit
+            # G alignment because widths are 2G-multiples and h_gap snaps
+            # to G in the inner update.
+            x_cursor = _snap(cx - cell_w / 2, G)
             for cn, w in zip(cell, widths):
                 _, h = sizes[cn.name]
                 pinned = cn.position is not None
@@ -301,7 +345,7 @@ def compute_layout(parsed: Parsed) -> dict:
                 }
             cursor += lane_breadth[lane] + swimlane_gap_px
     else:
-        lane_quantum = snap * 2
+        lane_quantum = G * 2
         for lane in lane_order:
             lane_breadth[lane] = (
                 (lane_breadth[lane] + lane_quantum - 1) // lane_quantum
@@ -331,7 +375,8 @@ def compute_layout(parsed: Parsed) -> dict:
             cy = lane_center[lane]
             heights  = [sizes[cn.name][1] for cn in cell]
             cell_h   = sum(heights) + cfg["v_gap"] * (len(cell) - 1)
-            y_cursor = cy - cell_h / 2
+            # Snap leading edge to G — same reasoning as the TB branch.
+            y_cursor = _snap(cy - cell_h / 2, G)
             for cn, h in zip(cell, heights):
                 w, _ = sizes[cn.name]
                 pinned = cn.position is not None
@@ -387,7 +432,7 @@ def compute_layout(parsed: Parsed) -> dict:
 
     box_rects: dict[str, dict] = {}
     for b in parsed.boxes:
-        pad = _container_pad(b.label, cfg["box_padding"], snap, max_pad=box_pad_cap)
+        pad = _container_pad(b.label, cfg["box_padding"], G, max_pad=box_pad_cap)
         rect = _bbox(b.members, pad)
         if rect:
             box_rects[b.label] = rect
@@ -399,18 +444,50 @@ def compute_layout(parsed: Parsed) -> dict:
             group_rects[g.name] = rect
 
     # ── Notes ────────────────────────────────────────────────────────────
-    # Notes are compact sticky-note pills. Height matches the target node
-    # so the pill reads as a peer annotation rather than a small tag.
-    # Width is narrower than the default node to signal it is supplementary.
+    # Notes are compact sticky-note pills. They are PARENTED to the target
+    # node's swimlane: the pill sits inside the lane (forcing the lane to
+    # grow if it was tighter than the note), one G to the right of the
+    # target with one G of clearance above and below so the note reads as
+    # a child annotation rather than a floater bumping into adjacent shapes.
+    #
+    # Width is narrower than the default node to signal supplementary
+    # content; height grows to target_h + 2G to seat the clearance.
+    def _bbox_overlaps(a: tuple[float, float, float, float],
+                       b: tuple[float, float, float, float]) -> bool:
+        ax, ay, aw, ah = a
+        bx, by, bw, bh = b
+        return not (ax + aw <= bx or bx + bw <= ax or ay + ah <= by or by + bh <= ay)
+
+    other_node_bboxes = [
+        (p["x"], p["y"], p["w"], p["h"]) for p in positions.values()
+    ]
+    note_target_lane: dict[int, str] = {}
+
     note_positions: list[dict] = []
     for note in parsed.notes:
         target = positions.get(note.target)
         if not target:
             continue
         nw = cfg["note_width"]
-        nh = max(cfg["note_height"], int(target["h"]))  # at least as tall as target
+        # Taller than target by 1G top + 1G bottom — visible breathing
+        # room within the lane.
+        nh = max(cfg["note_height"], int(target["h"]) + 2 * G)
         nx = target["x"] + target["w"] + cfg["note_offset"]
-        ny = target["y"]                                 # top-aligned with target
+        ny = target["y"] - G  # 1G clearance above target's top edge
+        # Skip overlap with the target itself; only worry about other nodes.
+        target_bbox = (target["x"], target["y"], target["w"], target["h"])
+        candidates_to_clear = [b for b in other_node_bboxes if b != target_bbox]
+        for _ in range(80):  # cap shift at 80*G to avoid runaway
+            note_bbox = (nx, ny, nw, nh)
+            if not any(_bbox_overlaps(note_bbox, b) for b in candidates_to_clear):
+                break
+            nx += G
+        note_idx = len(note_positions)
+        target_lane = next(
+            (n.swimlane or "" for n in nodes if n.name == note.target),
+            "",
+        )
+        note_target_lane[note_idx] = target_lane
         note_positions.append(
             {
                 "text":   note.text,
@@ -421,6 +498,24 @@ def compute_layout(parsed: Parsed) -> dict:
             }
         )
 
+    # Lane grow-pass #2 — fold each note into its target's swimlane so the
+    # lane wraps the note as a child container. The first grow-pass earlier
+    # only saw the nodes; notes are placed after that, so we re-run for them.
+    if note_positions:
+        for idx, npos in enumerate(note_positions):
+            lane = note_target_lane.get(idx, "")
+            rect = lane_rects.get(lane)
+            if not rect:
+                continue
+            gp = lane_pad.get(lane, container_pad_int)
+            nx, ny = npos["x"], npos["y"]
+            nx2, ny2 = nx + npos["w"], ny + npos["h"]
+            x0 = min(rect["x"], nx - gp)
+            y0 = min(rect["y"], ny - gp)
+            x1 = max(rect["x"] + rect["w"], nx2 + gp)
+            y1 = max(rect["y"] + rect["h"], ny2 + gp)
+            lane_rects[lane] = {"x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0}
+
     return {
         "positions":      positions,
         "lane_rects":     lane_rects,
@@ -428,4 +523,5 @@ def compute_layout(parsed: Parsed) -> dict:
         "group_rects":    group_rects,
         "note_positions": note_positions,
         "direction":      direction,
+        "G":              G,
     }

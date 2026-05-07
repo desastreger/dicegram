@@ -121,6 +121,10 @@ class _NodeBox:
     h: float
     swimlane: str = ""
     step: int = 0
+    # Distance between adjacent ports on the same face. Defaults to the
+    # module constant for callers that don't yet thread G in; plan_edges
+    # always overrides with G so ports stay grid-aligned.
+    port_pitch: int = PORT_PITCH
     faces: dict[str, _Face] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -154,7 +158,7 @@ class _NodeBox:
     def port_xy(self, side: str, slot: int) -> tuple[float, float]:
         """World coords of the named port on this node, including the
         slot offset along the face's parallel axis."""
-        d = slot * PORT_PITCH
+        d = slot * self.port_pitch
         if side == "t":
             return self.cx() + d, self.y
         if side == "b":
@@ -455,17 +459,127 @@ def _assign_lanes(
         if n == 1:
             lanes[members[0]] = 0
             continue
-        # Symmetric integer assignment — for n=4: -1.5, -0.5, +0.5, +1.5
-        # rounded to ints can't both be unique; use half-step ints by
-        # multiplying by 2 to keep them integral (renderer multiplies
-        # back when computing actual pixels).
+        # Each unit of offset_steps produces a drift of (lane_pitch / 2).
+        # For drift to land on the G-grid (lane_pitch=G), every offset
+        # MUST be even. Odd n: symmetric around 0 (n=3 → -2, 0, +2).
+        # Even n: slightly asymmetric to keep all offsets even (n=2 →
+        # -2, 0; n=4 → -4, -2, 0, +2).
         for k, idx in enumerate(members):
-            offset_steps = 2 * k - (n - 1)  # …-3, -1, 1, 3, …
+            if n % 2 == 1:
+                offset_steps = 2 * k - (n - 1)
+            else:
+                offset_steps = 2 * k - n
             lanes[idx] = offset_steps
     return lanes
 
 
 # ─── Waypoint generation ──────────────────────────────────────────────
+
+def _line_crosses_box(
+    axis_value: float,
+    axis: str,
+    range_min: float,
+    range_max: float,
+    box: tuple[float, float, float, float],
+    pad: float = 0.0,
+) -> bool:
+    """True when an axis-aligned line intersects the interior of `box`.
+
+    `axis='x'` is a vertical line at x=axis_value spanning y ∈ [range_min,
+    range_max]; `axis='y'` is a horizontal line. `pad` extends the box
+    outward to keep the connector clear of the shape's halo (default 0
+    for tight fits)."""
+    bx, by, bw, bh = box
+    if axis == "x":
+        if not (bx - pad < axis_value < bx + bw + pad):
+            return False
+        return not (range_max <= by - pad or range_min >= by + bh + pad)
+    if not (by - pad < axis_value < by + bh + pad):
+        return False
+    return not (range_max <= bx - pad or range_min >= bx + bw + pad)
+
+
+def _find_clear_axis(
+    natural: float,
+    range_min: float,
+    range_max: float,
+    axis: str,
+    obstacles: list[tuple[float, float, float, float]],
+    grid: int,
+    pad: float = 0.0,
+    direction_bias: int = 0,
+) -> float:
+    """Return the closest grid-aligned position to `natural` such that an
+    axis-aligned line on `axis` between `range_min` and `range_max` does
+    not cross any obstacle. Falls back to `natural` if no clear slot is
+    found within ~60G of scanning.
+
+    `direction_bias`: 0 = symmetric search (closest cleared position on
+    either side); +1 = positive direction only (used when the U-loop
+    elbow must move further from the lane); -1 = negative only."""
+    if grid <= 0:
+        return natural
+    if not any(_line_crosses_box(natural, axis, range_min, range_max, b, pad) for b in obstacles):
+        return natural
+    for step in range(1, 80):
+        if direction_bias >= 0:
+            candidate = natural + step * grid
+            if not any(_line_crosses_box(candidate, axis, range_min, range_max, b, pad) for b in obstacles):
+                return candidate
+        if direction_bias <= 0:
+            candidate = natural - step * grid
+            if not any(_line_crosses_box(candidate, axis, range_min, range_max, b, pad) for b in obstacles):
+                return candidate
+    return natural
+
+
+def _dogleg_if_crossing(
+    pts: list[Point],
+    seg_idx: int,
+    obstacles: list[tuple[float, float, float, float]],
+    grid: int,
+    pad: float,
+) -> list[Point]:
+    """If `pts[seg_idx]`→`pts[seg_idx+1]` is an axis-aligned segment that
+    crosses any obstacle, replace it with a 3-segment dogleg routed via
+    a clear y (for horizontal segments) or x (for vertical) close to
+    the original. Returns the (possibly extended) point list."""
+    if grid <= 0 or seg_idx < 0 or seg_idx + 1 >= len(pts):
+        return pts
+    p1, p2 = pts[seg_idx], pts[seg_idx + 1]
+    is_horizontal = abs(p1.y - p2.y) < 0.5
+    is_vertical = abs(p1.x - p2.x) < 0.5
+    if is_horizontal == is_vertical:
+        return pts  # degenerate or diagonal — skip
+    if is_horizontal:
+        x_min, x_max = (p1.x, p2.x) if p1.x <= p2.x else (p2.x, p1.x)
+        if x_max - x_min < grid:
+            return pts
+        if not any(_line_crosses_box(p1.y, "y", x_min, x_max, b, pad) for b in obstacles):
+            return pts
+        clear_y = _find_clear_axis(p1.y, x_min, x_max, "y", obstacles, grid, pad)
+        if abs(clear_y - p1.y) < grid / 2:
+            return pts
+        return (
+            pts[: seg_idx + 1]
+            + [Point(p1.x, clear_y), Point(p2.x, clear_y)]
+            + pts[seg_idx + 1 :]
+        )
+    # vertical
+    y_min, y_max = (p1.y, p2.y) if p1.y <= p2.y else (p2.y, p1.y)
+    if y_max - y_min < grid:
+        return pts
+    if not any(_line_crosses_box(p1.x, "x", y_min, y_max, b, pad) for b in obstacles):
+        return pts
+    clear_x = _find_clear_axis(p1.x, y_min, y_max, "x", obstacles, grid, pad)
+    if abs(clear_x - p1.x) < grid / 2:
+        return pts
+    return (
+        pts[: seg_idx + 1]
+        + [Point(clear_x, p1.y), Point(clear_x, p2.y)]
+        + pts[seg_idx + 1 :]
+    )
+
 
 def _make_waypoints(
     sb: _NodeBox,
@@ -475,6 +589,10 @@ def _make_waypoints(
     t_side: str,
     t_off: int,
     lane: int,
+    stub: int = STUB,
+    lane_pitch: int = LANE_PITCH,
+    grid: int = 0,
+    obstacles: list[tuple[float, float, float, float]] | None = None,
 ) -> tuple[list[Point], tuple[float, float], tuple[float, float]]:
     """Produce the polyline corners between the source and target
     attachment points. Handles three shapes:
@@ -485,40 +603,77 @@ def _make_waypoints(
       · Z (S)      — two bends; opposite-side port pair across a corridor
 
     The lane offset (in half-grid units) shifts the elbow off the
-    midpoint so parallel routes don't share a segment."""
+    midpoint so parallel routes don't share a segment.
+
+    `grid` snaps the Z-shape elbow position so it lands on the visual
+    grid even when the two stubs are an odd-G apart (their midpoint
+    is otherwise half-G off). 0 disables snapping.
+
+    `obstacles` is a list of node bboxes (excluding source/target) to
+    avoid: when the natural Z-shape elbow would land in a populated
+    column or row, the elbow is shifted in G-steps until it clears."""
     sx, sy = sb.port_xy(s_side, s_off)
     tx, ty = tb.port_xy(t_side, t_off)
     sn = sb.outward(s_side)
     tn = tb.outward(t_side)
+    obs = obstacles or []
+    obstacle_pad = grid // 2 if grid > 0 else 0
+
+    def _snap_to_grid(v: float) -> float:
+        if grid <= 0:
+            return v
+        return round(v / grid) * grid
 
     # Stubs — every route exits and enters perpendicular to its face.
-    sStub = (sx + sn[0] * STUB, sy + sn[1] * STUB)
-    tStub = (tx + tn[0] * STUB, ty + tn[1] * STUB)
+    sStub = (sx + sn[0] * stub, sy + sn[1] * stub)
+    tStub = (tx + tn[0] * stub, ty + tn[1] * stub)
 
     pts: list[Point] = [Point(sStub[0], sStub[1])]
 
-    # Lane drift: half a LANE_PITCH per integer step (half-grid units
+    # Lane drift: half a lane_pitch per integer step (half-grid units
     # come from `_assign_lanes`).
-    drift = lane * (LANE_PITCH / 2)
+    drift = lane * (lane_pitch / 2)
 
     # Same-side ports → U-loop. Both stubs already point in the same
     # outward direction; align them along the dominant axis to a shared
     # extreme so the route between is a single perpendicular segment.
+    # The elbow extends beyond every stub plus any obstacle nodes that
+    # sit between the stubs along the lane axis (e.g. a U-loop on the
+    # right side of a swimlane must clear all nodes to the right of the
+    # widest stub, not just the stub itself).
     if s_side == t_side:
+        if s_side in ("l", "r"):
+            range_y_min = min(sStub[1], tStub[1])
+            range_y_max = max(sStub[1], tStub[1])
+        else:
+            range_x_min = min(sStub[0], tStub[0])
+            range_x_max = max(sStub[0], tStub[0])
         if s_side == "l":
-            x = min(sStub[0], tStub[0]) - max(0, drift)
+            base = min(sStub[0], tStub[0])
+            base = _find_clear_axis(base, range_y_min, range_y_max, "x",
+                                    obs, grid, obstacle_pad, direction_bias=-1)
+            x = base - max(0, drift)
             pts.append(Point(x, sStub[1]))
             pts.append(Point(x, tStub[1]))
         elif s_side == "r":
-            x = max(sStub[0], tStub[0]) + max(0, drift)
+            base = max(sStub[0], tStub[0])
+            base = _find_clear_axis(base, range_y_min, range_y_max, "x",
+                                    obs, grid, obstacle_pad, direction_bias=1)
+            x = base + max(0, drift)
             pts.append(Point(x, sStub[1]))
             pts.append(Point(x, tStub[1]))
         elif s_side == "t":
-            y = min(sStub[1], tStub[1]) - max(0, drift)
+            base = min(sStub[1], tStub[1])
+            base = _find_clear_axis(base, range_x_min, range_x_max, "y",
+                                    obs, grid, obstacle_pad, direction_bias=-1)
+            y = base - max(0, drift)
             pts.append(Point(sStub[0], y))
             pts.append(Point(tStub[0], y))
         else:  # 'b'
-            y = max(sStub[1], tStub[1]) + max(0, drift)
+            base = max(sStub[1], tStub[1])
+            base = _find_clear_axis(base, range_x_min, range_x_max, "y",
+                                    obs, grid, obstacle_pad, direction_bias=1)
+            y = base + max(0, drift)
             pts.append(Point(sStub[0], y))
             pts.append(Point(tStub[0], y))
         pts.append(Point(tStub[0], tStub[1]))
@@ -529,13 +684,27 @@ def _make_waypoints(
     t_horizontal = t_side in ("l", "r")
     if s_horizontal == t_horizontal:
         # Both horizontal (l/r ↔ l/r) or both vertical (t/b ↔ t/b);
-        # midpoint between stubs as the elbow corridor.
+        # midpoint between stubs as the elbow corridor. Snap the
+        # midpoint to the grid BEFORE adding drift so all parallel
+        # lanes (drift = int × G) stay grid-aligned.
         if s_horizontal:
-            mx = (sStub[0] + tStub[0]) / 2 + drift
+            base_mx = _snap_to_grid((sStub[0] + tStub[0]) / 2)
+            run_y_min = min(sStub[1], tStub[1])
+            run_y_max = max(sStub[1], tStub[1])
+            base_mx = _find_clear_axis(
+                base_mx, run_y_min, run_y_max, "x", obs, grid, obstacle_pad
+            )
+            mx = base_mx + drift
             pts.append(Point(mx, sStub[1]))
             pts.append(Point(mx, tStub[1]))
         else:
-            my = (sStub[1] + tStub[1]) / 2 + drift
+            base_my = _snap_to_grid((sStub[1] + tStub[1]) / 2)
+            run_x_min = min(sStub[0], tStub[0])
+            run_x_max = max(sStub[0], tStub[0])
+            base_my = _find_clear_axis(
+                base_my, run_x_min, run_x_max, "y", obs, grid, obstacle_pad
+            )
+            my = base_my + drift
             pts.append(Point(sStub[0], my))
             pts.append(Point(tStub[0], my))
         pts.append(Point(tStub[0], tStub[1]))
@@ -552,6 +721,32 @@ def _make_waypoints(
         pts.append(Point(sStub[0], tStub[1]))
     pts.append(Point(tStub[0], tStub[1]))
     return pts, sn, tn
+
+
+def _repair_path(
+    pts: list[Point],
+    obstacles: list[tuple[float, float, float, float]],
+    grid: int,
+    pad: float,
+) -> list[Point]:
+    """Walk every segment in `pts`; if any axis-aligned segment crosses
+    an obstacle, dogleg it to a clear y/x. Iterate until no segment
+    crosses (cap at 3 passes — the segments multiply with each repair
+    so unbounded iteration could blow up on adversarial inputs)."""
+    if not obstacles or grid <= 0:
+        return pts
+    for _ in range(3):
+        repaired = False
+        i = len(pts) - 2
+        while i >= 0:
+            new_pts = _dogleg_if_crossing(pts, i, obstacles, grid, pad)
+            if new_pts is not pts and len(new_pts) != len(pts):
+                pts = new_pts
+                repaired = True
+            i -= 1
+        if not repaired:
+            break
+    return pts
 
 
 def _simplify_path(pts: list[Point]) -> list[Point]:
@@ -582,7 +777,9 @@ def _simplify_path(pts: list[Point]) -> list[Point]:
 _LABEL_GRID = 20  # snap label position to this grid so it lands on a crisp pixel row
 
 
-def _label_anchor(waypoints: list[Point]) -> tuple[Point, str]:
+def _label_anchor(
+    waypoints: list[Point], label_grid: int = _LABEL_GRID
+) -> tuple[Point, str]:
     """Find the LONGEST axis-aligned segment in the polyline and return
     its grid-snapped midpoint. Simplifies collinear/duplicate points first
     so stub intermediates don't win over the true long segment."""
@@ -601,7 +798,7 @@ def _label_anchor(waypoints: list[Point]) -> tuple[Point, str]:
     b = pts[best_idx + 1]
     raw_x = (a.x + b.x) / 2
     raw_y = (a.y + b.y) / 2
-    g = _LABEL_GRID
+    g = max(1, label_grid)
     midpoint = Point(round(raw_x / g) * g, round(raw_y / g) * g)
     axis = "horizontal" if abs(a.y - b.y) < 0.5 else "vertical"
     return midpoint, axis
@@ -616,6 +813,16 @@ def plan_edges(
     """Build an `EdgePlan` for every edge in `parsed`. Returns
     `(plans, num_collapsed)` so the caller can surface a notice when
     reciprocal arrow pairs were merged."""
+    # Resolve the visual grid unit from layout. Every routing tunable
+    # below is set to a multiple of G so ports, stubs, and lane drifts
+    # all land on the grid — see plan: tidy-crunching-sparrow.md.
+    G = int(layout.get("G", 20))
+    stub       = G
+    port_pitch = G
+    lane_pitch = G
+    corner_r   = max(4, G // 3)
+    label_grid = G
+
     # Step 1: collapse `A -> B` + `B -> A` into one bidirectional edge,
     # but only when both legs travel in the same step direction.
     steps = {n.name: int(n.step) for n in parsed.nodes}
@@ -637,6 +844,7 @@ def plan_edges(
             h=float(p["h"]),
             swimlane=n.swimlane or "",
             step=int(n.step),
+            port_pitch=port_pitch,
         )
 
     lane_index = {sl.name: i for i, sl in enumerate(parsed.swimlanes)}
@@ -651,6 +859,13 @@ def plan_edges(
     # Step 4: assign lanes for parallel-corridor spread.
     lanes = _assign_lanes(allocations, boxes, parsed.direction)
 
+    # Pre-compute every node's bbox so each edge can pull a list of
+    # obstacles minus its own endpoints — used to keep the Z-shape
+    # elbow out of populated columns/rows.
+    node_bboxes = {
+        name: (b.x, b.y, b.w, b.h) for name, b in boxes.items()
+    }
+
     # Step 5: build the plans.
     plans: list[EdgePlan] = []
     for i, (ed, s_side, s_off, t_side, t_off) in enumerate(allocations):
@@ -661,12 +876,25 @@ def plan_edges(
         sx, sy = sb.port_xy(s_side, s_off)
         tx, ty = tb.port_xy(t_side, t_off)
         lane = lanes.get(i, 0)
-        interior, _, _ = _make_waypoints(sb, s_side, s_off, tb, t_side, t_off, lane)
+        obstacles = [
+            bb for name, bb in node_bboxes.items()
+            if name != ed.source and name != ed.target
+        ]
+        interior, _, _ = _make_waypoints(
+            sb, s_side, s_off, tb, t_side, t_off, lane,
+            stub=stub, lane_pitch=lane_pitch, grid=G,
+            obstacles=obstacles,
+        )
         # Full polyline: attachment points + interior corners. The renderer
         # receives the complete sequence and draws it verbatim — it does not
         # prepend/append endpoints itself.
         full = [Point(sx, sy)] + interior + [Point(tx, ty)]
-        label_xy, label_axis = _label_anchor(full)
+        # Final pass — dogleg any segment that still crosses an obstacle.
+        # The base shape generators avoid populated columns/rows for the
+        # main elbow, but terminal segments at sStub.y / tStub.y can still
+        # traverse a node that shares the source's or target's row.
+        full = _repair_path(full, obstacles, G, max(2, G // 4))
+        label_xy, label_axis = _label_anchor(full, label_grid=label_grid)
         plans.append(
             EdgePlan(
                 edge_id=f"e{i}",
@@ -685,7 +913,7 @@ def plan_edges(
                 label_axis=label_axis,
                 source_port=_encode(s_side, s_off),
                 target_port=_encode(t_side, t_off),
-                corner_radius=CORNER_RADIUS,
+                corner_radius=corner_r,
             )
         )
     return plans, num_collapsed

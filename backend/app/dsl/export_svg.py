@@ -4,6 +4,7 @@ from html import escape
 
 from .layout import compute_layout
 from .parser import Node, Parsed
+from .route_planner import plan_edges
 
 DARK_THEME = {
     "bg": "#0a0a0a",
@@ -142,6 +143,14 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
     th = theme or DARK_THEME
     layout = compute_layout(parsed)
     positions = layout["positions"]
+    # Run the deterministic routing pipeline up front so the SVG export
+    # shares the same edge geometry as the editor — same port picks, same
+    # obstacle avoidance, same on-grid waypoints. Plan edges are keyed by
+    # (source, target) for fast lookup below.
+    edge_plans, _ = plan_edges(parsed, layout)
+    plan_by_pair: dict[tuple[str, str], object] = {
+        (p.source_id, p.target_id): p for p in edge_plans
+    }
 
     if not positions:
         if parsed.errors:
@@ -269,19 +278,42 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
 
     parts.append(f'<rect x="{min_x:.1f}" y="{min_y:.1f}" width="{width:.1f}" height="{height:.1f}" fill="{th["bg"]}" />')
 
+    # Resolve global title-alignment toggles. Per-box `{title_align:…}` style
+    # overrides the global `setting box_title_align` (left default).
+    def _norm_align(v: object) -> str:
+        s = str(v).strip().lower() if v is not None else ""
+        return s if s in ("left", "center", "right") else "left"
+
+    settings = parsed.settings if isinstance(parsed.settings, dict) else {}
+    lane_align_default = _norm_align(settings.get("lane_title_align"))
+    box_align_default = _norm_align(settings.get("box_title_align"))
+
+    def _title_text(align: str, x: float, y: float, w: float, pad: int) -> tuple[float, str]:
+        """Return (x_attr, anchor) for a left/center/right-aligned title."""
+        if align == "center":
+            return x + w / 2, "middle"
+        if align == "right":
+            return x + w - pad, "end"
+        return x + pad, "start"
+
     for name, r in layout["lane_rects"].items():
+        tx, anchor = _title_text(lane_align_default, r["x"], r["y"], r["w"], 12)
         parts.append(
             f'<rect x="{r["x"]:.1f}" y="{r["y"]:.1f}" width="{r["w"]:.1f}" height="{r["h"]:.1f}" '
             f'rx="10" fill="{th["lane_bg"]}" stroke="{th["lane_border"]}" stroke-dasharray="4 3" />'
-            f'<text x="{r["x"]+12:.1f}" y="{r["y"]+18:.1f}" font-size="11" fill="{th["lane_label"]}" '
+            f'<text x="{tx:.1f}" y="{r["y"]+18:.1f}" text-anchor="{anchor}" font-size="11" fill="{th["lane_label"]}" '
             f'style="text-transform:uppercase; letter-spacing: 0.08em">{escape(name)}</text>'
         )
 
+    box_style_by_label = {b.label: (b.style or {}) for b in parsed.boxes}
     for label, r in layout["box_rects"].items():
+        style = box_style_by_label.get(label, {})
+        align = _norm_align(style.get("title_align", box_align_default))
+        tx, anchor = _title_text(align, r["x"], r["y"], r["w"], 10)
         parts.append(
             f'<rect x="{r["x"]:.1f}" y="{r["y"]:.1f}" width="{r["w"]:.1f}" height="{r["h"]:.1f}" '
             f'rx="8" fill="{th["box_bg"]}" stroke="{th["box_border"]}" />'
-            f'<text x="{r["x"]+10:.1f}" y="{r["y"]+14:.1f}" font-size="10" fill="{th["box_label"]}" '
+            f'<text x="{tx:.1f}" y="{r["y"]+14:.1f}" text-anchor="{anchor}" font-size="10" fill="{th["box_label"]}" '
             f'style="text-transform:uppercase; letter-spacing: 0.06em">{escape(label)}</text>'
         )
 
@@ -338,22 +370,12 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
         if not sp or not tp:
             continue
 
-        auto_sport, auto_tport = pick_ports(sp, tp)
-        sport = edge.source_port or auto_sport
-        tport = edge.target_port or auto_tport
-        sx, sy = port_point(sp, sport)
-        tx, ty = port_point(tp, tport)
-        # The middle-hop path honours the source exit axis so the
-        # arrowhead's tangent matches the entry side. If the source port
-        # is t/b, the first segment is vertical; if l/r, horizontal.
-        source_vertical = sport in ("t", "b")
+        plan = plan_by_pair.get((edge.source, edge.target))
 
         sw = {"thick": 3, "dashed": 1.5, "solid_line": 1.5, "dotted_line": 1.5, "solid": 1.5}.get(edge.kind, 1.5)
         dash = {"dashed": "6 4", "dotted_line": "2 4"}.get(edge.kind, "")
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
 
-        # Kind-default decorations. An explicit `start:` / `end:` attr on
-        # the edge always wins over these defaults.
         default_end = "arrow" if edge.kind in {"solid", "dashed", "thick"} else "none"
         default_start = "none"
         end_kind = str(edge.attrs.get("end", default_end)).lower()
@@ -373,62 +395,46 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
                 opacity_attr = f' opacity="{float(op_val):.2f}"'
         except (TypeError, ValueError):
             pass
-        # Orthogonal L-shape: first and last segment perpendicular to the
-        # handle side (so the arrow head's tangent matches the entry axis).
-        # Snap near-aligned endpoints together so sub-pixel drift doesn't
-        # produce a visible zigzag.
-        ALIGN_EPS = 4.0
-        if abs(tx - sx) < ALIGN_EPS:
-            tx = sx
-        if abs(ty - sy) < ALIGN_EPS:
-            ty = sy
-        dx = tx - sx
-        dy = ty - sy
-        if dx == 0 or dy == 0:
-            path_d = f"M {sx:.1f} {sy:.1f} L {tx:.1f} {ty:.1f}"
-        elif source_vertical:
-            # Source port is top or bottom: first segment vertical, then
-            # horizontal middle, then vertical into target. Final stroke
-            # is vertical, so the end-marker's tangent points up/down.
-            my = sy + dy / 2
-            path_d = (
-                f"M {sx:.1f} {sy:.1f} L {sx:.1f} {my:.1f} "
-                f"L {tx:.1f} {my:.1f} L {tx:.1f} {ty:.1f}"
-            )
+
+        if plan and plan.waypoints:
+            # Use the deterministic plan from route_planner — already
+            # obstacle-aware, on-grid, and dogleg-repaired.
+            coords = [(p.x, p.y) for p in plan.waypoints]
+            path_d = "M " + f"{coords[0][0]:.1f} {coords[0][1]:.1f}"
+            for x, y in coords[1:]:
+                path_d += f" L {x:.1f} {y:.1f}"
+            label_x = plan.label_x
+            label_y = plan.label_y
         else:
-            # Source port is left or right: first segment horizontal, then
-            # vertical middle, then horizontal into target.
-            mx = sx + dx / 2
-            path_d = (
-                f"M {sx:.1f} {sy:.1f} L {mx:.1f} {sy:.1f} "
-                f"L {mx:.1f} {ty:.1f} L {tx:.1f} {ty:.1f}"
-            )
+            # Fallback (no plan — shouldn't happen with current pipeline,
+            # but keeps the export robust on parse-error paths).
+            auto_sport, auto_tport = pick_ports(sp, tp)
+            sport = edge.source_port or auto_sport
+            tport = edge.target_port or auto_tport
+            sx, sy = port_point(sp, sport)
+            tx, ty = port_point(tp, tport)
+            path_d = f"M {sx:.1f} {sy:.1f} L {tx:.1f} {ty:.1f}"
+            label_x = (sx + tx) / 2
+            label_y = (sy + ty) / 2
         parts.append(
             f'<path d="{path_d}" fill="none" '
             f'stroke="{th["edge"]}" stroke-width="{sw}"{dash_attr}{opacity_attr}{marker} />'
         )
         if edge.label:
-            # Label sits on the middle (perpendicular) segment's midpoint.
-            if dx == 0 or dy == 0:
-                mx_lbl, my_lbl = (sx + tx) / 2, (sy + ty) / 2
-            elif source_vertical:
-                mx_lbl, my_lbl = (sx + tx) / 2, sy + dy / 2
-            else:
-                mx_lbl, my_lbl = sx + dx / 2, (sy + ty) / 2
             label_lines = edge.label.split("\n")
             longest = max((len(line) for line in label_lines), default=0)
             label_w = max(30, longest * 6 + 12)
             label_h = max(14, len(label_lines) * 13 + 4)
             line_h = 13
             parts.append(
-                f'<rect x="{mx_lbl-label_w/2:.1f}" y="{my_lbl-label_h/2:.1f}" '
+                f'<rect x="{label_x-label_w/2:.1f}" y="{label_y-label_h/2:.1f}" '
                 f'width="{label_w:.1f}" height="{label_h:.1f}" rx="3" '
                 f'fill="{th["edge_label_bg"]}" stroke="{th["edge_label"]}" stroke-opacity="0.25" />'
             )
-            top_y = my_lbl - label_h / 2 + 11
-            for i, ln in enumerate(label_lines):
+            top_y = label_y - label_h / 2 + 11
+            for j, ln in enumerate(label_lines):
                 parts.append(
-                    f'<text x="{mx_lbl:.1f}" y="{top_y + i * line_h:.1f}" '
+                    f'<text x="{label_x:.1f}" y="{top_y + j * line_h:.1f}" '
                     f'text-anchor="middle" font-size="11" '
                     f'fill="{th["edge_label"]}">{escape(ln)}</text>'
                 )
@@ -448,11 +454,21 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
             f'<rect x="{n["x"]:.1f}" y="{n["y"]:.1f}" width="{n["w"]:.1f}" height="{n["h"]:.1f}" '
             f'rx="4" fill="{th["note_bg"]}" stroke="{th["note_border"]}" />'
         )
+        # Center label both axes — labels inside any component (node, note,
+        # box title, etc.) should be visually centered so the component
+        # reads as one block rather than off-axis text floating in a frame.
         note_lines = (n["text"] or "").split("\n")
+        font_size = 12
+        line_h = 15
+        total_h = (len(note_lines) - 1) * line_h + font_size
+        cx = n["x"] + n["w"] / 2
+        cy = n["y"] + n["h"] / 2
+        start_y = cy - total_h / 2 + font_size * 0.78  # baseline-from-top
         for i, ln in enumerate(note_lines):
             parts.append(
-                f'<text x="{n["x"]+10:.1f}" y="{n["y"]+22 + i*15:.1f}" '
-                f'font-size="12" fill="{th["note_text"]}">{escape(ln)}</text>'
+                f'<text x="{cx:.1f}" y="{start_y + i * line_h:.1f}" '
+                f'text-anchor="middle" font-size="{font_size}" '
+                f'fill="{th["note_text"]}">{escape(ln)}</text>'
             )
 
     # Groups are temporarily disabled end-to-end: the parser still accepts

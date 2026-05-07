@@ -3,12 +3,14 @@
 	// theme tokens when the author hasn't pinned an inline colour, so a box
 	// re-skins automatically when the user swaps light ↔ dark. Inline DSL
 	// styles (`{fill:#abc}`) still win.
-	type BoxData = { label: string; fill?: string; stroke?: string };
+	type Align = 'left' | 'center' | 'right';
+	type BoxData = { label: string; fill?: string; stroke?: string; titleAlign?: Align };
 	let { data, width, height }: { data: BoxData; width?: number; height?: number } = $props();
 	const fill = $derived(
 		data.fill ?? 'var(--th-panel-muted, var(--th-panel, var(--app-surface-2)))'
 	);
 	const stroke = $derived(data.stroke ?? 'var(--th-panel-border, var(--app-border))');
+	const align: Align = $derived(data.titleAlign ?? 'left');
 </script>
 
 <div
@@ -18,7 +20,7 @@
 	style:background={fill}
 	style:border-color={stroke}
 >
-	<div class="label">{data.label}</div>
+	<div class="label" data-align={align}>{data.label}</div>
 </div>
 
 <style>
@@ -35,7 +37,6 @@
 	.label {
 		position: absolute;
 		top: 4px;
-		left: 10px;
 		font-size: 10px;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
@@ -44,4 +45,7 @@
 		padding: 1px 6px;
 		border-radius: var(--th-radius-sm, var(--app-radius-sm));
 	}
+	.label[data-align='left']   { left: 10px; }
+	.label[data-align='center'] { left: 50%; transform: translateX(-50%); }
+	.label[data-align='right']  { right: 10px; }
 </style>

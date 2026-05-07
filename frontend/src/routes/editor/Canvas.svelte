@@ -214,13 +214,24 @@
 
 		const dimStyle = 'opacity: 0.25;';
 
+		// Title alignment: per-component `{title_align: …}` wins over the
+		// global `setting box_title_align` / `setting lane_title_align`.
+		// Anything outside left|center|right falls back to left.
+		const settings = (result.settings ?? {}) as Record<string, unknown>;
+		const normAlign = (v: unknown): 'left' | 'center' | 'right' | undefined => {
+			const s = typeof v === 'string' ? v.toLowerCase().trim() : '';
+			return s === 'center' || s === 'right' || s === 'left' ? s : undefined;
+		};
+		const globalLaneAlign = normAlign(settings.lane_title_align) ?? 'left';
+		const globalBoxAlign = normAlign(settings.box_title_align) ?? 'left';
+
 		const laneNodes: Node[] = result.lanes.map((l, i) => ({
 			id: `__lane_${i}`,
 			type: 'lane',
 			position: { x: l.x, y: l.y },
 			width: l.width,
 			height: l.height,
-			data: { name: l.name },
+			data: { name: l.name, titleAlign: globalLaneAlign },
 			draggable: false,
 			selectable: true,
 			zIndex: -100,
@@ -236,7 +247,12 @@
 				position: { x: b.x as number, y: b.y as number },
 				width: b.width as number,
 				height: b.height as number,
-				data: { label: b.label, fill: b.style.fill, stroke: b.style.stroke },
+				data: {
+					label: b.label,
+					fill: b.style.fill,
+					stroke: b.style.stroke,
+					titleAlign: normAlign((b.style as Record<string, unknown>).title_align) ?? globalBoxAlign
+				},
 				draggable: false,
 				selectable: true,
 				zIndex: -50,

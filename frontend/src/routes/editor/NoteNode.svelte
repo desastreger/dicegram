@@ -23,8 +23,14 @@
 		font-size: 12px;
 		line-height: 1.3;
 		box-shadow: var(--th-shadow-sm, var(--app-shadow-sm));
+		/* Centre the label both axes — labels inside any component should
+		   read as one block rather than top-left text floating in a frame. */
+		display: flex;
+		align-items: center;
+		justify-content: center;
 	}
 	.text {
 		white-space: pre-wrap;
+		text-align: center;
 	}
 </style>
