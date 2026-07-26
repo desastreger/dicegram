@@ -19,6 +19,7 @@
   import ObjectPanel, { type ObjectKind } from './ObjectPanel.svelte';
   import type { RenderNode, RenderResult } from '$lib/render';
   import { palette } from '$lib/palette.svelte';
+  import { draftField } from '$lib/draft-field.svelte';
 
   let {
     source = $bindable(''),
@@ -127,20 +128,26 @@
   const currentStrokeWidth = $derived(selected?.style?.stroke_width ?? '');
   const currentFontFamily = $derived(selected?.style?.font_family ?? '');
 
-  let nameDraft = $state('');
-  let labelDraft = $state('');
-  let ownerDraft = $state('');
-  let tagsDraft = $state('');
-  let xDraft = $state(0);
-  let yDraft = $state(0);
-  let widthDraft = $state(0);
-  let heightDraft = $state(0);
-  let stepDraft = $state('');
-  let rxDraft = $state('');
-  let fontSizeDraft = $state('');
-  let opacityDraft = $state('');
-  let strokeWidthDraft = $state('');
-  let fontFamilyDraft = $state('');
+  // Each draft re-seeds from the live `currentXxx` render value whenever
+  // it changes (canvas drag, code edit, another panel, a theme swap, ...)
+  // EXCEPT while that specific field has focus — the old "seed once when
+  // the selected id changes" effect left every OTHER draft stale after
+  // such a change, and a later blur silently wrote the stale value back
+  // over it.
+  const nameDraft = draftField(() => currentName);
+  const labelDraft = draftField(() => currentLabel);
+  const ownerDraft = draftField(() => currentOwner);
+  const tagsDraft = draftField(() => currentTags);
+  const xDraft = draftField(() => currentX);
+  const yDraft = draftField(() => currentY);
+  const widthDraft = draftField(() => currentWidth);
+  const heightDraft = draftField(() => currentHeight);
+  const stepDraft = draftField(() => currentStep);
+  const rxDraft = draftField(() => currentRx);
+  const fontSizeDraft = draftField(() => currentFontSize);
+  const opacityDraft = draftField(() => currentOpacity);
+  const strokeWidthDraft = draftField(() => currentStrokeWidth);
+  const fontFamilyDraft = draftField(() => currentFontFamily);
 
   let labelTextarea: HTMLTextAreaElement | null = $state(null);
   let lastLabelFocusTrigger = -1;
@@ -153,29 +160,6 @@
           labelTextarea?.select();
         });
       }
-    }
-  });
-
-  let lastId = $state<string | null>(null);
-  $effect(() => {
-    if (selected && selected.id !== lastId) {
-      lastId = selected.id;
-      nameDraft = selected.id;
-      labelDraft = selected.label ?? '';
-      ownerDraft = selected.attrs?.owner ?? '';
-      tagsDraft = selected.attrs?.tags ?? '';
-      xDraft = selected.x ?? 0;
-      yDraft = selected.y ?? 0;
-      widthDraft = selected.width ?? 0;
-      heightDraft = selected.height ?? 0;
-      stepDraft = selected.attrs?.step ?? '';
-      rxDraft = selected.style?.rx ?? '';
-      fontSizeDraft = selected.style?.font_size ?? '';
-      opacityDraft = selected.style?.opacity ?? '';
-      strokeWidthDraft = selected.style?.stroke_width ?? '';
-      fontFamilyDraft = selected.style?.font_family ?? '';
-    } else if (!selected) {
-      lastId = null;
     }
   });
 
@@ -192,15 +176,15 @@
   function clearStyleNum(key: 'rx' | 'font_size' | 'opacity' | 'stroke_width') {
     if (!selected) return;
     source = removeNodeStyle(source, selected.id, key);
-    if (key === 'rx') rxDraft = '';
-    else if (key === 'font_size') fontSizeDraft = '';
-    else if (key === 'opacity') opacityDraft = '';
-    else if (key === 'stroke_width') strokeWidthDraft = '';
+    if (key === 'rx') rxDraft.value = '';
+    else if (key === 'font_size') fontSizeDraft.value = '';
+    else if (key === 'opacity') opacityDraft.value = '';
+    else if (key === 'stroke_width') strokeWidthDraft.value = '';
   }
 
   function commitFontFamily() {
     if (!selected) return;
-    const v = fontFamilyDraft.trim();
+    const v = fontFamilyDraft.value.trim();
     if (!v) {
       source = removeNodeStyle(source, selected.id, 'font_family');
     } else {
@@ -211,7 +195,7 @@
   function clearFontFamily() {
     if (!selected) return;
     source = removeNodeStyle(source, selected.id, 'font_family');
-    fontFamilyDraft = '';
+    fontFamilyDraft.value = '';
   }
 
   // PowerPoint Slide Master + Godot "Make Unique" — a node tracks the
@@ -247,11 +231,11 @@
       next = removeNodeStyle(next, selected.id, k);
     }
     source = next;
-    rxDraft = '';
-    fontSizeDraft = '';
-    opacityDraft = '';
-    strokeWidthDraft = '';
-    fontFamilyDraft = '';
+    rxDraft.value = '';
+    fontSizeDraft.value = '';
+    opacityDraft.value = '';
+    strokeWidthDraft.value = '';
+    fontFamilyDraft.value = '';
   }
 
   type ContainerOption = {
@@ -311,7 +295,7 @@
 
   function commitName() {
     if (!selected) return;
-    const next = nameDraft.trim();
+    const next = nameDraft.value.trim();
     if (!next || next === selected.id) return;
     source = setNodeName(source, selected.id, next);
     onSelectionChange(next);
@@ -319,8 +303,8 @@
 
   function commitLabel() {
     if (!selected) return;
-    if (labelDraft === selected.label) return;
-    source = setNodeLabel(source, selected.id, labelDraft);
+    if (labelDraft.value === selected.label) return;
+    source = setNodeLabel(source, selected.id, labelDraft.value);
   }
 
   function commitShape(v: string) {
@@ -330,12 +314,12 @@
 
   function commitPosition() {
     if (!selected) return;
-    source = setNodePosition(source, selected.id, xDraft, yDraft);
+    source = setNodePosition(source, selected.id, xDraft.value, yDraft.value);
   }
 
   function commitWidth() {
     if (!selected) return;
-    const v = Number(widthDraft);
+    const v = Number(widthDraft.value);
     if (!Number.isFinite(v) || v <= 0) {
       source = removeNodeAttr(source, selected.id, 'width');
     } else {
@@ -345,7 +329,7 @@
 
   function commitHeight() {
     if (!selected) return;
-    const v = Number(heightDraft);
+    const v = Number(heightDraft.value);
     if (!Number.isFinite(v) || v <= 0) {
       source = removeNodeAttr(source, selected.id, 'height');
     } else {
@@ -355,7 +339,7 @@
 
   function commitStep() {
     if (!selected) return;
-    const v = stepDraft.trim();
+    const v = stepDraft.value.trim();
     if (!v) {
       source = removeNodeAttr(source, selected.id, 'step');
     } else {
@@ -378,11 +362,11 @@
   }
 
   function commitOwner() {
-    commitAttr('owner', ownerDraft.trim());
+    commitAttr('owner', ownerDraft.value.trim());
   }
 
   function commitTags() {
-    commitAttr('tags', tagsDraft.trim());
+    commitAttr('tags', tagsDraft.value.trim());
   }
 
   function commitSelectAttr(key: string) {
@@ -546,8 +530,12 @@
           <input
             type="text"
             class="dg-input"
-            bind:value={nameDraft}
-            onblur={commitName}
+            bind:value={nameDraft.value}
+            onfocus={nameDraft.onfocus}
+            onblur={() => {
+              nameDraft.onblur();
+              commitName();
+            }}
             onkeydown={(e) => onTextKey(e, commitName)}
           />
         </label>
@@ -557,8 +545,12 @@
             bind:this={labelTextarea}
             rows="3"
             class="dg-input dg-input-multi"
-            bind:value={labelDraft}
-            onblur={commitLabel}
+            bind:value={labelDraft.value}
+            onfocus={labelDraft.onfocus}
+            onblur={() => {
+              labelDraft.onblur();
+              commitLabel();
+            }}
           ></textarea>
         </label>
       </div>
@@ -584,7 +576,9 @@
             type="number"
             aria-label="X position"
             class="dg-input"
-            bind:value={xDraft}
+            bind:value={xDraft.value}
+            onfocus={xDraft.onfocus}
+            onblur={xDraft.onblur}
             onchange={commitPosition}
           />
         </label>
@@ -594,7 +588,9 @@
             type="number"
             aria-label="Y position"
             class="dg-input"
-            bind:value={yDraft}
+            bind:value={yDraft.value}
+            onfocus={yDraft.onfocus}
+            onblur={yDraft.onblur}
             onchange={commitPosition}
           />
         </label>
@@ -604,7 +600,9 @@
             type="number"
             aria-label="Width"
             class="dg-input"
-            bind:value={widthDraft}
+            bind:value={widthDraft.value}
+            onfocus={widthDraft.onfocus}
+            onblur={widthDraft.onblur}
             onchange={commitWidth}
           />
         </label>
@@ -614,7 +612,9 @@
             type="number"
             aria-label="Height"
             class="dg-input"
-            bind:value={heightDraft}
+            bind:value={heightDraft.value}
+            onfocus={heightDraft.onfocus}
+            onblur={heightDraft.onblur}
             onchange={commitHeight}
           />
         </label>
@@ -623,8 +623,12 @@
           <input
             type="text"
             class="dg-input"
-            bind:value={stepDraft}
-            onblur={commitStep}
+            bind:value={stepDraft.value}
+            onfocus={stepDraft.onfocus}
+            onblur={() => {
+              stepDraft.onblur();
+              commitStep();
+            }}
             onkeydown={(e) => onTextKey(e, commitStep)}
           />
         </label>
@@ -648,8 +652,12 @@
           <input
             type="text"
             class="dg-input"
-            bind:value={ownerDraft}
-            onblur={commitOwner}
+            bind:value={ownerDraft.value}
+            onfocus={ownerDraft.onfocus}
+            onblur={() => {
+              ownerDraft.onblur();
+              commitOwner();
+            }}
             onkeydown={(e) => onTextKey(e, commitOwner)}
           />
         </label>
@@ -681,8 +689,12 @@
             type="text"
             placeholder="a, b, c"
             class="dg-input"
-            bind:value={tagsDraft}
-            onblur={commitTags}
+            bind:value={tagsDraft.value}
+            onfocus={tagsDraft.onfocus}
+            onblur={() => {
+              tagsDraft.onblur();
+              commitTags();
+            }}
             onkeydown={(e) => onTextKey(e, commitTags)}
           />
         </label>
@@ -837,9 +849,13 @@
             min="6"
             aria-label="Font size"
             class="dg-input"
-            bind:value={fontSizeDraft}
-            onblur={() => commitStyleNum('font_size', fontSizeDraft)}
-            onkeydown={(e) => onTextKey(e, () => commitStyleNum('font_size', fontSizeDraft))}
+            bind:value={fontSizeDraft.value}
+            onfocus={fontSizeDraft.onfocus}
+            onblur={() => {
+              fontSizeDraft.onblur();
+              commitStyleNum('font_size', fontSizeDraft.value);
+            }}
+            onkeydown={(e) => onTextKey(e, () => commitStyleNum('font_size', fontSizeDraft.value))}
           />
           <button
             type="button"
@@ -860,9 +876,13 @@
             min="0"
             aria-label="Corner radius"
             class="dg-input"
-            bind:value={rxDraft}
-            onblur={() => commitStyleNum('rx', rxDraft)}
-            onkeydown={(e) => onTextKey(e, () => commitStyleNum('rx', rxDraft))}
+            bind:value={rxDraft.value}
+            onfocus={rxDraft.onfocus}
+            onblur={() => {
+              rxDraft.onblur();
+              commitStyleNum('rx', rxDraft.value);
+            }}
+            onkeydown={(e) => onTextKey(e, () => commitStyleNum('rx', rxDraft.value))}
           />
           <button
             type="button"
@@ -884,10 +904,14 @@
             step="0.25"
             aria-label="Stroke width"
             class="dg-input"
-            bind:value={strokeWidthDraft}
-            onblur={() => commitStyleNum('stroke_width', strokeWidthDraft)}
+            bind:value={strokeWidthDraft.value}
+            onfocus={strokeWidthDraft.onfocus}
+            onblur={() => {
+              strokeWidthDraft.onblur();
+              commitStyleNum('stroke_width', strokeWidthDraft.value);
+            }}
             onkeydown={(e) =>
-              onTextKey(e, () => commitStyleNum('stroke_width', strokeWidthDraft))}
+              onTextKey(e, () => commitStyleNum('stroke_width', strokeWidthDraft.value))}
           />
           <button
             type="button"
@@ -910,9 +934,13 @@
             step="0.05"
             aria-label="Opacity"
             class="dg-input"
-            bind:value={opacityDraft}
-            onblur={() => commitStyleNum('opacity', opacityDraft)}
-            onkeydown={(e) => onTextKey(e, () => commitStyleNum('opacity', opacityDraft))}
+            bind:value={opacityDraft.value}
+            onfocus={opacityDraft.onfocus}
+            onblur={() => {
+              opacityDraft.onblur();
+              commitStyleNum('opacity', opacityDraft.value);
+            }}
+            onkeydown={(e) => onTextKey(e, () => commitStyleNum('opacity', opacityDraft.value))}
           />
           <button
             type="button"
@@ -932,8 +960,12 @@
             placeholder="inherit"
             aria-label="Font family"
             class="dg-input"
-            bind:value={fontFamilyDraft}
-            onblur={commitFontFamily}
+            bind:value={fontFamilyDraft.value}
+            onfocus={fontFamilyDraft.onfocus}
+            onblur={() => {
+              fontFamilyDraft.onblur();
+              commitFontFamily();
+            }}
             onkeydown={(e) => onTextKey(e, commitFontFamily)}
           />
           <button

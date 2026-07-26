@@ -7,7 +7,7 @@ from ..deps import current_user
 from ..models import User
 from ..palette import ALLOWED_KEYS, merge_palette
 from ..rate_limit import limiter
-from ..security import hash_password, verify_password
+from ..security import hash_password, verify_password, verify_password_dummy
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -125,7 +125,16 @@ def login(
     session: Session = Depends(get_session),
 ):
     user = session.exec(select(User).where(User.email == creds.email)).first()
-    if not user or not verify_password(user.password_hash, creds.password):
+    if not user:
+        # Run a dummy argon2 verify so this branch costs the same
+        # wall-clock time as a real password check below — otherwise an
+        # unknown email short-circuits before argon2 runs, and the ~12x
+        # timing gap reveals which emails are registered.
+        verify_password_dummy()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials"
+        )
+    if not verify_password(user.password_hash, creds.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials"
         )
@@ -158,7 +167,14 @@ def hint_lookup(
     string if no account matches. Rate-limited so the endpoint can't be
     used as a free email enumeration oracle. The hint is user-chosen and
     intentionally not secret — it's the bridge while SMTP recovery is
-    offline."""
+    offline.
+
+    Security note: this endpoint (and the signup 409 "email already
+    registered" response) are a DOCUMENTED, intentional enumeration /
+    disclosure tradeoff of the offline-recovery model — a caller who
+    knows an email can learn whether it's registered and, if a hint was
+    set, read it. That's accepted product risk here, not an oversight;
+    do not "fix" by removing the hint feature or hiding the 409."""
     user = session.exec(select(User).where(User.email == body.email)).first()
     if user is None or not user.password_hint:
         return HintLookupOut(password_hint="")

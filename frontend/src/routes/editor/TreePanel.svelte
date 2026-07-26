@@ -31,8 +31,15 @@
 		const root = byId.get(rootId);
 		if (!root) return [];
 		const out: RenderedEntry[] = [];
+		// Cycle guard: a malformed tree (e.g. a corrupted/hand-edited render
+		// payload where some node lists an ancestor as its own child) would
+		// otherwise recurse forever and blow the stack. Each id is walked
+		// at most once.
+		const visited = new Set<string>();
 
 		function walk(id: string, depth: number) {
+			if (visited.has(id)) return;
+			visited.add(id);
 			const n = byId.get(id);
 			if (!n) return;
 			if (id !== rootId) {

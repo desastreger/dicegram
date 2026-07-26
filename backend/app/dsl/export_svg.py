@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from html import escape
 
+from ..palette import _is_safe_color
 from .layout import compute_layout
 from .parser import Node, Parsed
 from .route_planner import plan_edges
@@ -115,6 +116,19 @@ def _text_lines(
     return "".join(out)
 
 
+def _safe_style_color(value: object, default: str) -> str:
+    """Validate a user-supplied inline `{fill:...}` / `{stroke:...}` /
+    `{text:...}` style colour before it reaches a raw SVG attribute.
+    Mirrors `palette._is_safe_color`, which already protects PALETTE
+    colours — this closes the same hole for the inline-style path
+    (`node.style`), which previously interpolated the value unescaped.
+    Anything that isn't a safe CSS colour is dropped in favor of the
+    theme default; an unsafe value must never reach the output."""
+    if isinstance(value, str) and _is_safe_color(value):
+        return value
+    return default
+
+
 def _node_color(node: Node, theme: dict) -> tuple[str, str, str, float, str]:
     style = node.style
     attrs = node.attrs
@@ -122,19 +136,21 @@ def _node_color(node: Node, theme: dict) -> tuple[str, str, str, float, str]:
     status = attrs.get("status", "")
     priority = attrs.get("priority", "")
 
-    fill = style.get("fill") or theme["type_fill"].get(type_attr, theme["node_fill"])
-    stroke = (
-        style.get("stroke")
-        or theme["priority_stroke"].get(priority)
+    fill_default = theme["type_fill"].get(type_attr, theme["node_fill"])
+    fill = _safe_style_color(style.get("fill"), fill_default)
+    stroke_default = (
+        theme["priority_stroke"].get(priority)
         or theme["status_stroke"].get(status)
         or theme["node_stroke"]
     )
+    stroke = _safe_style_color(style.get("stroke"), stroke_default)
     sw_override = _style_num(node, "stroke_width")
     if sw_override is not None:
         sw = sw_override
     else:
         sw = 3.0 if priority == "critical" else 2.25 if priority == "high" else 1.5
-    text = style.get("text") or theme["status_text"].get(status, theme["node_text"])
+    text_default = theme["status_text"].get(status, theme["node_text"])
+    text = _safe_style_color(style.get("text"), text_default)
     dasharray = "6 4" if status == "draft" else ""
     return fill, stroke, text, sw, dasharray
 
@@ -376,8 +392,13 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
         dash = {"dashed": "6 4", "dotted_line": "2 4"}.get(edge.kind, "")
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
 
-        default_end = "arrow" if edge.kind in {"solid", "dashed", "thick"} else "none"
-        default_start = "none"
+        default_end = "arrow" if edge.kind in {"solid", "dashed", "thick", "bidirectional"} else "none"
+        # Defense-in-depth: an edge that somehow reaches export with
+        # kind="bidirectional" but no explicit start/end attrs (attrs are
+        # normally set by the parser — see dsl/parser.py `_parse_connector`)
+        # still gets arrows at both ends rather than silently looking
+        # like a plain undirected line.
+        default_start = "arrow" if edge.kind == "bidirectional" else "none"
         end_kind = str(edge.attrs.get("end", default_end)).lower()
         start_kind = str(edge.attrs.get("start", default_start)).lower()
         end_m = marker_id(end_kind, is_start=False)

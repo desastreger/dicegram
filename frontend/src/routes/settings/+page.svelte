@@ -185,7 +185,7 @@
 		<h1 class="text-2xl font-semibold text-app">Account &amp; appearance</h1>
 		<p class="mt-1 text-sm text-muted">
 			Your display name, the password hint we'll show you on /forgot-password, and the brand
-			colours every new diegram inherits.
+			colours every new dicegram inherits.
 		</p>
 	</header>
 
@@ -251,7 +251,7 @@
 				Default colours for new elements. Per-node overrides in the inspector
 				(<code class="rounded bg-surface-2 px-1 py-0.5 text-xs">{'{fill:#…}'}</code>) still win —
 				this palette only fills in what the DSL doesn't specify. Applies to your
-				canvas, your SVG/PNG/PDF exports, and any diegrams you share.
+				canvas, your SVG/PNG/PDF exports, and any dicegrams you share.
 			</p>
 		</div>
 		<div class="flex shrink-0 items-center gap-3 text-xs text-muted">

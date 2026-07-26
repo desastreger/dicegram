@@ -239,9 +239,15 @@
 			style: filtering && !liveLanes.has(l.name) ? dimStyle : undefined
 		}));
 
+		// Index by position in the UNFILTERED `result.boxes` array — the
+		// Inspector/ObjectPanel and `+page.svelte` address a box by that
+		// same raw index (`result.boxes[index]`). Filtering BEFORE mapping
+		// would renumber every box after the first one lacking geometry,
+		// so a click could open/edit/delete the wrong box.
 		const boxNodes: Node[] = result.boxes
-			.filter((b) => b.x != null && b.y != null && b.width != null && b.height != null)
-			.map((b, i) => ({
+			.map((b, i) => ({ b, i }))
+			.filter(({ b }) => b.x != null && b.y != null && b.width != null && b.height != null)
+			.map(({ b, i }) => ({
 				id: `__box_${i}`,
 				type: 'box',
 				position: { x: b.x as number, y: b.y as number },
@@ -552,6 +558,7 @@
 		maxZoom={2}
 		connectionMode={ConnectionMode.Loose}
 		proOptions={{ hideAttribution: true }}
+		deleteKey={null}
 		onnodedragstop={handleNodeDragStop}
 		onnodeclick={handleNodeClick}
 		onedgeclick={handleEdgeClick}

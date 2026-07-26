@@ -4,3 +4,8 @@
 Dockerfile      text eol=lf
 docker-entrypoint.sh text eol=lf
 Caddyfile       text eol=lf
+scripts/restart-backend text eol=lf
+scripts/ship    text eol=lf
+
+# Windows batch scripts need CRLF or cmd.exe can misparse them.
+*.bat           text eol=crlf

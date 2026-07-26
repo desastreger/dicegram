@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session
 
@@ -6,12 +6,20 @@ from ..config import settings
 from ..db import get_session
 from ..dsl.compiler import normalize
 from ..dsl.export_svg import render_svg
-from ..dsl.parser import parse
+from ..dsl.parser import MAX_GRAPH_ELEMENTS, graph_too_large, parse
 from ..models import User
 from ..palette import build_theme
 from ..rate_limit import limiter
 
 router = APIRouter(prefix="/api/export", tags=["export"])
+
+# Restrictive headers on the raw SVG response — defense-in-depth alongside
+# the colour sanitization in dsl/export_svg.py (mirrors routers/shares.py).
+_SVG_HEADERS = {
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+    "Content-Disposition": 'inline; filename="dicegram.svg"',
+    "X-Content-Type-Options": "nosniff",
+}
 
 
 class ExportIn(BaseModel):
@@ -35,12 +43,19 @@ def export_svg(
     # diverge from what the user sees on screen.
     normalized = normalize(body.source).source
     parsed = parse(normalized)
+    if graph_too_large(parsed):
+        # Route planning is O(edges * nodes) worst case — cap graph size
+        # before paying that cost rather than rewriting the algorithm.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"diagram too large to render (max {MAX_GRAPH_ELEMENTS} nodes/edges)",
+        )
     theme_id = parsed.settings.get("color_scheme") if isinstance(parsed.settings, dict) else None
     dicegram_overrides = _palette_overrides_from_settings(parsed.settings)
     user_palette = user.branding_palette if user else None
     theme = build_theme(user_palette, theme_id=theme_id, dicegram_overrides=dicegram_overrides)
     svg = render_svg(parsed, theme=theme)
-    return Response(content=svg, media_type="image/svg+xml")
+    return Response(content=svg, media_type="image/svg+xml", headers=_SVG_HEADERS)
 
 
 def _palette_overrides_from_settings(parsed_settings: dict) -> dict[str, str]:

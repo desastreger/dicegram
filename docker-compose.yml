@@ -4,9 +4,12 @@ services:
     image: dicegram:latest
     container_name: dicegram
     restart: unless-stopped
+    # List-of-strings form (not the {path:..., required:false} map form) so
+    # this works on older docker compose plugins too (map form needs >=2.24).
+    # deploy.sh always creates .env before calling `docker compose`, so
+    # required:false isn't load-bearing here.
     env_file:
-      - path: .env
-        required: false
+      - .env
     environment:
       # SECRET_KEY is required — compose refuses to start if unset/empty.
       # Generate one with: python3 -c 'import secrets; print(secrets.token_urlsafe(48))'
@@ -40,7 +43,8 @@ services:
   # Enable with:  docker compose --profile caddy up -d
   # Requires DOMAIN (and optionally ACME_EMAIL) in .env.
   caddy:
-    image: caddy:2-alpine
+    # Pinned to a specific minor (2-alpine floated on both minor and patch).
+    image: caddy:2.11-alpine
     container_name: dicegram-caddy
     restart: unless-stopped
     profiles: ["caddy"]
@@ -48,8 +52,7 @@ services:
       dicegram:
         condition: service_healthy
     env_file:
-      - path: .env
-        required: false
+      - .env
     logging:
       driver: json-file
       options:

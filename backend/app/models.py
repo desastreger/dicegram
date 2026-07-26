@@ -48,5 +48,12 @@ class Dicegram(SQLModel, table=True):
 class Share(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     slug: str = Field(index=True, unique=True)
-    dicegram_id: int = Field(foreign_key="dicegram.id", index=True)
+    # unique=True: one Share row per Dicegram. Enforced at the DB level as
+    # belt-and-suspenders alongside the get-or-create logic in
+    # routers/shares.py (which otherwise raced under concurrent create
+    # requests and produced duplicate rows that `revoke` couldn't fully
+    # clean up). Only takes effect for freshly-created tables via
+    # create_all; `db._ensure_schema` runs an idempotent dedup + adds the
+    # equivalent unique index for pre-existing databases on upgrade.
+    dicegram_id: int = Field(foreign_key="dicegram.id", index=True, unique=True)
     created_at: datetime = Field(default_factory=utcnow)

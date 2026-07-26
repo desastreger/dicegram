@@ -33,8 +33,10 @@ if [ ! -f .env ]; then
 fi
 
 # ─── Validate .env ─────────────────────────────────────────────────────────
-if ! grep -Eq '^SECRET_KEY=.{16,}$' .env; then
-    fail "SECRET_KEY in .env is missing or too short. Generate one with: python3 -c 'import secrets; print(secrets.token_urlsafe(48))'"
+# Must match backend/app/config.py, which requires >=32 chars whenever
+# SESSION_COOKIE_SECURE=true (the default here) or it crash-loops on boot.
+if ! grep -Eq '^SECRET_KEY=.{32,}$' .env; then
+    fail "SECRET_KEY in .env is missing or too short (needs 32+ chars). Generate one with: python3 -c 'import secrets; print(secrets.token_urlsafe(48))'"
 fi
 if grep -Eq '^SECRET_KEY=replace-me' .env; then
     fail "SECRET_KEY in .env is still the placeholder. Edit .env and set a real value."
@@ -57,10 +59,10 @@ if [ "$USE_CADDY" = "1" ]; then
 fi
 
 log "Building image (first build on a fresh VPS takes 3–5 minutes)…"
-docker compose "${PROFILE_ARGS[@]:-}" build
+docker compose ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} build
 
 log "Starting services…"
-docker compose "${PROFILE_ARGS[@]:-}" up -d
+docker compose ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} up -d
 
 log "Waiting for health check (up to 90s)…"
 healthy=0
@@ -70,7 +72,7 @@ for i in $(seq 1 45); do
         healthy)  healthy=1; break ;;
         unhealthy)
             printf '\n'
-            docker compose "${PROFILE_ARGS[@]:-}" logs --tail=80 dicegram
+            docker compose ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} logs --tail=80 dicegram
             fail "dicegram is unhealthy — see logs above."
             ;;
     esac
@@ -80,12 +82,12 @@ done
 printf '\n'
 
 if [ "$healthy" != "1" ]; then
-    docker compose "${PROFILE_ARGS[@]:-}" logs --tail=80 dicegram
+    docker compose ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} logs --tail=80 dicegram
     fail "dicegram did not become healthy in 90s — see logs above."
 fi
 ok "dicegram is healthy"
 
-docker compose "${PROFILE_ARGS[@]:-}" ps
+docker compose ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} ps
 
 if [ "$USE_CADDY" = "1" ]; then
     ok "Visit https://$DOMAIN — Caddy will fetch a Let's Encrypt cert on first request."

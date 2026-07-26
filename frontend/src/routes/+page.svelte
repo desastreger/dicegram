@@ -33,10 +33,10 @@
 			<span class="display-italic" style="color: var(--app-accent);">Get a diagram.</span>
 		</h1>
 		<p class="lede app-rise app-rise-delay-2">
-			Dicegram is a tiny, friendly DSL for the kind of diegrams you sketch on a whiteboard
+			Dicegram is a tiny, friendly DSL for the kind of diagrams you sketch on a whiteboard
 			at 2&nbsp;p.m. on a Tuesday — flowcharts, swimlanes, decision trees, system maps.
 			Type a step, get a shape. Auto-layout does the boring positioning. Share, save, version
-			your diegrams.
+			your dicegrams.
 		</p>
 		<div class="cta-row app-rise app-rise-delay-3">
 			{#if auth.user}
@@ -46,7 +46,7 @@
 				</a>
 				<a href="/dicegrams" class="btn-secondary cta-secondary">
 					<Icon name="folder" size={14} />
-					<span>My diegrams</span>
+					<span>My dicegrams</span>
 				</a>
 			{:else}
 				<a href="/signup" class="btn-primary cta-primary">

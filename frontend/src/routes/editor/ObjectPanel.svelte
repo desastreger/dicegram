@@ -16,6 +16,7 @@
 		setNoteTarget,
 		removeNote
 	} from '$lib/patch';
+	import { draftField } from '$lib/draft-field.svelte';
 	import type { RenderResult } from '$lib/render';
 
 	let {
@@ -37,34 +38,19 @@
 	const group = $derived(kind === 'group' ? (result?.groups?.[index] ?? null) : null);
 	const note = $derived(kind === 'note' ? (result?.notes?.[index] ?? null) : null);
 
-	// local drafts per kind
-	let laneNameDraft = $state('');
-	let boxLabelDraft = $state('');
-	let boxFillDraft = $state('');
-	let boxStrokeDraft = $state('');
-	let boxTextDraft = $state('');
-	let groupNameDraft = $state('');
-	let noteTextDraft = $state('');
-	let noteTargetDraft = $state('');
-
-	let lastKey = '';
-	$effect(() => {
-		const key = `${kind}:${index}`;
-		if (key === lastKey) return;
-		lastKey = key;
-		if (lane) laneNameDraft = lane.name;
-		if (box) {
-			boxLabelDraft = box.label;
-			boxFillDraft = String(box.style?.fill ?? '');
-			boxStrokeDraft = String(box.style?.stroke ?? '');
-			boxTextDraft = String(box.style?.text ?? '');
-		}
-		if (group) groupNameDraft = group.name;
-		if (note) {
-			noteTextDraft = note.text;
-			noteTargetDraft = note.target;
-		}
-	});
+	// Local drafts per kind. Each re-seeds from the live render value
+	// whenever it changes (canvas edit, code edit, ...) EXCEPT while that
+	// field has focus — the old "seed once when kind:index changes"
+	// effect left a stale draft after any OUT-OF-BAND change, and a later
+	// blur silently wrote it back over the real value.
+	const laneNameDraft = draftField(() => lane?.name ?? '');
+	const boxLabelDraft = draftField(() => box?.label ?? '');
+	const boxFillDraft = draftField(() => String(box?.style?.fill ?? ''));
+	const boxStrokeDraft = draftField(() => String(box?.style?.stroke ?? ''));
+	const boxTextDraft = draftField(() => String(box?.style?.text ?? ''));
+	const groupNameDraft = draftField(() => group?.name ?? '');
+	const noteTextDraft = draftField(() => note?.text ?? '');
+	const noteTargetDraft = draftField(() => note?.target ?? '');
 
 	let confirmDelete = $state(false);
 	let confirmTimer: ReturnType<typeof setTimeout> | null = null;
@@ -91,7 +77,7 @@
 	// swimlane
 	function commitLaneName() {
 		if (!lane) return;
-		source = setSwimlaneName(source, lane.name, laneNameDraft);
+		source = setSwimlaneName(source, lane.name, laneNameDraft.value);
 	}
 	function deleteSwimlane() {
 		if (!lane) return;
@@ -104,7 +90,7 @@
 	// box
 	function commitBoxLabel() {
 		if (!box) return;
-		source = setBoxLabel(source, box.label, boxLabelDraft, box.swimlane);
+		source = setBoxLabel(source, box.label, boxLabelDraft.value, box.swimlane);
 	}
 	function commitBoxStyle(key: 'fill' | 'stroke' | 'text', value: string) {
 		if (!box) return;
@@ -121,7 +107,7 @@
 	// group
 	function commitGroupName() {
 		if (!group) return;
-		source = setGroupName(source, group.name, groupNameDraft);
+		source = setGroupName(source, group.name, groupNameDraft.value);
 	}
 	function deleteGroup() {
 		if (!group) return;
@@ -133,10 +119,10 @@
 
 	// note
 	function commitNoteText() {
-		source = setNoteText(source, index, noteTextDraft);
+		source = setNoteText(source, index, noteTextDraft.value);
 	}
 	function commitNoteTarget() {
-		source = setNoteTarget(source, index, noteTargetDraft);
+		source = setNoteTarget(source, index, noteTargetDraft.value);
 	}
 	function deleteNote() {
 		askDelete(() => {
@@ -154,8 +140,12 @@
 			<input
 				type="text"
 				class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
-				bind:value={laneNameDraft}
-				onblur={commitLaneName}
+				bind:value={laneNameDraft.value}
+				onfocus={laneNameDraft.onfocus}
+				onblur={() => {
+					laneNameDraft.onblur();
+					commitLaneName();
+				}}
 				onkeydown={(e) => onTextKey(e, commitLaneName)}
 			/>
 		</div>
@@ -178,8 +168,12 @@
 			<input
 				type="text"
 				class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
-				bind:value={boxLabelDraft}
-				onblur={commitBoxLabel}
+				bind:value={boxLabelDraft.value}
+				onfocus={boxLabelDraft.onfocus}
+				onblur={() => {
+					boxLabelDraft.onblur();
+					commitBoxLabel();
+				}}
 				onkeydown={(e) => onTextKey(e, commitBoxLabel)}
 			/>
 		</div>
@@ -195,9 +189,13 @@
 				type="text"
 				placeholder="e.g. rgba(40,70,56,0.25)"
 				class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
-				bind:value={boxFillDraft}
-				onblur={() => commitBoxStyle('fill', boxFillDraft)}
-				onkeydown={(e) => onTextKey(e, () => commitBoxStyle('fill', boxFillDraft))}
+				bind:value={boxFillDraft.value}
+				onfocus={boxFillDraft.onfocus}
+				onblur={() => {
+					boxFillDraft.onblur();
+					commitBoxStyle('fill', boxFillDraft.value);
+				}}
+				onkeydown={(e) => onTextKey(e, () => commitBoxStyle('fill', boxFillDraft.value))}
 			/>
 		</div>
 		<div class="flex items-center gap-2">
@@ -206,9 +204,13 @@
 				type="text"
 				placeholder="e.g. #475569"
 				class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
-				bind:value={boxStrokeDraft}
-				onblur={() => commitBoxStyle('stroke', boxStrokeDraft)}
-				onkeydown={(e) => onTextKey(e, () => commitBoxStyle('stroke', boxStrokeDraft))}
+				bind:value={boxStrokeDraft.value}
+				onfocus={boxStrokeDraft.onfocus}
+				onblur={() => {
+					boxStrokeDraft.onblur();
+					commitBoxStyle('stroke', boxStrokeDraft.value);
+				}}
+				onkeydown={(e) => onTextKey(e, () => commitBoxStyle('stroke', boxStrokeDraft.value))}
 			/>
 		</div>
 		<div class="flex items-center gap-2">
@@ -217,9 +219,13 @@
 				type="text"
 				placeholder="e.g. #cbd5e1"
 				class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
-				bind:value={boxTextDraft}
-				onblur={() => commitBoxStyle('text', boxTextDraft)}
-				onkeydown={(e) => onTextKey(e, () => commitBoxStyle('text', boxTextDraft))}
+				bind:value={boxTextDraft.value}
+				onfocus={boxTextDraft.onfocus}
+				onblur={() => {
+					boxTextDraft.onblur();
+					commitBoxStyle('text', boxTextDraft.value);
+				}}
+				onkeydown={(e) => onTextKey(e, () => commitBoxStyle('text', boxTextDraft.value))}
 			/>
 		</div>
 	</div>
@@ -241,8 +247,12 @@
 			<input
 				type="text"
 				class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
-				bind:value={groupNameDraft}
-				onblur={commitGroupName}
+				bind:value={groupNameDraft.value}
+				onfocus={groupNameDraft.onfocus}
+				onblur={() => {
+					groupNameDraft.onblur();
+					commitGroupName();
+				}}
 				onkeydown={(e) => onTextKey(e, commitGroupName)}
 			/>
 		</div>
@@ -270,8 +280,12 @@
 			<textarea
 				rows="3"
 				class="flex-1 resize-y rounded border border-neutral-800 bg-neutral-900 px-1.5 py-1 text-xs text-neutral-100"
-				bind:value={noteTextDraft}
-				onblur={commitNoteText}
+				bind:value={noteTextDraft.value}
+				onfocus={noteTextDraft.onfocus}
+				onblur={() => {
+					noteTextDraft.onblur();
+					commitNoteText();
+				}}
 			></textarea>
 		</div>
 		<div class="flex items-center gap-2">
@@ -279,8 +293,12 @@
 			<input
 				type="text"
 				class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
-				bind:value={noteTargetDraft}
-				onblur={commitNoteTarget}
+				bind:value={noteTargetDraft.value}
+				onfocus={noteTargetDraft.onfocus}
+				onblur={() => {
+					noteTargetDraft.onblur();
+					commitNoteTarget();
+				}}
 				onkeydown={(e) => onTextKey(e, commitNoteTarget)}
 			/>
 		</div>

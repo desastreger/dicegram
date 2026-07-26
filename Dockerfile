@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
 # ─── Stage 1: build the SvelteKit SPA ─────────────────────────────────────
-FROM node:20-alpine AS frontend-build
+# Node 20 is EOL and Vite 8/rolldown need Node >=20.19/22.13 — Node 22 is
+# current LTS and verified to build the frontend.
+FROM node:22-alpine AS frontend-build
 WORKDIR /src
 
 # Install dependencies first so layer caches survive source edits.
@@ -13,6 +15,8 @@ RUN npm run build
 
 
 # ─── Stage 2: Python runtime ──────────────────────────────────────────────
+# 3.12-slim-bookworm is already pinned to a specific minor (3.12); the
+# patch level floats to pick up security fixes automatically.
 FROM python:3.12-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -22,7 +26,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     FRONTEND_DIST=/app/frontend_dist \
     DATA_DIR=/data \
     PORT=8000 \
-    WEB_CONCURRENCY=2
+    WEB_CONCURRENCY=3
 
 WORKDIR /app
 

@@ -15,6 +15,11 @@ SHAPE_KEYWORDS = {
 }
 
 CONNECTION_PATTERNS = [
+    # "<->" MUST be checked before "->" — "->" is a substring of "<->",
+    # so matching order-sensitive `line.find(pattern)` would otherwise
+    # match the shorter "->" first and silently truncate/corrupt a
+    # bidirectional connector into a one-directional "solid" edge.
+    ("<->", "bidirectional"),
     ("==>", "thick"),
     ("-->", "dashed"),
     ("-.-", "dotted_line"),
@@ -58,6 +63,12 @@ _KIND_KEYWORD_PRESETS: dict[str, tuple[str, str]] = {
     "dashed_line": ("dashed", "arrow"),
     "thick_line": ("thick", "arrow"),
     "dotted_line": ("dotted_line", "none"),
+    # `[bidirectional]` — the bracket form the compiler's self-heal
+    # (dsl/compiler.py R8) rewrites inline `a <-> b` into. Kind stays
+    # "bidirectional" (not folded into "solid") so it round-trips through
+    # normalize()/parse() and matches the frontend's EDGE_SYM_KIND /
+    # EDGE_KIND_SYM tables, which already expect this literal kind value.
+    "bidirectional": ("bidirectional", "arrow"),
     # legacy aliases
     "arrow": ("solid", "arrow"),
     "solid_arrow": ("solid", "arrow"),
@@ -178,6 +189,23 @@ class Parsed:
     groups: list[Group] = field(default_factory=list)
     notes: list[Note] = field(default_factory=list)
     errors: list[ParseError] = field(default_factory=list)
+
+
+# Hard ceiling on graph size that any endpoint should hand to layout /
+# route planning. `compute_layout` + `plan_edges` are worst-case
+# O(nodes * edges); an unauthenticated caller can otherwise submit a
+# large-but-syntactically-tiny source (or a shared/stored Dicegram) that
+# burns several CPU-seconds per request. Routers should check this right
+# after `parse()` and reject oversized graphs before routing them — see
+# routers/render.py, routers/export.py, routers/shares.py.
+MAX_GRAPH_ELEMENTS = 2000
+
+
+def graph_too_large(parsed: "Parsed", limit: int = MAX_GRAPH_ELEMENTS) -> bool:
+    """True when the parsed graph exceeds the size this pipeline is
+    willing to lay out / route. Callers should reject with 4xx rather
+    than let compute_layout/plan_edges pay the quadratic cost."""
+    return len(parsed.nodes) > limit or len(parsed.edges) > limit
 
 
 def _strip_inline_comment(line: str) -> str:
@@ -334,6 +362,7 @@ _KIND_SYM_TO_KIND = {
     "==>": "thick",
     "---": "solid_line",
     "-.-": "dotted_line",
+    "<->": "bidirectional",
 }
 _KIND_ALIAS = {
     "solid": "solid",
@@ -345,6 +374,7 @@ _KIND_ALIAS = {
     "dotted_line": "dotted_line",
     "dotted": "dotted_line",
     "dotted-line": "dotted_line",
+    "bidirectional": "bidirectional",
 }
 
 
@@ -462,6 +492,10 @@ def _parse_connector(line: str) -> Edge | None:
     edge = Edge(source="", target="", kind=preset_kind or "solid")
     if preset_tip:
         edge.attrs["end"] = preset_tip
+    if preset_kind == "bidirectional":
+        # Arrow at BOTH ends by default — `back:`/`start:` in the body
+        # (set by `_finalize_block_edge_body` below) can still override.
+        edge.attrs["start"] = "arrow"
     if connector_name:
         edge.attrs["name"] = connector_name
     _finalize_block_edge_body(edge, body)

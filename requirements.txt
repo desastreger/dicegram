@@ -1,2 +1,2 @@
-pyside6>=6.6
-fpdf2>=2.7
+# This is the web app now — Python deps live in backend/requirements.txt.
+# (The old PySide6 desktop app that used this file has been removed.)

@@ -17,7 +17,7 @@
 		setNodePosition,
 		type ParentTarget
 	} from '$lib/patch';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { buildLlmPrompt, downloadSvg } from '$lib/export';
 	import LlmPromptDialog from '$lib/LlmPromptDialog.svelte';
 	import { renderDsl, type RenderResult, type RenderNode } from '$lib/render';
@@ -59,6 +59,11 @@
 	let filter = $state('');
 	let selectedNodeId = $state<string | null>(null);
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+	// Monotonic request sequence number — guards against a slow OLDER
+	// render response arriving after (and clobbering) a newer one. Every
+	// in-flight render only applies its result if it's still the latest
+	// one issued.
+	let renderSeq = 0;
 	let preNormalizeSource = $state<string | null>(null);
 	let normalizeToast = $state<string | null>(null);
 	let normalizeToastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -72,7 +77,7 @@
 	//             landing page iframes this to show a live "try it"
 	//             editor without re-implementing the whole stack.
 	//   embed   — chrome-less read-only viewer. For future iframe embeds
-	//             of specific shared diegrams.
+	//             of specific shared dicegrams.
 	type EditorMode = 'full' | 'demo' | 'landing' | 'embed';
 	const mode = $derived<EditorMode>((() => {
 		const m = page.url.searchParams.get('mode');
@@ -100,8 +105,30 @@
 
 	const DEMO_STORAGE_KEY = 'dicegram:demo:source';
 	const DRAFT_STORAGE_KEY = 'dicegram:editor:draft';
+	const SAVED_MIRROR_PREFIX = 'dicegram:editor:saved:';
 	let demoHydrated = false;
 	let draftHydrated = false;
+
+	// Local-storage safety net: a full quota (or a locked-down browser)
+	// must never silently swallow the user's work turn after turn. Warn
+	// once instead of failing quietly on every keystroke.
+	let storageWriteWarned = false;
+	function persistLocal(key: string, value: string) {
+		try {
+			localStorage.setItem(key, value);
+		} catch {
+			if (!storageWriteWarned) {
+				storageWriteWarned = true;
+				showSaveToast(
+					{
+						kind: 'error',
+						message: 'Browser storage is full — local backups of your work are not being saved.'
+					},
+					8000
+				);
+			}
+		}
+	}
 
 	$effect(() => {
 		if (!demoMode || demoHydrated) return;
@@ -137,16 +164,12 @@
 
 	$effect(() => {
 		if (!demoMode) return;
-		try {
-			localStorage.setItem(DEMO_STORAGE_KEY, source);
-		} catch {
-			/* ignore */
-		}
+		persistLocal(DEMO_STORAGE_KEY, source);
 	});
 
 	// Logged-in drafts (no id yet): mirror source to localStorage so a
 	// refresh doesn't discard the user's work before they've saved. Cleared
-	// once the draft becomes a real diegram (currentId set). Skipped in
+	// once the draft becomes a real dicegram (currentId set). Skipped in
 	// landing/embed — those modes are stateless, an iframe refresh should
 	// start fresh from the template.
 	$effect(() => {
@@ -173,11 +196,18 @@
 			}
 			return;
 		}
-		try {
-			localStorage.setItem(DRAFT_STORAGE_KEY, source);
-		} catch {
-			/* ignore */
-		}
+		persistLocal(DRAFT_STORAGE_KEY, source);
+	});
+
+	// Safety net for SAVED dicegrams too: autosave can fail (network blip,
+	// expired session, ...) and silently give up after showing a toast.
+	// Mirroring the live source locally, keyed by id, means a failed save
+	// doesn't mean lost work — the text is still recoverable from this
+	// browser even though it never made it to the server.
+	$effect(() => {
+		if (!persistSource || demoMode) return;
+		if (currentId == null) return;
+		persistLocal(`${SAVED_MIRROR_PREFIX}${currentId}`, source);
 	});
 
 	// When the user hits Undo on the normalize toast, we want the pre-
@@ -198,7 +228,13 @@
 		const id = currentId;
 		void id;
 		userEdited = false;
-		lastLoadSourceMark = source;
+		// `source` must NOT be a tracked dependency here — reading it live
+		// would re-run this effect on every keystroke (source changes every
+		// keystroke), permanently resetting `userEdited` back to false right
+		// after the effect below sets it true. `untrack` makes this effect
+		// depend only on `currentId` (i.e. "a different file was loaded"),
+		// which is the only time the baseline mark should reset.
+		lastLoadSourceMark = untrack(() => source);
 	});
 	$effect(() => {
 		if (source !== lastLoadSourceMark && lastLoadSourceMark !== null) {
@@ -218,8 +254,15 @@
 		if (src !== lastSeenSource) lastSeenSource = src;
 		debounceTimer = setTimeout(async () => {
 			rendering = true;
+			const seq = ++renderSeq;
 			try {
 				const res = await renderDsl(src, wantNormalize);
+				// A newer render was issued while this one was in flight —
+				// discard this (now stale) response so it can't clobber the
+				// newer result that either already landed or is still
+				// pending. Downstream patch targets (ordinals, node ids)
+				// must always point at the MOST RECENT render.
+				if (seq !== renderSeq) return;
 				// Always update the rendered canvas with the latest layout
 				// we got back. But only overwrite the editor buffer with a
 				// normalize rewrite if `source` hasn't moved on since we
@@ -257,9 +300,14 @@
 					lastLoadSourceMark = res.normalized_source;
 				}
 			} catch (err) {
+				if (seq !== renderSeq) return;
 				renderError = err instanceof ApiError ? err.message : 'render failed';
 			} finally {
-				rendering = false;
+				// Only the latest request gets to clear the spinner — an
+				// older one finishing after a newer request started must
+				// not flip `rendering` off while the newer one is still
+				// pending.
+				if (seq === renderSeq) rendering = false;
 			}
 		}, 250);
 	});
@@ -592,10 +640,30 @@
 		}, ms);
 	}
 
+	// A 401 mid-session means the auth cookie expired. Left unhandled, the
+	// autosave effect would just keep retrying every 2s and re-showing the
+	// same "autosave failed" toast forever while the user's edits pile up
+	// unsaved. `auth.refresh()` re-syncs the auth store (it sets
+	// `auth.user` to null on a real 401), which the top-of-file effect
+	// already reacts to by redirecting to /login — so a stuck session
+	// resolves itself into a clear, one-time message instead of noise.
+	let sessionExpired = $state(false);
+	function handleAuthExpired() {
+		if (sessionExpired) return;
+		sessionExpired = true;
+		showSaveToast(
+			{ kind: 'error', message: 'Session expired — log in again to keep saving your work.' },
+			10000
+		);
+		auth.refresh().catch(() => {
+			/* handled by the redirect effect once auth.user flips null */
+		});
+	}
+
 	async function save() {
 		if (demoMode) {
 			showSaveToast(
-				{ kind: 'error', message: 'Sign up to save — demo diegrams live in your browser only.' },
+				{ kind: 'error', message: 'Sign up to save — demo dicegrams live in your browser only.' },
 				5000
 			);
 			return;
@@ -620,6 +688,10 @@
 			saveMsg = 'saved';
 			setTimeout(() => (saveMsg = null), 2500);
 		} catch (err) {
+			if (err instanceof ApiError && err.status === 401) {
+				handleAuthExpired();
+				return;
+			}
 			const message = err instanceof ApiError ? err.message : 'save failed';
 			saveMsg = message;
 			showSaveToast({ kind: 'error', message: `Save failed: ${message}` }, 6000);
@@ -630,7 +702,7 @@
 
 	// Silent debounced autosave for logged-in users with an existing dicegram.
 	// For users WITHOUT an id yet, the first real edit auto-creates a
-	// diegram so refresh lands on a stable URL and autosave takes over.
+	// dicegram so refresh lands on a stable URL and autosave takes over.
 	let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
 	let autosaveStatus = $state<'idle' | 'saving' | 'saved'>('idle');
 	let autosaveStatusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -643,7 +715,10 @@
 		if (mode === 'landing' || mode === 'embed') return;
 		if (demoMode) return;
 		if (!auth.user) return;
-		// Logged-in & saved diegram → classic autosave.
+		// Session already known-expired — stop hammering the API; the
+		// redirect effect will take over once `auth.user` flips null.
+		if (sessionExpired) return;
+		// Logged-in & saved dicegram → classic autosave.
 		if (currentId != null) {
 			if (!dirty) return;
 			clearTimeout(autosaveTimer);
@@ -665,14 +740,14 @@
 		autoCreating = true;
 		autosaveStatus = 'saving';
 		try {
-			// Singular instance = "dicegram" (plural is "diegrams").
+			// Singular instance = "dicegram" (plural is "dicegrams").
 			const defaultName = name && name.trim().length > 0 ? name : 'Untitled dicegram';
 			const d = await api.create({ name: defaultName, source });
 			currentId = d.id;
 			name = d.name;
 			savedSourceSnapshot = d.source;
 			autosaveStatus = 'saved';
-			// Stabilize the URL so refresh lands back on this diegram.
+			// Stabilize the URL so refresh lands back on this dicegram.
 			try {
 				const url = new URL(window.location.href);
 				url.searchParams.set('id', String(d.id));
@@ -687,8 +762,9 @@
 			}
 			if (autosaveStatusTimer) clearTimeout(autosaveStatusTimer);
 			autosaveStatusTimer = setTimeout(() => (autosaveStatus = 'idle'), 1500);
-		} catch {
+		} catch (err) {
 			autosaveStatus = 'idle';
+			if (err instanceof ApiError && err.status === 401) handleAuthExpired();
 		} finally {
 			autoCreating = false;
 		}
@@ -707,6 +783,10 @@
 			}, 1500);
 		} catch (err) {
 			autosaveStatus = 'idle';
+			if (err instanceof ApiError && err.status === 401) {
+				handleAuthExpired();
+				return;
+			}
 			const message = err instanceof ApiError ? err.message : 'autosave failed';
 			showSaveToast({ kind: 'error', message: `Autosave failed: ${message}` }, 5000);
 		}
@@ -1192,7 +1272,7 @@
 				onclick={() => goto('/dicegrams')}
 				class="btn-secondary text-[11px]"
 			>
-				View in Diegrams
+				View in Dicegrams
 			</button>
 		{/if}
 	</div>
@@ -1237,9 +1317,9 @@
 			aria-labelledby="open-dialog-title"
 			tabindex="-1"
 		>
-			<h2 id="open-dialog-title" class="mb-3 text-lg font-semibold text-app">Your diegrams</h2>
+			<h2 id="open-dialog-title" class="mb-3 text-lg font-semibold text-app">Your dicegrams</h2>
 			{#if myDicegrams.length === 0}
-				<p class="text-sm text-muted">No saved diegrams yet.</p>
+				<p class="text-sm text-muted">No saved dicegrams yet.</p>
 			{:else}
 				<ul class="flex max-h-96 flex-col gap-1 overflow-auto">
 					{#each myDicegrams as d (d.id)}

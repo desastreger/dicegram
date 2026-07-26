@@ -18,9 +18,14 @@
 	let result = $state<RenderResult | null>(null);
 	const theme = getTheme('default-dark');
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+	// Guards against a slow older fetch/render resolving after a newer one
+	// and clobbering its result.
+	let fetchSeq = 0;
+	let renderSeq = 0;
 
 	$effect(() => {
 		const s = slug;
+		const seq = ++fetchSeq;
 		loading = true;
 		error = null;
 		fetch(`/api/shares/${s}`)
@@ -32,11 +37,13 @@
 				return r.json() as Promise<PublicDicegram>;
 			})
 			.then((d) => {
+				if (seq !== fetchSeq) return;
 				data = d;
 				source = d.source;
 				loading = false;
 			})
 			.catch((err) => {
+				if (seq !== fetchSeq) return;
 				error = err instanceof ApiError ? err.message : 'could not load shared dicegram';
 				loading = false;
 			});
@@ -47,8 +54,12 @@
 		if (!src) return;
 		clearTimeout(debounceTimer);
 		debounceTimer = setTimeout(() => {
+			const seq = ++renderSeq;
 			renderDsl(src, false)
-				.then((r) => (result = r))
+				.then((r) => {
+					if (seq !== renderSeq) return;
+					result = r;
+				})
 				.catch(() => {
 					/* keep previous */
 				});

@@ -57,10 +57,10 @@
 						<a
 							href="/dicegrams"
 							class="nav-link"
-							aria-label="My diegrams"
+							aria-label="My dicegrams"
 						>
 							<Icon name="folder" size={15} />
-							<span class="nav-label">Diegrams</span>
+							<span class="nav-label">Dicegrams</span>
 						</a>
 						<a
 							href="/editor"

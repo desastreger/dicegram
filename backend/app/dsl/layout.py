@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from .parser import Node, Parsed
 
 # ── Grid system ─────────────────────────────────────────────────────────
@@ -33,8 +35,18 @@ SHAPE_PADDING_MULT = {
 
 def _as_positive_int(value: object) -> int | None:
     try:
-        n = int(float(str(value)))
+        f = float(str(value))
     except (TypeError, ValueError):
+        return None
+    # Reject inf/nan before they ever reach int(): int(inf) raises
+    # OverflowError and int(nan) raises ValueError, either of which would
+    # otherwise propagate out of layout as an unhandled 500 — reachable
+    # unauthenticated via e.g. `width:inf` on a node.
+    if not math.isfinite(f):
+        return None
+    try:
+        n = int(f)
+    except (OverflowError, ValueError):
         return None
     return n if n > 0 else None
 
@@ -81,7 +93,16 @@ def _compute_G(cfg: dict, snap: int) -> int:
     """Resolve the visual grid unit G from the configured font size.
     Scales 1.8× the font size, snapped up to 2*snap so G stays an
     integer multiple of the snap quantum (and thus an integer)."""
-    font_size = int(cfg.get("font_size", 11))
+    raw_font_size = cfg.get("font_size", 11)
+    try:
+        f = float(raw_font_size)
+    except (TypeError, ValueError):
+        f = 11.0
+    # `setting font_size inf` / `nan` would otherwise blow up int(): inf
+    # raises OverflowError, nan raises ValueError — both unhandled 500s.
+    if not math.isfinite(f):
+        f = 11.0
+    font_size = int(f)
     line_height = font_size * 1.8
     quantum = max(1, snap * 2)
     return max(quantum, int(_snap_up(line_height, quantum)))
@@ -118,7 +139,15 @@ def _container_pad(label: str, base_pad: int, snap: int, max_pad: int | None = N
 def compute_layout(parsed: Parsed) -> dict:
     cfg = {
         **DEFAULTS,
-        **{k: v for k, v in parsed.settings.items() if isinstance(v, (int, float))},
+        # Drop non-finite overrides (`setting margin inf`, `setting h_gap
+        # nan`, …) at the boundary rather than letting them poison every
+        # downstream int()/round() call in this module — same class of
+        # bug as font_size below, just for the other numeric settings.
+        **{
+            k: v
+            for k, v in parsed.settings.items()
+            if isinstance(v, (int, float)) and math.isfinite(v)
+        },
     }
     direction = parsed.direction
     nodes = parsed.nodes

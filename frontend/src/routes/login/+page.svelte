@@ -44,7 +44,7 @@
 			<span>Welcome back</span>
 		</div>
 		<h1 class="auth-title">Log in to Dicegram</h1>
-		<p class="auth-lede">Pick up where you left off — your diegrams autosave to your account.</p>
+		<p class="auth-lede">Pick up where you left off — your dicegrams autosave to your account.</p>
 		<form onsubmit={submit} class="flex w-full flex-col gap-4">
 			<label class="flex flex-col gap-1">
 				<span class="field-label">Email</span>

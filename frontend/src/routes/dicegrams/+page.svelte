@@ -31,7 +31,7 @@
 		try {
 			items = await dicegrams.list();
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'failed to load diegrams';
+			error = err instanceof Error ? err.message : 'failed to load dicegrams';
 		} finally {
 			loading = false;
 		}
@@ -145,12 +145,12 @@
 	}
 </script>
 
-<svelte:head><title>My diegrams · Dicegram</title></svelte:head>
+<svelte:head><title>My dicegrams · Dicegram</title></svelte:head>
 
 <section class="mx-auto max-w-6xl px-4 py-6 text-app">
 	<div class="mb-4 flex items-center justify-between">
 		<h1 class="flex items-baseline gap-2 text-lg font-semibold">
-			My diegrams
+			My dicegrams
 			<span class="text-xs text-dim">{items.length}</span>
 		</h1>
 		<button
@@ -164,10 +164,10 @@
 	</div>
 
 	{#if loading}
-		<p role="status" aria-live="polite" class="text-xs text-muted">Loading diegrams…</p>
+		<p role="status" aria-live="polite" class="text-xs text-muted">Loading dicegrams…</p>
 	{:else if error}
 		<div role="alert" class="toast toast-error p-3 text-xs">
-			<p class="font-medium text-app">Could not load diegrams</p>
+			<p class="font-medium text-app">Could not load dicegrams</p>
 			<p class="mt-1 text-danger">{error}</p>
 			<button type="button" onclick={load} class="btn-danger mt-2 text-[11px]">
 				Try again
@@ -175,7 +175,7 @@
 		</div>
 	{:else if items.length === 0}
 		<div class="panel p-10 text-center" style="border-style: dashed;">
-			<p class="text-sm text-app">You don't have any diegrams yet.</p>
+			<p class="text-sm text-app">You don't have any dicegrams yet.</p>
 			<p class="mt-1 text-xs text-dim">
 				Start with a blank canvas and your work will show up here.
 			</p>

@@ -1,4 +1,4 @@
-from pydantic import field_validator
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,21 +22,22 @@ class Settings(BaseSettings):
     # dev runs without env config.
     app_base_url: str = "http://localhost:5173"
 
-    @field_validator("secret_key")
-    @classmethod
-    def _reject_default_in_prod(cls, v: str) -> str:
+    @model_validator(mode="after")
+    def _reject_default_in_prod(self) -> "Settings":
         # Only enforce when NOT in dev — detection is crude: if the cookie is
-        # marked secure (i.e. someone set SESSION_COOKIE_SECURE=true), we're
-        # not running locally, so refuse to boot with a dev secret.
-        import os
-        if os.getenv("SESSION_COOKIE_SECURE", "").lower() in {"1", "true", "yes"}:
-            if v in _BAD_SECRETS or len(v) < 32:
+        # marked secure (i.e. SESSION_COOKIE_SECURE=true), we're not running
+        # locally, so refuse to boot with a dev secret. This runs on the
+        # RESOLVED settings (post env-file / env-var loading), unlike a
+        # plain field_validator reading os.getenv directly, which never saw
+        # values that came from `.env` rather than the real environment.
+        if self.session_cookie_secure:
+            if self.secret_key in _BAD_SECRETS or len(self.secret_key) < 32:
                 raise ValueError(
                     "SECRET_KEY is missing, too short, or still the default. "
                     "Generate one with: "
                     "python3 -c 'import secrets; print(secrets.token_urlsafe(48))'"
                 )
-        return v
+        return self
 
 
 settings = Settings()

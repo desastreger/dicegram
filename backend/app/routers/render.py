@@ -1,12 +1,13 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from ..config import settings
 from ..dsl.compiler import normalize
 from ..dsl.layout import compute_layout
-from ..dsl.parser import parse
+from ..dsl.parser import MAX_GRAPH_ELEMENTS, graph_too_large, parse
 from ..dsl.route_planner import plan_edges
 from ..dsl.tree import build_tree
+from ..rate_limit import limiter
 
 router = APIRouter(prefix="/api/render", tags=["render"])
 
@@ -144,7 +145,13 @@ def _box_id(label: str, swimlane: str | None) -> str:
 
 
 @router.post("", response_model=RenderOut)
-def render(body: RenderIn) -> RenderOut:
+@limiter.limit("60/minute")
+def render(request: Request, response: Response, body: RenderIn) -> RenderOut:
+    # `response` isn't used directly — it exists so slowapi's decorator
+    # (which needs a real Response to attach X-RateLimit-* headers to,
+    # since this endpoint returns a RenderOut body rather than a raw
+    # Response) has somewhere to inject them. Same pattern already used
+    # by routers/auth.py's signup/login/hint_lookup.
     original = body.source
     notices_out: list[NoticeOut] = []
     normalized_source = original
@@ -160,6 +167,15 @@ def render(body: RenderIn) -> RenderOut:
         ]
 
     parsed = parse(normalized_source)
+    if graph_too_large(parsed):
+        # The route planner is O(edges * nodes) in the worst case — an
+        # oversized-but-syntactically-small source can burn multiple CPU
+        # seconds unauthenticated. Reject before layout/routing pays that
+        # cost rather than trying to bound the algorithm itself.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"diagram too large to render (max {MAX_GRAPH_ELEMENTS} nodes/edges)",
+        )
     layout = compute_layout(parsed)
     # The route planner is the SINGLE source of truth for connector
     # geometry — it collapses reciprocal pairs, allocates ports

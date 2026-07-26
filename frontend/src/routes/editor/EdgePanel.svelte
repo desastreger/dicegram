@@ -8,6 +8,7 @@
 		setEdgeAttr,
 		removeEdge
 	} from '$lib/patch';
+	import { draftField } from '$lib/draft-field.svelte';
 	import type { RenderResult } from '$lib/render';
 
 	let {
@@ -32,14 +33,11 @@
 		ordinal >= 0 ? (result?.edges?.[ordinal] ?? null) : null
 	);
 
-	let labelDraft = $state('');
-	let lastId: string | null = null;
-	$effect(() => {
-		if (edge && selectedEdgeId !== lastId) {
-			lastId = selectedEdgeId;
-			labelDraft = edge.label ?? '';
-		}
-	});
+	// Re-seeds from the live edge whenever it changes (canvas edit, code
+	// edit, another panel, ...) EXCEPT while the field itself has focus —
+	// so an out-of-band change never gets clobbered by a stale draft on
+	// blur, but live typing is never interrupted either.
+	const labelDraft = draftField(() => edge?.label ?? '');
 
 	const kindOptions = [
 		{ value: 'solid', label: 'solid ( → )' },
@@ -76,14 +74,11 @@
 	);
 	const currentEndDeco = $derived(edge?.attrs?.end ?? defaultEnd);
 	const currentStartDeco = $derived(edge?.attrs?.start ?? 'none');
-	let opacityDraft = $state('');
-	$effect(() => {
-		if (edge && selectedEdgeId !== lastId) opacityDraft = edge.attrs?.opacity ?? '';
-	});
+	const opacityDraft = draftField(() => edge?.attrs?.opacity ?? '');
 
 	function commitLabel() {
 		if (ordinal < 0) return;
-		source = setEdgeLabel(source, ordinal, labelDraft);
+		source = setEdgeLabel(source, ordinal, labelDraft.value);
 	}
 
 	function commitKind(value: string) {
@@ -116,7 +111,7 @@
 
 	function commitOpacity() {
 		if (ordinal < 0) return;
-		const v = opacityDraft.trim();
+		const v = opacityDraft.value.trim();
 		if (v === '') {
 			source = setEdgeAttr(source, ordinal, 'opacity', null);
 			return;
@@ -183,8 +178,12 @@
 			<input
 				type="text"
 				class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 text-xs text-neutral-100"
-				bind:value={labelDraft}
-				onblur={commitLabel}
+				bind:value={labelDraft.value}
+				onfocus={labelDraft.onfocus}
+				onblur={() => {
+					labelDraft.onblur();
+					commitLabel();
+				}}
 				onkeydown={onLabelKey}
 			/>
 		</div>
@@ -233,8 +232,12 @@
 				max="1"
 				placeholder="1.0"
 				class="h-6 flex-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 font-mono text-[11px] text-neutral-100"
-				bind:value={opacityDraft}
-				onblur={commitOpacity}
+				bind:value={opacityDraft.value}
+				onfocus={opacityDraft.onfocus}
+				onblur={() => {
+					opacityDraft.onblur();
+					commitOpacity();
+				}}
 				onkeydown={(e) => {
 					if (e.key === 'Enter') {
 						(e.currentTarget as HTMLElement).blur();

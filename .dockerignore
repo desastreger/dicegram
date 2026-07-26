@@ -28,10 +28,6 @@ backend/dicegram.db
 .DS_Store
 Thumbs.db
 
-# Legacy desktop app (not part of the web stack)
-diagram_app.py
-run.py
-
 # Docs and dev artifacts
 *.md
 examples/

@@ -513,7 +513,7 @@ issue -> done
 reject --> done : "retry"
 
 ==============================
-CURRENT DIEGRAM (modify this)
+CURRENT DICEGRAM (modify this)
 ==============================
 
 ${source}

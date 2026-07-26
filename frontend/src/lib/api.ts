@@ -15,7 +15,19 @@ async function handle<T>(res: Response): Promise<T> {
 		throw new ApiError(res.status, body.detail ?? 'request failed');
 	}
 	if (res.status === 204) return undefined as T;
-	return res.json() as Promise<T>;
+	// A non-204 response can still have an empty body (some endpoints, or
+	// a proxy that strips it) — `res.json()` throws a raw SyntaxError on
+	// empty input, which callers only expect to catch as an `ApiError`.
+	// Read as text first so an empty body resolves to `undefined` instead
+	// of an unhandled parse exception, and wrap any genuine malformed-JSON
+	// error the same way.
+	const text = await res.text();
+	if (text.length === 0) return undefined as T;
+	try {
+		return JSON.parse(text) as T;
+	} catch {
+		throw new ApiError(res.status, 'invalid response from server');
+	}
 }
 
 export const api = {

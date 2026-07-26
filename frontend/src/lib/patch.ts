@@ -54,6 +54,88 @@ export function escapeRegex(s: string): string {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// --- quote/comment-aware regex helpers --------------------------------------
+//
+// A line of DSL can carry a quoted label and/or a trailing `//` comment
+// that legitimately contains text which LOOKS like DSL syntax (`@(1,2)`,
+// `from:x`, `{fill: x}`, an arrow symbol, ...). Every surgical rewrite in
+// this file that scans a whole line for a syntactic token must ignore
+// occurrences that fall inside one of those protected spans — otherwise
+// editing one field can silently corrupt an unrelated label/comment.
+
+/** Character ranges in `line` that are inside a quoted string or a
+ *  trailing `//` comment. */
+function protectedSpans(line: string): Array<[number, number]> {
+	const spans: Array<[number, number]> = [];
+	let i = 0;
+	while (i < line.length) {
+		const c = line[i];
+		if (c === '"') {
+			let j = i + 1;
+			while (j < line.length && line[j] !== '"') {
+				if (line[j] === '\\') j++;
+				j++;
+			}
+			j = Math.min(j + 1, line.length);
+			spans.push([i, j]);
+			i = j;
+			continue;
+		}
+		if (c === '/' && line[i + 1] === '/') {
+			spans.push([i, line.length]);
+			break;
+		}
+		i++;
+	}
+	return spans;
+}
+
+function isProtectedIndex(spans: Array<[number, number]>, index: number): boolean {
+	return spans.some(([s, e]) => index >= s && index < e);
+}
+
+/** First match of `re` in `line` that doesn't start inside a protected
+ *  span, or `null`. */
+function findFirstUnprotected(line: string, re: RegExp): RegExpExecArray | null {
+	const spans = protectedSpans(line);
+	const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+	let m: RegExpExecArray | null;
+	while ((m = g.exec(line)) !== null) {
+		if (!isProtectedIndex(spans, m.index)) return m;
+		if (m[0].length === 0) g.lastIndex++;
+	}
+	return null;
+}
+
+/** Like `String.replace`, but skips any match that starts inside a
+ *  protected span — that text is copied through verbatim instead. Works
+ *  correctly even when the replacement text is a different length than
+ *  the match (unlike a mask-and-restore approach, which would need the
+ *  offsets to stay aligned). */
+function replaceOutsideProtected(
+	line: string,
+	re: RegExp,
+	replacement: string | ((m: RegExpExecArray) => string)
+): string {
+	const spans = protectedSpans(line);
+	const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+	let out = '';
+	let last = 0;
+	let m: RegExpExecArray | null;
+	while ((m = g.exec(line)) !== null) {
+		if (isProtectedIndex(spans, m.index)) {
+			if (m[0].length === 0) g.lastIndex++;
+			continue;
+		}
+		out += line.slice(last, m.index);
+		out += typeof replacement === 'function' ? replacement(m) : m[0].replace(re, replacement);
+		last = m.index + m[0].length;
+		if (m[0].length === 0) g.lastIndex++;
+	}
+	out += line.slice(last);
+	return out;
+}
+
 export type NodeLineParts = {
 	indent: string;
 	shape: string;
@@ -62,19 +144,39 @@ export type NodeLineParts = {
 	attrs: Record<string, string>;
 	style: Record<string, string>;
 	position: { x: number; y: number } | null;
+	// Verbatim leftover from the line's tail that isn't one of the known
+	// fields above — in practice almost always just a trailing `//
+	// comment`, occasionally stray/future syntax we don't parse yet.
+	// Round-tripped as-is so a surgical edit to some OTHER field on the
+	// line never silently deletes it.
+	trailing: string;
 };
 
 function parseRest(rest: string): {
 	attrs: Record<string, string>;
 	style: Record<string, string>;
 	position: { x: number; y: number } | null;
+	trailing: string;
 } {
 	const style: Record<string, string> = {};
 	const attrs: Record<string, string> = {};
 	let position: { x: number; y: number } | null = null;
 	let working = rest;
 
-	const sm = STYLE_BLOCK_RE.exec(working);
+	// Trailing `// comment` — take the first `//` that isn't inside a
+	// quoted value, and strip it (plus everything after) before parsing
+	// anything else so it can't be mistaken for style/position/attr text.
+	const cm = findFirstUnprotected(working, /\/\//);
+	let comment = '';
+	if (cm) {
+		comment = working.slice(cm.index).trimEnd();
+		working = working.slice(0, cm.index);
+	}
+
+	// Style block `{...}` — found on a protected-span-aware scan so braces
+	// inside a quoted attr value (`owner:"team {x}"`) are never mistaken
+	// for the style block.
+	const sm = findFirstUnprotected(working, STYLE_BLOCK_RE);
 	if (sm) {
 		for (const pair of sm[1].split(',')) {
 			const colonIdx = pair.indexOf(':');
@@ -87,7 +189,7 @@ function parseRest(rest: string): {
 		working = working.slice(0, sm.index) + working.slice(sm.index + sm[0].length);
 	}
 
-	const pm = POSITION_RE.exec(working);
+	const pm = findFirstUnprotected(working, POSITION_RE);
 	if (pm) {
 		position = { x: parseFloat(pm[1]), y: parseFloat(pm[2]) };
 		working = working.slice(0, pm.index) + working.slice(pm.index + pm[0].length);
@@ -95,13 +197,28 @@ function parseRest(rest: string): {
 
 	let am: RegExpExecArray | null;
 	ATTR_FIND_RE.lastIndex = 0;
+	const attrSpans: Array<[number, number]> = [];
 	while ((am = ATTR_FIND_RE.exec(working)) !== null) {
 		let v = am[2];
 		if (v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
 		attrs[am[1]] = v;
+		attrSpans.push([am.index, am.index + am[0].length]);
 	}
 
-	return { style, attrs, position };
+	// Whatever wasn't consumed as an attr (normally just whitespace) —
+	// preserve any non-whitespace leftover verbatim rather than dropping it.
+	let cursor = 0;
+	let unparsed = '';
+	for (const [s, e] of attrSpans) {
+		unparsed += working.slice(cursor, s);
+		cursor = e;
+	}
+	unparsed += working.slice(cursor);
+	const extra = unparsed.trim();
+
+	const trailing = [extra, comment].filter((s) => s.length > 0).join(' ');
+
+	return { style, attrs, position, trailing };
 }
 
 export function findNodeLineIndex(source: string, id: string): number {
@@ -118,8 +235,8 @@ export function parseNodeLine(line: string): NodeLineParts | null {
 	if (!m) return null;
 	const [, indent, shape, name, rawLabel, rest] = m;
 	const label = joinLabelParts(rawLabel);
-	const { style, attrs, position } = parseRest(rest);
-	return { indent, shape, name, label, style, attrs, position };
+	const { style, attrs, position, trailing } = parseRest(rest);
+	return { indent, shape, name, label, style, attrs, position, trailing };
 }
 
 const ATTR_ORDER = [
@@ -161,6 +278,10 @@ export function serializeNodeLine(parts: NodeLineParts): string {
 
 	if (parts.position) {
 		segments.push(`@(${Math.round(parts.position.x)}, ${Math.round(parts.position.y)})`);
+	}
+
+	if (parts.trailing) {
+		segments.push(parts.trailing);
 	}
 
 	return segments.join(' ');
@@ -205,7 +326,93 @@ export function setNodeShape(source: string, id: string, shape: string): string 
 }
 
 export function setNodeName(source: string, id: string, newName: string): string {
-	return modifyNodeLine(source, id, (p) => ({ ...p, name: newName }));
+	const renamed = modifyNodeLine(source, id, (p) => ({ ...p, name: newName }));
+	// Node not found, or renaming to itself — nothing else to rewrite.
+	if (renamed === source || newName === id) return renamed;
+	// The definition line is renamed above; every OTHER reference to the
+	// old id (edge endpoints, connector from:/to: fields, note targets)
+	// would otherwise silently keep pointing at a now-nonexistent node.
+	return renamed
+		.split('\n')
+		.map((line) => renameIdInLine(line, id, newName))
+		.join('\n');
+}
+
+/** Rewrite genuine references to `oldId` on a single (non-definition)
+ *  line: inline edge endpoints, a block-edge header, `[connector]`
+ *  from:/to: fields, and note targets. Every match is anchored to a
+ *  structural position in the DSL grammar (or filtered through
+ *  `protectedSpans`), so a quoted label or `//` comment that happens to
+ *  contain the same word is left untouched. */
+function renameIdInLine(line: string, oldId: string, newId: string): string {
+	// Node definition lines never carry a "reference" to rewrite here (and
+	// this sidesteps the fact that a shape name can collide with a legacy
+	// connector-keyword alias, e.g. `[line] mynode "…"`).
+	if (parseNodeLine(line)) return line;
+
+	const escaped = escapeRegex(oldId);
+
+	// Inline edge — `old -> x`, `x -> old`, `old@r -> x@l : "…"`. Isolate
+	// the structural "src (arrow) dst" head from the tail (label/attrs)
+	// first, so the id swap can never reach into a quoted label.
+	const em = EDGE_LINE_RE.exec(line);
+	if (em && (em[2] === oldId || em[5] === oldId)) {
+		const tailLen = em[7] ? em[7].length : 0;
+		const head = line.slice(0, line.length - tailLen);
+		const tail = line.slice(line.length - tailLen);
+		let newHead = head;
+		if (em[2] === oldId) {
+			newHead = newHead.replace(new RegExp(`^(\\s*)${escaped}\\b`), `$1${newId}`);
+		}
+		if (em[5] === oldId) {
+			newHead = newHead.replace(
+				new RegExp(`((?:->|-->|==>|---|-\\.-|<->)\\s*)${escaped}\\b(?=(?:@\\w+)?\\s*$)`),
+				`$1${newId}`
+			);
+		}
+		return newHead + tail;
+	}
+
+	// Block-form edge header — `edge old -> x {` / `old -> x {`. The body
+	// (subsequent lines up to the matching `}`) never references the node
+	// by bare id, so only the header line needs rewriting.
+	const bm = EDGE_BLOCK_HEADER_RE.exec(line);
+	if (bm && (bm[2] === oldId || bm[4] === oldId)) {
+		let header = bm[0];
+		if (bm[2] === oldId) {
+			header = header.replace(new RegExp(`^(\\s*(?:edge\\s+)?)${escaped}\\b`), `$1${newId}`);
+		}
+		if (bm[4] === oldId) {
+			header = header.replace(
+				new RegExp(`((?:->|-->|==>|---|-\\.-|<->)\\s*)${escaped}\\b(?=(?:@\\w+)?\\s*\\{)`),
+				`$1${newId}`
+			);
+		}
+		return header + line.slice(bm[0].length);
+	}
+
+	// `[connector]` / kind-keyword bracket form — refs live in `from:` /
+	// `to:` (and their long-form aliases) fields, never in the label.
+	if (CONNECTOR_LINE_RE.test(line)) {
+		const refRe = new RegExp(
+			`(\\b(?:from|source|origin|to|target|destination)\\s*:\\s*)${escaped}(?=$|[\\s@])`,
+			'i'
+		);
+		return replaceOutsideProtected(line, refRe, `$1${newId}`);
+	}
+
+	// Note target — bracket form `target:` (+ `to:`/`for:` aliases) and
+	// the legacy `note "text" [target]` form.
+	if (NOTE_BRACKET_LINE_RE.test(line)) {
+		const targetRe = new RegExp(`(\\b(?:target|to|for)\\s*:\\s*)${escaped}(?=$|\\s)`, 'i');
+		return replaceOutsideProtected(line, targetRe, `$1${newId}`);
+	}
+	const noteLegacy = line.match(NOTE_LEGACY_LINE_RE);
+	if (noteLegacy && noteLegacy[3] === oldId) {
+		return `${noteLegacy[1]}note ${noteLegacy[2]} [${newId}]`;
+	}
+
+	return line;
 }
 
 export function setNodeAttr(source: string, id: string, key: string, value: string): string {
@@ -236,19 +443,68 @@ export function removeNodeStyle(source: string, id: string, key: string): string
 
 export function removeNode(source: string, id: string): string {
 	const lines = source.split('\n');
+
+	// First pass: block-form edges (`edge a -> b { … }`) whose header
+	// references `id` must be dropped as a WHOLE unit — header, body, and
+	// closing brace — or the body is left behind as unparseable garbage.
+	const dropLine = new Array<boolean>(lines.length).fill(false);
+	for (let i = 0; i < lines.length; i++) {
+		const bm = lines[i].match(EDGE_BLOCK_HEADER_RE);
+		if (!bm) continue;
+		if (bm[2] !== id && bm[4] !== id) continue;
+		const close = findMatchingClose(lines, i);
+		const end = close == null ? i : close;
+		for (let j = i; j <= end; j++) dropLine[j] = true;
+	}
+
 	const result: string[] = [];
-	const idRe = new RegExp(`(?:^|\\s)${escapeRegex(id)}(?:$|\\s|:)`);
-	for (const line of lines) {
+	for (let i = 0; i < lines.length; i++) {
+		if (dropLine[i]) continue;
+		const line = lines[i];
+
 		const parts = parseNodeLine(line);
-		if (parts && parts.name === id) continue;
-		if (/->|-->|==>|---|-\.-/.test(line) && idRe.test(line)) continue;
-		// `[connector]` form carries refs in `from:` / `to:` attrs.
+		if (parts) {
+			if (parts.name === id) continue;
+			result.push(line);
+			continue;
+		}
+
+		// Inline edge — `a -> b`, `a@r -> b@l : "…"`. Src/dst are captured
+		// as whole structural tokens, so a quoted label that happens to
+		// contain the bare word `id` (e.g. `x -> y : "call a now"`) is
+		// never mistaken for a reference.
+		const em = line.match(EDGE_LINE_RE);
+		if (em) {
+			if (em[2] === id || em[5] === id) continue;
+			result.push(line);
+			continue;
+		}
+
+		// `[connector]` / kind-keyword bracket form — refs live in the
+		// parsed `from:` / `to:` fields, never in the label.
 		if (CONNECTOR_LINE_RE.test(line)) {
 			const conn = parseConnectorLineEdge(line);
 			if (conn && (conn.src === id || conn.dst === id)) continue;
+			result.push(line);
+			continue;
 		}
-		const noteM = line.match(/^\s*note\s+"[^"]*"\s+\[(\w+)\]\s*$/);
-		if (noteM && noteM[1] === id) continue;
+
+		// Notes — bracket form `target:`/`to:`/`for:` and the legacy
+		// `note "text" [target]` form.
+		const noteBracket = line.match(NOTE_BRACKET_LINE_RE);
+		if (noteBracket) {
+			const { target } = parseNoteAttrs(noteBracket[4] ?? '');
+			if (target === id) continue;
+			result.push(line);
+			continue;
+		}
+		const noteLegacy = line.match(NOTE_LEGACY_LINE_RE);
+		if (noteLegacy) {
+			if (noteLegacy[3] === id) continue;
+			result.push(line);
+			continue;
+		}
+
 		result.push(line);
 	}
 	return result.join('\n');
@@ -280,10 +536,13 @@ function flipAnchorsInLine(line: string, oldFrom: string, oldTo: string, newFrom
 	let out = line;
 	// Bracket form — `from_anchor:bottom` / `to_anchor:top`. Word-boundary on
 	// the value side so `top` doesn't match `topology`. Case-insensitive.
+	// `replaceOutsideProtected` skips any occurrence inside a quoted label
+	// or `//` comment, so a note that happens to say "from_anchor:bottom"
+	// as prose is left alone.
 	const fromRe = new RegExp(`(\\bfrom_anchor:)${oldFrom}\\b`, 'i');
 	const toRe = new RegExp(`(\\bto_anchor:)${oldTo}\\b`, 'i');
-	out = out.replace(fromRe, `$1${newFrom}`);
-	out = out.replace(toRe, `$1${newTo}`);
+	out = replaceOutsideProtected(out, fromRe, `$1${newFrom}`);
+	out = replaceOutsideProtected(out, toRe, `$1${newTo}`);
 	// Inline `A@b -> B@t` shorthand. The single-letter port alias sits
 	// directly after `@` and runs until whitespace or arrow terminator.
 	const oldFromShort = ANCHOR_TO_SHORT[oldFrom];
@@ -298,7 +557,7 @@ function flipAnchorsInLine(line: string, oldFrom: string, oldTo: string, newFrom
 		// the FIRST `@x` on the line is the from-side, the SECOND is the
 		// to-side (matches how the parser walks left-to-right).
 		let count = 0;
-		out = out.replace(inlineFromRe, (_match) => {
+		out = replaceOutsideProtected(out, inlineFromRe, () => {
 			count += 1;
 			return count === 1 ? `@${newFromShort}` : `@${oldFromShort}`;
 		});
@@ -308,11 +567,11 @@ function flipAnchorsInLine(line: string, oldFrom: string, oldTo: string, newFrom
 		// Only rewrite `@<oldToShort>` where it appears on the right-hand
 		// side. The cleanest signal is "after the arrow symbol" — find
 		// the arrow first.
-		const arrowM = out.match(/(->|-->|==>|---|-\.-)/);
+		const arrowM = out.match(/(->|-->|==>|---|-\.-|<->)/);
 		if (arrowM && arrowM.index !== undefined) {
 			const head = out.slice(0, arrowM.index + arrowM[0].length);
 			const tail = out.slice(arrowM.index + arrowM[0].length);
-			out = head + tail.replace(inlineToRe, `@${newToShort}`);
+			out = head + replaceOutsideProtected(tail, inlineToRe, `@${newToShort}`);
 		}
 	}
 	return out;
@@ -332,7 +591,9 @@ export function setDirection(source: string, dir: string): string {
 	const oldAnchors = DIR_DEFAULT_ANCHORS[current] ?? ['bottom', 'top'];
 	const newAnchors = DIR_DEFAULT_ANCHORS[dir] ?? ['bottom', 'top'];
 	return lines
-		.map((l) => l.replace(POS_RE, ''))
+		// A pin only ever lives outside quotes/comments, but a label like
+		// `"Meet @(3,4)"` must survive untouched — strip only the real one.
+		.map((l) => replaceOutsideProtected(l, POS_RE, ''))
 		.map((l) => {
 			// Only touch lines that look like connectors. Cheap pre-filter
 			// — avoids the regex churn on node lines and prose comments.
@@ -406,7 +667,8 @@ export function addNode(
 		style: {},
 		position: opts.position
 			? { x: Math.round(opts.position.x), y: Math.round(opts.position.y) }
-			: null
+			: null,
+		trailing: ''
 	};
 	const newLine = serializeNodeLine(parts);
 
@@ -712,18 +974,23 @@ export function moveNodeAfter(source: string, moveId: string, anchorId: string):
 // --- edge editing ------------------------------------------------------------
 
 // Edge lines now carry optional `@port` suffixes and attr pairs after the
-// label:  `A@r -> B@l : "yes" end:circle weight:5`.
+// label:  `A@r -> B@l : "yes" end:circle weight:5`. Arrow spacing is
+// optional (`a->b` parses the same as `a -> b`) to match how the backend
+// enumerates edges — the ordinal-addressed Inspector/EdgePanel would
+// otherwise disagree with it on which edge is #0, #1, ... `<->` is the
+// bidirectional symbol.
 // Capture: 1=indent  2=src  3=src-port  4=sym  5=dst  6=dst-port  7=tail
 const EDGE_LINE_RE =
-	/^(\s*)(\w+)(?:@(\w+))?\s+(->|-->|==>|---|-\.-)\s+(\w+)(?:@(\w+))?(\s*:\s*.*)?\s*$/;
+	/^(\s*)(\w+)(?:@(\w+))?\s*(->|-->|==>|---|-\.-|<->)\s*(\w+)(?:@(\w+))?(\s*:\s*.*)?\s*$/;
 
 // Verbose block-form header:  `edge A@r -> B@l {` or `A -> B {`. Counted
 // as an edge for ordinal purposes so the Inspector stays in sync, but
 // the inline modifier helpers refuse to rewrite them (a block spans
 // multiple lines; surgical in-place editing would silently drop the
 // body). Users wanting to edit block-form edges edit the DSL directly.
+// Capture: 1=indent  2=src  3=sym  4=dst
 const EDGE_BLOCK_HEADER_RE =
-	/^(\s*)(?:edge\s+)?(\w+)(?:@\w+)?\s*(->|-->|==>|---|-\.-)\s*(\w+)(?:@\w+)?\s*\{/;
+	/^(\s*)(?:edge\s+)?(\w+)(?:@\w+)?\s*(->|-->|==>|---|-\.-|<->)\s*(\w+)(?:@\w+)?\s*\{/;
 
 // Object-style connector: `[connector] name? from:A@r to:B@l kind:dashed
 // tip:arrow back:none label:"x"`. Also the kind-keyword form
@@ -737,6 +1004,7 @@ const CONNECTOR_KEYWORDS = [
 	'dashed_line',
 	'thick_line',
 	'dotted_line',
+	'bidirectional',
 	// legacy aliases (accepted for parse; rebuilder emits the new forms)
 	'arrow',
 	'solid_arrow',
@@ -754,6 +1022,7 @@ const CONNECTOR_KEYWORD_PRESETS: Record<ConnectorKeyword, { kind: string; tip: s
 	dashed_line: { kind: 'dashed', tip: 'arrow' },
 	thick_line: { kind: 'thick', tip: 'arrow' },
 	dotted_line: { kind: 'dotted_line', tip: 'none' },
+	bidirectional: { kind: 'bidirectional', tip: 'arrow' },
 	// legacy
 	arrow: { kind: 'solid', tip: 'arrow' },
 	solid_arrow: { kind: 'solid', tip: 'arrow' },
@@ -770,14 +1039,27 @@ const KIND_TO_KEYWORD: Record<string, ConnectorKeyword> = {
 	dashed: 'dashed_line',
 	thick: 'thick_line',
 	solid_line: 'solid_line',
-	dotted_line: 'dotted_line'
+	dotted_line: 'dotted_line',
+	bidirectional: 'bidirectional'
 };
 
-function isEdgeLine(line: string): boolean {
+// Exported so any OTHER consumer that needs to recognize/count edge lines
+// (e.g. CodeEditor's click-to-select, which maps a clicked line to an edge
+// ordinal for the Inspector) uses the exact same grammar as the ordinal
+// addressing below — a second, hand-rolled copy of this regex set would
+// silently drift out of sync (as CodeEditor's own copy had, missing `<->`
+// and the `bidirectional` keyword, and still counting incomplete
+// `[connector]` stubs).
+export function isEdgeLine(line: string): boolean {
 	return (
 		EDGE_LINE_RE.test(line) ||
 		EDGE_BLOCK_HEADER_RE.test(line) ||
-		CONNECTOR_LINE_RE.test(line)
+		// A bracket line only counts as an edge once it actually parses
+		// into a complete src+dst pair — an incomplete/mid-typing
+		// `[connector]` line (no `from:`/`to:` yet) produces no edge on
+		// the backend, so counting it here would shift every later edge's
+		// ordinal out of sync with the Inspector/EdgePanel.
+		parseConnectorLineEdge(line) !== null
 	);
 }
 
@@ -967,9 +1249,22 @@ function rebuildConnectorLine(p: EdgeParts): string {
 	const bits: string[] = [`[${keyword}]`];
 	if (p.connectorName) bits.push(p.connectorName);
 	bits.push(`from:${p.src}`);
-	bits.push(`from_anchor:${ANCHOR_LONG[p.srcPort ?? ''] ?? 'bottom'}`);
+	// Only emit an anchor when the source line actually had one — forcing
+	// `from_anchor:bottom`/`to_anchor:top` on every edit would silently
+	// pin the connector to defaults the user never asked for, overriding
+	// the backend's auto-routing from then on.
+	if (p.srcPort) bits.push(`from_anchor:${ANCHOR_LONG[p.srcPort] ?? p.srcPort}`);
 	bits.push(`to:${p.dst}`);
-	bits.push(`to_anchor:${ANCHOR_LONG[p.dstPort ?? ''] ?? 'top'}`);
+	if (p.dstPort) bits.push(`to_anchor:${ANCHOR_LONG[p.dstPort] ?? p.dstPort}`);
+	// The bracket keyword usually names the kind implicitly (`[dashed_line]`
+	// round-trips to kind:dashed on its own). When there's no dedicated
+	// keyword for this kind — i.e. the chosen keyword's own preset doesn't
+	// already imply it — fall back to an explicit `kind:` field so the
+	// kind still survives re-parsing instead of silently reverting to the
+	// `[connector]` default (`solid`).
+	if (CONNECTOR_KEYWORD_PRESETS[keyword].kind !== kindName) {
+		bits.push(`kind:${kindName}`);
+	}
 	bits.push(`tip:${p.attrs.end || 'none'}`);
 	bits.push(`back:${p.attrs.start || 'none'}`);
 	for (const [k, v] of Object.entries(p.attrs)) {
@@ -1044,10 +1339,22 @@ export function setEdgeLabel(source: string, ordinal: number, label: string): st
 	return modifyEdgeLine(source, ordinal, (p) => ({ ...p, label: label || null }));
 }
 
+// Kinds that render with no arrowhead by default.
+const ARROWLESS_KINDS = new Set(['solid_line', 'dotted_line']);
+
 export function setEdgeKind(source: string, ordinal: number, kind: string): string {
 	const sym = EDGE_KIND_SYM[kind];
 	if (!sym) return source;
-	return modifyEdgeLine(source, ordinal, (p) => ({ ...p, sym }));
+	return modifyEdgeLine(source, ordinal, (p) => {
+		if (!ARROWLESS_KINDS.has(kind)) return { ...p, sym };
+		// Switching to an arrowless kind must actually drop any inherited
+		// `end` decoration (connector-form edges always carry an explicit
+		// `end`/`tip` baked in at parse time from the PREVIOUS kind's
+		// preset) — otherwise the old arrowhead keeps rendering.
+		const attrs = { ...p.attrs };
+		delete attrs.end;
+		return { ...p, sym, attrs };
+	});
 }
 
 export function setEdgePort(

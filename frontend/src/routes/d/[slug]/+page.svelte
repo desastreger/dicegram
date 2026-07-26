@@ -13,8 +13,12 @@
 	let copied = $state(false);
 	let dslCopied = $state(false);
 
+	// Guards against a slow older fetch (for a slug we've since navigated
+	// away from) resolving after a newer one and clobbering its result.
+	let requestSeq = 0;
 	$effect(() => {
 		const s = slug;
+		const seq = ++requestSeq;
 		loading = true;
 		error = null;
 		data = null;
@@ -27,10 +31,12 @@
 				return r.json() as Promise<PublicDicegram>;
 			})
 			.then((d: PublicDicegram) => {
+				if (seq !== requestSeq) return;
 				data = d;
 				loading = false;
 			})
 			.catch((err) => {
+				if (seq !== requestSeq) return;
 				error = err instanceof ApiError ? err.message : 'could not load shared dicegram';
 				loading = false;
 			});

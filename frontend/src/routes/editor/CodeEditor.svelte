@@ -12,6 +12,7 @@
 	import { completionKeymap } from '@codemirror/autocomplete';
 	import { dslSyntaxExtension } from '$lib/dsl-syntax';
 	import { dslAutocomplete } from '$lib/dsl-autocomplete';
+	import { isEdgeLine } from '$lib/patch';
 	import type { Theme } from '$lib/themes';
 	import { theme as appTheme } from '$lib/theme.svelte';
 
@@ -31,21 +32,18 @@
 		onEdgeClick?: (ordinal: number) => void;
 	} = $props();
 
-	// `[connector]`, `[solid_line]`, `[dashed_line]`, `[thick_line]`,
-	// `[dotted_line]` + legacy `[arrow]`/`[dashed_arrow]`/`[thick_arrow]`
-	// /`[line]`/`[solid_arrow]`. Any line starting with one of these is
-	// treated as a connector definition.
-	const CONNECTOR_OPEN_RE =
-		/^\s*\[(connector|solid_line|dashed_line|thick_line|dotted_line|arrow|solid_arrow|dashed_arrow|thick_arrow|line)\]\b/;
-	// Old inline form: `A -> B`, `A@r -> B@l : "lbl"`, etc.
-	const INLINE_EDGE_RE =
-		/^\s*\w+(?:@\w+)?\s*(?:->|-->|==>|---|-\.-)\s*\w+(?:@\w+)?/;
-
+	// Edge-line recognition is delegated to `$lib/patch`'s `isEdgeLine` —
+	// the SAME grammar the Inspector/EdgePanel use to address edges by
+	// ordinal. A separate hand-rolled copy here previously drifted out of
+	// sync (missing the `<->` bidirectional symbol and the `bidirectional`
+	// bracket keyword, and still counting incomplete `[connector]` stubs
+	// that produce no real edge), which could make a click land on the
+	// wrong edge.
 	function edgeOrdinalForLine(docText: string, targetLine: number): number {
 		const lines = docText.split('\n');
 		let seen = 0;
 		for (let i = 0; i < lines.length; i++) {
-			if (CONNECTOR_OPEN_RE.test(lines[i]) || INLINE_EDGE_RE.test(lines[i])) {
+			if (isEdgeLine(lines[i])) {
 				if (i + 1 === targetLine) return seen;
 				seen += 1;
 			}
@@ -226,12 +224,10 @@
 						if (u.selectionSet && !u.docChanged) {
 							const line = u.state.doc.lineAt(u.state.selection.main.head);
 							const nodeM = /^\s*\[(\w+)\]\s+(\w+)\s+"/.exec(line.text);
-							if (nodeM && !CONNECTOR_OPEN_RE.test(line.text)) {
+							const edgeLine = isEdgeLine(line.text);
+							if (nodeM && !edgeLine) {
 								onNodeClick?.(nodeM[2]);
-							} else if (
-								CONNECTOR_OPEN_RE.test(line.text) ||
-								INLINE_EDGE_RE.test(line.text)
-							) {
+							} else if (edgeLine) {
 								const ord = edgeOrdinalForLine(u.state.doc.toString(), line.number);
 								if (ord >= 0) onEdgeClick?.(ord);
 							}
@@ -279,11 +275,17 @@
 		if (!view || target == null) return;
 		if (target < 1 || target > view.state.doc.lines) return;
 		const line = view.state.doc.line(target);
+		// Scroll the line into view and drop a COLLAPSED cursor at its
+		// start — a selection spanning the whole line (the old behaviour)
+		// left the very next keystroke armed to replace the entire node
+		// definition. This fires on every canvas/tree selection change, so
+		// it must never steal focus from wherever the user actually is
+		// (canvas, inspector, ...) either — `highlightActiveLine` still
+		// highlights the line from the selection alone, no focus needed.
 		view.dispatch({
-			selection: { anchor: line.from, head: line.to },
+			selection: { anchor: line.from, head: line.from },
 			scrollIntoView: true
 		});
-		view.focus();
 	});
 </script>
 

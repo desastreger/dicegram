@@ -53,7 +53,7 @@
 		</div>
 		<h1 class="auth-title">Create your account</h1>
 		<p class="auth-lede">
-			Free, no card. Save and version diegrams in your browser, exportable to SVG / PNG / PDF.
+			Free, no card. Save and version dicegrams in your browser, exportable to SVG / PNG / PDF.
 		</p>
 
 		<!-- Heads-up: while SMTP recovery is offline, the user has no
