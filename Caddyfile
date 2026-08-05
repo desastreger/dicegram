@@ -5,6 +5,44 @@
 {$DOMAIN} {
 	encode zstd gzip
 
+	# ─── Access log ───────────────────────────────────────────────────────
+	# Enough to answer "is anyone using this" without storing personal data.
+	#
+	# ip_mask truncates the client address before it is ever written: IPv4
+	# keeps 24 bits (1.2.3.x), IPv6 keeps 48. Unique-visitor counts still
+	# work at that granularity, but no raw IP is retained, which keeps this
+	# out of GDPR territory and matches the app's existing posture.
+	#
+	# Cookie and Authorization are deleted explicitly — Caddy's json format
+	# logs request headers, and a session cookie in a logfile would be a far
+	# worse leak than having no analytics at all.
+	#
+	# The Docker healthcheck curls 127.0.0.1 *inside* the app container and
+	# never traverses Caddy, so it does not pollute these numbers.
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 20MiB
+			roll_keep 6
+			roll_keep_for 2160h
+		}
+		format filter {
+			wrap json
+			fields {
+				request>remote_ip ip_mask {
+					ipv4 24
+					ipv6 48
+				}
+				request>client_ip ip_mask {
+					ipv4 24
+					ipv6 48
+				}
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+				request>headers>Set-Cookie delete
+			}
+		}
+	}
+
 	# Trust X-Forwarded-* only from Caddy itself (private ranges).
 	reverse_proxy dicegram:8000 {
 		header_up X-Real-IP {remote_host}

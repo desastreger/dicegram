@@ -66,8 +66,13 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+      # Access logs live in their own named volume so they survive a
+      # `docker compose down` and can be read by the traffic report without
+      # granting anything access to Caddy's certificate store in /data.
+      - caddy_logs:/var/log/caddy
 
 volumes:
   dicegram_data:
   caddy_data:
   caddy_config:
+  caddy_logs:

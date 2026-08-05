@@ -137,7 +137,16 @@
 						target="_blank"
 						rel="noopener noreferrer"
 					>AGPL-3.0</a>
-					· Commercial licences available on request.
+					· Commercial licences available on request. ·
+					<!-- A privacy policy has to be reachable from the service
+					     itself, not only from the repo — a user of the hosted
+					     site may never see GitHub. -->
+					<a
+						href="https://github.com/desastreger/dicegram/blob/master/PRIVACY.md"
+						class="themed-link"
+						target="_blank"
+						rel="noopener noreferrer"
+					>Privacy</a>
 				</p>
 				<a
 					href="mailto:dicegram_feedback@desastregerstudio.com?subject=Dicegram%20feedback"
