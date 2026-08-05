@@ -3,7 +3,11 @@ const BASE = '/api';
 export class ApiError extends Error {
 	constructor(
 		public status: number,
-		message: string
+		message: string,
+		/** Parsed `detail` from the error body. FastAPI allows a dict there,
+		 *  and the login 401 uses it to return the account's password hint
+		 *  alongside the message. */
+		public detail?: unknown
 	) {
 		super(message);
 	}
@@ -12,7 +16,14 @@ export class ApiError extends Error {
 async function handle<T>(res: Response): Promise<T> {
 	if (!res.ok) {
 		const body = await res.json().catch(() => ({ detail: res.statusText }));
-		throw new ApiError(res.status, body.detail ?? 'request failed');
+		const detail = body.detail;
+		// `detail` is a string for ordinary errors and an object when a route
+		// needs to return structured data with the failure.
+		const message =
+			typeof detail === 'string'
+				? detail
+				: ((detail as { detail?: string } | undefined)?.detail ?? 'request failed');
+		throw new ApiError(res.status, message, detail);
 	}
 	if (res.status === 204) return undefined as T;
 	// A non-204 response can still have an empty body (some endpoints, or

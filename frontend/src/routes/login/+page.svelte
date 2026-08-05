@@ -5,7 +5,11 @@
 	import { auth } from '$lib/auth.svelte';
 	import favicon from '$lib/assets/favicon.svg';
 
-	let email = $state('');
+	let identifier = $state('');
+	// Hint surfaced by the 401 when the username exists but the password is
+	// wrong. Replaces the old /forgot-password page, which asked any visitor
+	// for an email and handed back that account's hint.
+	let hint = $state('');
 	let password = $state('');
 	let error = $state<string | null>(null);
 	let submitting = $state(false);
@@ -25,10 +29,14 @@
 		error = null;
 		submitting = true;
 		try {
-			await auth.login(email, password);
+			await auth.login(identifier.trim(), password);
 			await goto(nextTarget());
 		} catch (err) {
-			error = err instanceof ApiError ? err.message : 'login failed';
+			// The 401 body carries {detail, password_hint}; show the reminder
+			// right here rather than sending the user to a lookup page.
+			const detail = err instanceof ApiError ? (err.detail as { password_hint?: string } | undefined) : undefined;
+			hint = detail?.password_hint?.trim() ?? '';
+			error = err instanceof ApiError ? 'Wrong username or password.' : 'login failed';
 		} finally {
 			submitting = false;
 		}
@@ -47,14 +55,18 @@
 		<p class="auth-lede">Pick up where you left off — your dicegrams autosave to your account.</p>
 		<form onsubmit={submit} class="flex w-full flex-col gap-4">
 			<label class="flex flex-col gap-1">
-				<span class="field-label">Email</span>
+				<span class="field-label">Username</span>
 				<input
-					type="email"
+					type="text"
 					required
 					autocomplete="username"
-					bind:value={email}
+					bind:value={identifier}
+					aria-describedby="login-id-help"
 					class="input-themed"
 				/>
+				<span id="login-id-help" class="text-xs text-dim">
+					If you signed up before usernames, your email still works.
+				</span>
 			</label>
 			<label class="flex flex-col gap-1">
 				<span class="field-label">Password</span>
@@ -69,13 +81,17 @@
 			{#if error}
 				<p role="alert" class="text-sm text-danger">{error}</p>
 			{/if}
-			<button type="submit" disabled={submitting || !email || !password} class="btn-primary">
+			{#if hint}
+				<p class="text-sm text-muted">
+					<span class="font-semibold">Your reminder:</span> {hint}
+				</p>
+			{/if}
+			<button type="submit" disabled={submitting || !identifier || !password} class="btn-primary">
 				{submitting ? 'Signing in…' : 'Log in'}
 			</button>
 		</form>
 		<hr class="auth-divider" />
 		<div class="auth-foot">
-			<a href="/forgot-password" class="link" title="Look up the hint you set at signup">Forgot? Look up your hint</a>
 			<a href="/signup" class="link">Create an account</a>
 		</div>
 	</div>

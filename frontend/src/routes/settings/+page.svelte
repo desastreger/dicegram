@@ -179,12 +179,12 @@
 <section class="mx-auto max-w-3xl px-4 py-8">
 	<!-- Account: display name + password hint. The hint is the bridge while
 	     SMTP-driven recovery is offline — anyone with the user's email can
-	     look it up on /forgot-password, so we surface it here so the user
+	     look it up anywhere, so we surface it here so the user
 	     knows exactly what's stored. -->
 	<header class="mb-6">
 		<h1 class="text-2xl font-semibold text-app">Account &amp; appearance</h1>
 		<p class="mt-1 text-sm text-muted">
-			Your display name, the password hint we'll show you on /forgot-password, and the brand
+			Your display name, the password hint we'll show you after a failed sign-in, and the brand
 			colours every new dicegram inherits.
 		</p>
 	</header>
@@ -194,7 +194,7 @@
 			<div>
 				<h2 class="text-sm font-semibold text-app">Account</h2>
 				<p class="mt-1 text-xs text-dim">
-					Username changes are visible in shared dicegrams. The hint is what /forgot-password
+					Your username is how you sign in and is visible in shared dicegrams. The hint is what a failed sign-in
 					shows when someone enters your email — make it personal but not literal.
 				</p>
 			</div>
@@ -238,7 +238,7 @@
 				/>
 				<span class="text-xs text-dim">
 					Save the form by clicking outside the field. Email-based password reset is paused;
-					this hint is the only nudge we can give you on /forgot-password.
+					this hint is the only nudge we can give you after a failed sign-in.
 				</span>
 			</label>
 		</div>

@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from ..db import get_session
 from ..deps import current_user
-from ..models import User
+from ..models import User, fold_username
 from ..palette import ALLOWED_KEYS, merge_palette
 from ..rate_limit import limiter
 from ..security import hash_password, verify_password, verify_password_dummy
@@ -13,37 +13,45 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 class Credentials(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    """Login payload. `identifier` is a username, but during the transition
+    it also accepts a legacy email so accounts created before the switch can
+    still sign in. Once the email column is dropped this becomes username-only."""
+
+    identifier: str = Field(min_length=1, max_length=254)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class SignupCredentials(BaseModel):
-    """Signup payload. Adds `username` (display handle) and `password_hint`
-    (a user-chosen reminder string we display back if they forget the
-    password). The hint is *not* a security token — there's no SMTP-based
-    recovery while we're offline, so the hint exists purely so the user
-    can refresh their own memory."""
+    """Signup payload — username and password, nothing else required.
 
-    email: EmailStr
+    No email: Dicegram has no SMTP subsystem, so an address could never be
+    used to contact anyone or recover an account. Collecting one was a field
+    of friction that stored personal data with no purpose.
+
+    That makes `password_hint` the ONLY prompt a user will ever get, which is
+    why it stays — but it is optional, and it is not a security token. The
+    signup UI is explicit that there is no reset of any kind."""
+
+    username: str = Field(min_length=2, max_length=60, pattern=r"^[A-Za-z0-9_.\- ]+$")
     password: str = Field(min_length=8, max_length=128)
-    username: str = Field(min_length=1, max_length=60)
-    password_hint: str = Field(min_length=1, max_length=140)
+    password_hint: str = Field(default="", max_length=140)
 
 
 class UserPublic(BaseModel):
     id: int
-    email: EmailStr
-    username: str | None = None
+    username: str
+    # Retained only while legacy accounts still carry one; never collected.
+    email: str | None = None
     password_hint: str | None = None
 
 
-class HintLookupIn(BaseModel):
-    email: EmailStr
+class LoginFailure(BaseModel):
+    """401 body for a failed login. Carries the account's own hint when one
+    is set, so the user gets their reminder at the moment they need it —
+    replacing the old bulk /hint-lookup endpoint, which any caller could
+    scrape without ever attempting a login."""
 
-
-class HintLookupOut(BaseModel):
-    # Empty string when no account matches — keeps the response shape
-    # consistent and avoids a 404-vs-200 enumeration vector.
+    detail: str = "invalid credentials"
     password_hint: str = ""
 
 
@@ -84,8 +92,8 @@ class PresetSaveIn(BaseModel):
 def _user_public(user: User) -> UserPublic:
     return UserPublic(
         id=user.id,
-        email=user.email,
         username=user.username,
+        email=user.email,
         password_hint=user.password_hint,
     )
 
@@ -98,16 +106,19 @@ def signup(
     creds: SignupCredentials,
     session: Session = Depends(get_session),
 ):
-    exists = session.exec(select(User).where(User.email == creds.email)).first()
+    key = fold_username(creds.username)
+    exists = session.exec(select(User).where(User.username_key == key)).first()
     if exists:
+        # A username is a public handle, so saying it is taken discloses
+        # nothing an attacker could not learn by trying to register it.
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="email already registered"
+            status_code=status.HTTP_409_CONFLICT, detail="username already taken"
         )
     user = User(
-        email=creds.email,
-        password_hash=hash_password(creds.password),
         username=creds.username.strip(),
-        password_hint=creds.password_hint.strip(),
+        username_key=key,
+        password_hash=hash_password(creds.password),
+        password_hint=(creds.password_hint or "").strip() or None,
     )
     session.add(user)
     session.commit()
@@ -124,19 +135,36 @@ def login(
     creds: Credentials,
     session: Session = Depends(get_session),
 ):
-    user = session.exec(select(User).where(User.email == creds.email)).first()
+    ident = creds.identifier.strip()
+    user = session.exec(
+        select(User).where(User.username_key == fold_username(ident))
+    ).first()
+    if user is None and "@" in ident:
+        # Transition path: accounts created before the switch signed up with
+        # an email and may not know their generated username yet. Dropped
+        # once the email column goes.
+        user = session.exec(select(User).where(User.email == ident)).first()
     if not user:
         # Run a dummy argon2 verify so this branch costs the same
         # wall-clock time as a real password check below — otherwise an
-        # unknown email short-circuits before argon2 runs, and the ~12x
-        # timing gap reveals which emails are registered.
+        # unknown identifier short-circuits before argon2 runs, and the ~12x
+        # timing gap reveals which accounts exist.
         verify_password_dummy()
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"detail": "invalid credentials", "password_hint": ""},
         )
     if not verify_password(user.password_hash, creds.password):
+        # The username was right, the password was not — exactly the moment
+        # the hint is useful. Returned here rather than from a public lookup
+        # endpoint so it cannot be harvested without a real login attempt,
+        # and the route's own rate limit bounds the guessing.
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "detail": "invalid credentials",
+                "password_hint": user.password_hint or "",
+            },
         )
     request.session["user_id"] = user.id
     return _user_public(user)
@@ -153,33 +181,17 @@ def me(user: User = Depends(current_user)):
     return _user_public(user)
 
 
-# ─── Password hint (replacement for SMTP-driven reset) ──────────────────
-
-@router.post("/hint-lookup", response_model=HintLookupOut)
-@limiter.limit("10/minute")
-def hint_lookup(
-    request: Request,
-    response: Response,
-    body: HintLookupIn,
-    session: Session = Depends(get_session),
-):
-    """Return the password hint stored for the given email, or an empty
-    string if no account matches. Rate-limited so the endpoint can't be
-    used as a free email enumeration oracle. The hint is user-chosen and
-    intentionally not secret — it's the bridge while SMTP recovery is
-    offline.
-
-    Security note: this endpoint (and the signup 409 "email already
-    registered" response) are a DOCUMENTED, intentional enumeration /
-    disclosure tradeoff of the offline-recovery model — a caller who
-    knows an email can learn whether it's registered and, if a hint was
-    set, read it. That's accepted product risk here, not an oversight;
-    do not "fix" by removing the hint feature or hiding the 409."""
-    user = session.exec(select(User).where(User.email == body.email)).first()
-    if user is None or not user.password_hint:
-        return HintLookupOut(password_hint="")
-    return HintLookupOut(password_hint=user.password_hint)
-
+# ─── Password hint ─────────────────────────────────────────────────────
+#
+# The public POST /api/auth/hint-lookup endpoint used to live here. It took
+# an email and returned that account's hint to any caller, which made every
+# stored hint harvestable in bulk without a single login attempt. Moving to
+# username-based login would have made it strictly worse — usernames are
+# public handles and far more guessable than email addresses.
+#
+# The hint is now returned by the /login 401 body when the username exists
+# but the password is wrong, so a caller must actually attempt a login (and
+# wear that route's rate limit) to see one.
 
 @router.put("/me/hint", response_model=UserPublic)
 def update_hint(

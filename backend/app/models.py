@@ -8,17 +8,43 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def fold_username(name: str) -> str:
+    """Case-folded lookup key for a username.
+
+    `casefold()` rather than `lower()` so non-ASCII handles compare the way a
+    user expects (German ß folds to ss, for instance). Every read and write of
+    `User.username_key` must go through this, or two accounts could differ only
+    by case and both claim to be the same login.
+    """
+    return name.strip().casefold()
+
+
 class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    email: str = Field(index=True, unique=True)
+    # Login identifier. Unique and case-insensitively matched — see
+    # `username_key`, which is what queries actually compare against.
+    #
+    # This replaced email as the identifier: Dicegram has no SMTP subsystem
+    # at all, so an email address could never be used to contact anyone or
+    # recover an account. Collecting one was a field of friction storing
+    # personal data with no purpose.
+    username: str = Field(index=True)
+    # Case-folded copy of `username`, carrying the uniqueness constraint.
+    # SQLite has no case-insensitive unique index without a collation or an
+    # expression index, and an expression index cannot be expressed through
+    # SQLModel — so the folded form is materialised instead. Always write it
+    # via `fold_username()`; never set it by hand.
+    username_key: str = Field(index=True, unique=True)
     password_hash: str
-    # Display handle the user picks at signup. Optional today (older rows
-    # predate the column) — the email is still the canonical identifier.
-    username: str | None = Field(default=None)
-    # User-supplied "password reminder" string. Captured at signup so the
-    # user can recover their own memory of the password while SMTP-driven
-    # forgot-password is disabled. Visible only to the signed-in user
-    # (Settings page) plus the lookup-by-email helper on /login.
+    # Legacy identifier, retained only so existing accounts can still sign in
+    # during the transition. Nullable: signup no longer collects it, and it
+    # is scheduled for removal once every active account has moved across.
+    email: str | None = Field(default=None, index=True)
+    # User-supplied "password reminder" string. There is no password reset —
+    # no email means no reset link — so this is the only prompt a user gets.
+    # Shown after a FAILED LOGIN for that username, never via a bulk lookup:
+    # keying a public endpoint on username would make it trivially
+    # scrapeable, since usernames are far more guessable than emails.
     password_hint: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow)
     # Currently applied per-user branding palette (see app/palette.py).

@@ -5,9 +5,13 @@
 	import favicon from '$lib/assets/favicon.svg';
 
 	let username = $state('');
-	let email = $state('');
 	let password = $state('');
 	let passwordHint = $state('');
+	// Show/hide instead of a confirm-password field. With no reset of any
+	// kind, a typo on signup locks the account permanently — but a second
+	// field is friction, and letting people SEE what they typed solves the
+	// same problem without one.
+	let showPassword = $state(false);
 	let error = $state<string | null>(null);
 	let submitting = $state(false);
 
@@ -15,12 +19,8 @@
 		if (!auth.loading && auth.user) goto('/editor');
 	});
 
-	const ready = $derived(
-		username.trim().length > 0 &&
-			email.trim().length > 0 &&
-			password.length >= 8 &&
-			passwordHint.trim().length > 0
-	);
+	// Hint is optional now — it is a courtesy, not a credential.
+	const ready = $derived(username.trim().length >= 2 && password.length >= 8);
 
 	async function submit(e: Event) {
 		e.preventDefault();
@@ -30,7 +30,6 @@
 		try {
 			await auth.signup({
 				username: username.trim(),
-				email: email.trim(),
 				password,
 				password_hint: passwordHint.trim()
 			});
@@ -53,18 +52,23 @@
 		</div>
 		<h1 class="auth-title">Create your account</h1>
 		<p class="auth-lede">
-			Free, no card. Save and version dicegrams in your browser, exportable to SVG / PNG / PDF.
+			Free, no card, no email address. Save and version dicegrams, exportable to
+			SVG / PNG / PDF.
 		</p>
 
-		<!-- Heads-up: while SMTP recovery is offline, the user has no
-		     "forgot password" path. The hint they choose below is the only
-		     bridge — call it out clearly so they don't sleepwalk past. -->
+		<!-- There is genuinely no recovery path: no email subsystem exists, so
+		     there is nothing to send a reset link to and no support channel
+		     that can restore an account. Say so plainly rather than softening
+		     it — a user who skims this and forgets their password loses their
+		     work permanently. -->
 		<div class="auth-warn" role="note">
 			<span class="auth-warn-dot" aria-hidden="true"></span>
 			<span>
-				<strong>Save your password somewhere safe.</strong>
-				Email-based recovery is temporarily disabled — the hint below is the only
-				way back into your account.
+				<strong>There is no password reset.</strong>
+				Dicegram has no email system, so we can&rsquo;t send you a reset link and
+				no one can recover your account for you. Your username and password are
+				the only way in &mdash; <strong>write them down somewhere safe before you
+				continue.</strong>
 			</span>
 		</div>
 
@@ -79,36 +83,40 @@
 					bind:value={username}
 					class="input-themed"
 				/>
-				<span class="text-xs text-dim">Shown next to your work. Pick anything; you can change it later.</span>
-			</label>
-			<label class="flex flex-col gap-1">
-				<span class="field-label">Email</span>
-				<input
-					type="email"
-					required
-					autocomplete="username"
-					bind:value={email}
-					class="input-themed"
-				/>
+				<span class="text-xs text-dim">
+					This is how you sign in, and it is shown next to your work. Letters,
+					numbers, spaces, <code>_ . -</code>
+				</span>
 			</label>
 			<label class="flex flex-col gap-1">
 				<span class="field-label">Password</span>
-				<input
-					type="password"
-					required
-					minlength="8"
-					autocomplete="new-password"
-					bind:value={password}
-					aria-describedby="signup-pw-hint"
-					class="input-themed"
-				/>
-				<span id="signup-pw-hint" class="text-xs text-dim">At least 8 characters.</span>
+				<div class="relative flex items-center">
+					<input
+						type={showPassword ? 'text' : 'password'}
+						required
+						minlength="8"
+						autocomplete="new-password"
+						bind:value={password}
+						aria-describedby="signup-pw-hint"
+						class="input-themed w-full pr-16"
+					/>
+					<button
+						type="button"
+						class="absolute right-2 text-xs text-muted underline"
+						onclick={() => (showPassword = !showPassword)}
+					>
+						{showPassword ? 'Hide' : 'Show'}
+					</button>
+				</div>
+				<span id="signup-pw-hint" class="text-xs text-dim">
+					At least 8 characters. Use <em>Show</em> to check it before you commit &mdash;
+					there is no way to reset it later.
+				</span>
 			</label>
 			<label class="flex flex-col gap-1">
-				<span class="field-label">Password reminder</span>
+				<span class="field-label">Password reminder <span class="text-dim">(optional)</span></span>
 				<input
 					type="text"
-					required
 					maxlength="140"
 					placeholder="e.g. my dog's birthday + favourite city"
 					bind:value={passwordHint}
@@ -116,7 +124,9 @@
 					class="input-themed"
 				/>
 				<span id="signup-hint-help" class="text-xs text-dim">
-					A nudge to <em>you</em>, not the password itself. Anyone with your email can see this — keep it personal but not literal.
+					Shown to you after a failed sign-in. A nudge to <em>you</em>, never the
+					password itself &mdash; anyone who guesses your username and gets the
+					password wrong will see it.
 				</span>
 			</label>
 			{#if error}
