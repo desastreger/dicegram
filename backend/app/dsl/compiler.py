@@ -3,11 +3,21 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .parser import SHAPE_KEYWORDS
+from .parser import _KIND_KEYWORD_PRESETS, SHAPE_KEYWORDS
 
 POSITION_RE = re.compile(r"@\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)")
 NODE_LINE_RE = re.compile(r'^(\s*)\[(\w+)\]\s+(\w+)\s+"((?:[^"\\]|\\.)*)"(.*)$')
-EDGE_LINE_RE = re.compile(r"^(\s*)(\w+)\s*(==>|-->|-\.-|---|->)\s*(\w+)(.*)$")
+# "<->" must precede "->": alternation is first-match-wins, and leaving it out
+# entirely (as this did) meant bidirectional edges escaped the R3 prune below,
+# so the API emitted edges whose endpoints were absent from `nodes`.
+EDGE_LINE_RE = re.compile(r"^(\s*)(\w+)\s*(<->|==>|-->|-\.-|---|->)\s*(\w+)(.*)$")
+
+# Bracket-form connectors and notes name their endpoints with attributes
+# (`from:`/`to:`/`target:`) instead of an arrow token, so EDGE_LINE_RE never
+# matched them and R3 let dangling references through untouched.
+_REF_BRACKET_KEYWORDS = set(_KIND_KEYWORD_PRESETS) | {"connector", "note"}
+BRACKET_LINE_RE = re.compile(r"^\s*\[(\w+)\]\s+(.*)$")
+BRACKET_REF_ATTR_RE = re.compile(r'\b(?:from|to|target)\s*:\s*"?(\w+)"?')
 SNAP_SETTING_RE = re.compile(r"^\s*setting\s+snap_grid\s+(\d+)", re.MULTILINE)
 FREE_PLACEMENT_RE = re.compile(
     r"^\s*setting\s+free_placement\s+(on|off|true|false|1|0)", re.MULTILINE
@@ -130,6 +140,18 @@ def normalize(source: str) -> NormalizeResult:
             lines[i] = snapped
 
     # R4: collect declared node names, rename later duplicates.
+    #
+    # Pre-scan every id in the file first. Checking only ids seen *so far*
+    # let a rename collide with one declared later: given `a`, `a`, `a_2`,
+    # the duplicate `a` was renamed to `a_2`, stealing the id the user had
+    # already given a different node and silently re-pointing every arrow
+    # aimed at it. The user's own ids must always win.
+    all_ids: set[str] = set()
+    for line in lines:
+        m = NODE_LINE_RE.match(line)
+        if m and m.group(2) in SHAPE_KEYWORDS:
+            all_ids.add(m.group(3))
+
     declared: dict[str, int] = {}
     rename: dict[str, str] = {}
     for i, line in enumerate(lines):
@@ -141,8 +163,9 @@ def normalize(source: str) -> NormalizeResult:
             continue
         if name in declared:
             suffix = 2
-            while f"{name}_{suffix}" in declared or f"{name}_{suffix}" in rename.values():
+            while f"{name}_{suffix}" in all_ids or f"{name}_{suffix}" in rename.values():
                 suffix += 1
+            all_ids.add(f"{name}_{suffix}")
             new_name = f"{name}_{suffix}"
             rename[f"{i}:{name}"] = new_name
             indent = m.group(1)
@@ -155,31 +178,44 @@ def normalize(source: str) -> NormalizeResult:
         else:
             declared[name] = i
 
-    # R3: drop edges referencing unknown nodes (and notes).
-    pruned_lines: list[str] = []
-    for i, line in enumerate(lines):
+    # R3: neutralise edges/notes that reference an undeclared node.
+    #
+    # These lines used to be DELETED outright, which let a typo destroy
+    # unrelated, correct work: a stray backslash in `[rect] a "A\"` breaks
+    # that line, so node `a` is never declared, and this rule then erased the
+    # user's perfectly good `a -> b`. Fixing the typo did not bring it back.
+    #
+    # Commenting the line out keeps it visible and recoverable (the parser
+    # ignores `//`, and neither this rule nor R8 re-matches a commented line)
+    # while still keeping the dangling reference out of the parsed graph.
+    def _unknown_ref(line: str) -> str | None:
         em = EDGE_LINE_RE.match(line)
         if em:
             _, src, _, dst, _ = em.groups()
-            if src not in declared or dst not in declared:
-                missing = src if src not in declared else dst
-                notices.append(
-                    Notice("fix", f"dropped edge referencing unknown '{missing}'", i + 1)
-                )
-                changed = True
-                continue
+            if src not in declared:
+                return src
+            return dst if dst not in declared else None
         note_m = re.match(r'^\s*note\s+"[^"]*"\s+\[(\w+)\]\s*$', line)
-        if note_m:
-            target = note_m.group(1)
-            if target not in declared:
-                notices.append(
-                    Notice("fix", f"dropped note referencing unknown '{target}'", i + 1)
-                )
-                changed = True
-                continue
-        pruned_lines.append(line)
-    if len(pruned_lines) != len(lines):
-        lines = pruned_lines
+        if note_m and note_m.group(1) not in declared:
+            return note_m.group(1)
+        # Bracket forms name endpoints by attribute, not by an arrow token.
+        bm = BRACKET_LINE_RE.match(line)
+        if bm and bm.group(1) in _REF_BRACKET_KEYWORDS:
+            for ref in BRACKET_REF_ATTR_RE.findall(bm.group(2)):
+                if ref not in declared:
+                    return ref
+        return None
+
+    for i, line in enumerate(lines):
+        missing = _unknown_ref(line)
+        if missing is None:
+            continue
+        indent = line[: len(line) - len(line.lstrip())]
+        lines[i] = f"{indent}// unknown '{missing}' — {line.strip()}"
+        notices.append(
+            Notice("fix", f"commented out line referencing unknown '{missing}'", i + 1)
+        )
+        changed = True
 
     # R5: resolve identical pinned positions.
     #     We don't have full layout info here, but co-located *explicit* pins

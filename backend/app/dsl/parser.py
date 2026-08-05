@@ -562,18 +562,27 @@ def _parse_connection(line: str) -> Edge | None:
     return None
 
 
-def _topmost(stack: list[tuple[str, object]], kind: str) -> object | None:
-    for k, ref in reversed(stack):
+def _topmost(stack: list[tuple[str, object, int]], kind: str) -> object | None:
+    for k, ref, _open_line in reversed(stack):
         if k == kind:
             return ref
     return None
 
 
+def _container_label(kind: str, ref: object) -> str:
+    """Human name for an unclosed container, for the EOF diagnostics below."""
+    name = getattr(ref, "name", None) or getattr(ref, "label", None)
+    return f'{kind} "{name}"' if name else kind
+
+
 def parse(source: str) -> Parsed:
     parsed = Parsed()
-    stack: list[tuple[str, object]] = []  # (kind, container_object)
+    # (kind, container_object, line_it_opened_on) — the line number is only
+    # used to point at the offending '{' in the unclosed-block errors at EOF.
+    stack: list[tuple[str, object, int]] = []
     group_collecting: Group | None = None
     edge_collecting: Edge | None = None
+    edge_open_line = 0
 
     for lineno, raw in enumerate(source.split("\n"), 1):
         line = _strip_inline_comment(raw).rstrip()
@@ -631,7 +640,7 @@ def parse(source: str) -> Parsed:
         if m:
             sl = Swimlane(name=m.group(1))
             parsed.swimlanes.append(sl)
-            stack.append(("swimlane", sl))
+            stack.append(("swimlane", sl, lineno))
             continue
 
         # box open (may have inline style block before final '{')
@@ -642,7 +651,7 @@ def parse(source: str) -> Parsed:
             style = _parse_style_pairs(m.group(2)) if m.group(2) else {}
             bx = Box(label=m.group(1), swimlane=current_sl, style=style)
             parsed.boxes.append(bx)
-            stack.append(("box", bx))
+            stack.append(("box", bx, lineno))
             continue
 
         # group open (one-line or multi-line)
@@ -660,7 +669,7 @@ def parse(source: str) -> Parsed:
                 if inline_rest:
                     for tok in IDENT_RE.findall(inline_rest):
                         grp.members.append(tok)
-                stack.append(("group", grp))
+                stack.append(("group", grp, lineno))
                 group_collecting = grp
             continue
 
@@ -730,6 +739,7 @@ def parse(source: str) -> Parsed:
                 if rest:
                     _finalize_block_edge_body(block_edge, rest)
                 edge_collecting = block_edge
+                edge_open_line = lineno
             continue
 
         # inline connection
@@ -741,6 +751,45 @@ def parse(source: str) -> Parsed:
         col = len(raw) - len(raw.lstrip()) + 1
         parsed.errors.append(
             ParseError(line=lineno, column=col, message=f"unrecognized: {stripped[:80]}")
+        )
+
+    # ─── EOF integrity ─────────────────────────────────────────────────────
+    # Without these, an unclosed '{' fails *silently*: `group "G" {` with no
+    # closing brace consumed every later line as group membership, so nodes
+    # and edges vanished while errors stayed empty and no notice fired. Same
+    # for an unclosed edge body, which discarded the edge outright.
+    #
+    # We report rather than guess: once a brace is missing the user's intended
+    # structure is genuinely ambiguous, but they must at least be told where.
+    total_lines = len(source.split("\n"))
+
+    if edge_collecting is not None:
+        # Flush rather than discard. The edge header was complete — only its
+        # body block never closed — so keeping it loses nothing, whereas
+        # dropping it silently removed a connection the user did write.
+        parsed.edges.append(edge_collecting)
+        parsed.errors.append(
+            ParseError(
+                line=edge_open_line,
+                column=1,
+                message=(
+                    f"unclosed '{{' on edge "
+                    f"{edge_collecting.source} -> {edge_collecting.target}: "
+                    "add a closing '}'"
+                ),
+            )
+        )
+
+    for kind, ref, open_line in stack:
+        parsed.errors.append(
+            ParseError(
+                line=open_line,
+                column=1,
+                message=(
+                    f"unclosed '{{' on {_container_label(kind, ref)}: add a closing '}}' "
+                    f"(everything through line {total_lines} was absorbed into it)"
+                ),
+            )
         )
 
     return parsed
