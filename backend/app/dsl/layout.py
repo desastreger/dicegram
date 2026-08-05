@@ -119,6 +119,57 @@ def _label_run_px(label: str) -> int:
     return max(30, longest * 6 + 12)
 
 
+# Note text metrics. CHAR_PX matches the ~6px/glyph estimate `_label_run_px`
+# already uses for connector labels, so the two agree on how wide text is.
+NOTE_CHAR_PX = 6.2
+NOTE_LINE_H = 15
+NOTE_TEXT_PAD = 8
+
+
+def _snap_up(value: float, grid: int) -> int:
+    """Round up to the next grid multiple."""
+    if grid <= 1:
+        return int(math.ceil(value))
+    return int(math.ceil(value / grid) * grid)
+
+
+def _wrap_label(text: str, max_px: float) -> str:
+    """Greedy word-wrap to a pixel width, preserving explicit newlines.
+
+    SVG `<text>` does not wrap, so anything that must survive export has to
+    be broken into lines up front. A word longer than the line budget is
+    hard-split rather than allowed to overflow — a single long token would
+    otherwise escape the box exactly like the unwrapped text used to.
+    """
+    if not text:
+        return ""
+    budget = max(1, int(max_px // NOTE_CHAR_PX))
+    out: list[str] = []
+    for para in text.split("\n"):
+        words = para.split()
+        if not words:
+            out.append("")
+            continue
+        line = ""
+        for word in words:
+            while len(word) > budget:
+                if line:
+                    out.append(line)
+                    line = ""
+                out.append(word[:budget])
+                word = word[budget:]
+            candidate = f"{line} {word}".strip()
+            if len(candidate) <= budget:
+                line = candidate
+            else:
+                if line:
+                    out.append(line)
+                line = word
+        if line:
+            out.append(line)
+    return "\n".join(out)
+
+
 def _container_pad(label: str, base_pad: int, snap: int, max_pad: int | None = None) -> int:
     """Symmetrical clearance for any container whose title pill sits at the
     top edge.  Grows for multi-line labels; always a multiple of `snap`;
@@ -134,6 +185,96 @@ def _container_pad(label: str, base_pad: int, snap: int, max_pad: int | None = N
     if max_pad is not None:
         result = min(result, max_pad)
     return result
+
+
+def _derive_steps_from_edges(nodes: list[Node], edges: list) -> None:
+    """Rank nodes by longest path over the edge graph, in place.
+
+    Only called when *no* node carries an explicit `step:`. Until this
+    existed, `parser.py` defaulted every such node to `step = 0`, so a
+    document written purely with arrows — `a -> b -> c`, exactly the
+    shorthand the landing page teaches — put every node in one rank and
+    laid out as a single meaningless row, ignoring the arrows entirely.
+
+    Deliberately scoped to the all-implicit case. Documents that already
+    carry explicit steps (including every previously saved dicegram) keep
+    their existing layout untouched, so this cannot disturb stored work.
+
+    Longest path, not shortest: a node sits one rank below its deepest
+    predecessor, which is what keeps the join node under both branches of
+    a diamond.
+
+    Back edges are dropped before ranking. A retry arrow (`e -> b` in a
+    validation loop) makes longest-path ill-defined, and naive relaxation
+    pumps every node in the cycle upward — which pushed the end node
+    *above* the branches it is supposed to sit below.
+    """
+    if not nodes:
+        return
+    names = {n.name for n in nodes}
+    order = [n.name for n in nodes]
+    out: dict[str, list[str]] = {name: [] for name in order}
+    for e in edges:
+        src = getattr(e, "source", None)
+        dst = getattr(e, "target", None)
+        # Self-loops carry no ordering information.
+        if src in names and dst in names and src != dst:
+            out[src].append(dst)
+
+    # Iterative DFS colouring; an edge into a node still on the stack is a
+    # back edge. Iterative rather than recursive so a long chain cannot
+    # blow the Python stack on a large diagram.
+    WHITE, GREY, BLACK = 0, 1, 2
+    colour = dict.fromkeys(order, WHITE)
+    back: set[tuple[str, str]] = set()
+    for root in order:
+        if colour[root] != WHITE:
+            continue
+        colour[root] = GREY
+        stack = [(root, iter(out[root]))]
+        while stack:
+            node, it = stack[-1]
+            descended = False
+            for nxt in it:
+                if colour[nxt] == GREY:
+                    back.add((node, nxt))
+                elif colour[nxt] == WHITE:
+                    colour[nxt] = GREY
+                    stack.append((nxt, iter(out[nxt])))
+                    descended = True
+                    break
+            if not descended:
+                colour[node] = BLACK
+                stack.pop()
+
+    forward = {src: [d for d in dsts if (src, d) not in back] for src, dsts in out.items()}
+
+    indeg = dict.fromkeys(order, 0)
+    for src, dsts in forward.items():
+        for dst in dsts:
+            indeg[dst] += 1
+
+    queue = [n for n in order if indeg[n] == 0]
+    topo: list[str] = []
+    while queue:
+        node = queue.pop(0)
+        topo.append(node)
+        for dst in forward[node]:
+            indeg[dst] -= 1
+            if indeg[dst] == 0:
+                queue.append(dst)
+    # Any node left over sat in a cycle the back-edge pass didn't fully
+    # break; rank it best-effort rather than leaving it stranded at 0.
+    topo.extend(n for n in order if n not in set(topo))
+
+    rank = dict.fromkeys(order, 0)
+    for node in topo:
+        for dst in forward[node]:
+            if rank[node] + 1 > rank[dst]:
+                rank[dst] = rank[node] + 1
+
+    for n in nodes:
+        n.step = rank[n.name]
 
 
 def compute_layout(parsed: Parsed) -> dict:
@@ -161,6 +302,8 @@ def compute_layout(parsed: Parsed) -> dict:
         for n in nodes:
             if not n.step_explicit and n.attrs.get("type") == "end":
                 n.step = end_step
+    else:
+        _derive_steps_from_edges(nodes, parsed.edges)
 
     lane_order: list[str] = [sl.name for sl in parsed.swimlanes]
     if not lane_order:
@@ -498,9 +641,20 @@ def compute_layout(parsed: Parsed) -> dict:
         if not target:
             continue
         nw = cfg["note_width"]
+        # `note_width` is deliberately narrow ("encourages wrap"), but no
+        # renderer ever implemented the wrap. The canvas got away with it via
+        # CSS white-space:pre-wrap; SVG <text> has no such behaviour, so
+        # exported notes rendered as one long line straddling and escaping
+        # their own box — the text ended up unreadable on the background.
+        #
+        # Wrap here, in layout, so canvas and export are fed identical lines
+        # and the box can be sized to its actual contents.
+        note_text = _wrap_label(note.text or "", nw - NOTE_TEXT_PAD * 2)
+        note_line_count = note_text.count("\n") + 1
+        text_h = note_line_count * NOTE_LINE_H + NOTE_TEXT_PAD * 2
         # Taller than target by 1G top + 1G bottom — visible breathing
-        # room within the lane.
-        nh = max(cfg["note_height"], int(target["h"]) + 2 * G)
+        # room within the lane — but never shorter than the wrapped text.
+        nh = max(cfg["note_height"], int(target["h"]) + 2 * G, _snap_up(text_h, G))
         nx = target["x"] + target["w"] + cfg["note_offset"]
         ny = target["y"] - G  # 1G clearance above target's top edge
         # Skip overlap with the target itself; only worry about other nodes.
@@ -519,7 +673,7 @@ def compute_layout(parsed: Parsed) -> dict:
         note_target_lane[note_idx] = target_lane
         note_positions.append(
             {
-                "text":   note.text,
+                "text":   note_text,
                 "target": note.target,
                 "x": _snap(nx, snap),
                 "y": _snap(ny, snap),
