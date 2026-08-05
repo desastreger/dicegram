@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
+from ..config import settings
 from ..db import get_session
 from ..deps import current_user
 from ..models import User, fold_username
@@ -89,6 +90,44 @@ class PresetSaveIn(BaseModel):
     overrides: dict[str, str] | None = None
 
 
+# How many failed attempts, from the same browser session, before the hint
+# is shown at all.
+HINT_AFTER_FAILURES = 3
+
+
+def _hint_after_repeated_failure(request: Request, user: User) -> str:
+    """The account's hint, but only once this browser has failed repeatedly.
+
+    Returning it on the FIRST failure made every hint harvestable with a
+    single unauthenticated request — you only needed the username. That is
+    fine for an email address, which is semi-private, and not fine for a
+    username, which is a public handle. This project's own admin username
+    appears in every git commit in a public repository.
+
+    The counter lives in the signed session cookie rather than in server
+    memory, for two reasons: it survives across uvicorn workers (an
+    in-process dict would not, and a real user round-robining across three
+    workers might never reach the threshold), and a scripted harvester that
+    keeps no cookie jar never accumulates a count at all — so it never sees
+    a hint, however many requests it makes.
+
+    Admin accounts never get a hint disclosed, at any count. Their username
+    is the most guessable one on the instance and their compromise matters
+    most; if an admin forgets their password, the recovery path is server
+    access, which they have by definition.
+    """
+    if not user.password_hint:
+        return ""
+    if fold_username(user.username) in settings.admin_username_set:
+        return ""
+    key = fold_username(user.username)
+    count = request.session.get("lf_n", 0) if request.session.get("lf_user") == key else 0
+    count += 1
+    request.session["lf_user"] = key
+    request.session["lf_n"] = count
+    return user.password_hint if count >= HINT_AFTER_FAILURES else ""
+
+
 def _user_public(user: User) -> UserPublic:
     return UserPublic(
         id=user.id,
@@ -155,17 +194,16 @@ def login(
             detail={"detail": "invalid credentials", "password_hint": ""},
         )
     if not verify_password(user.password_hash, creds.password):
-        # The username was right, the password was not — exactly the moment
-        # the hint is useful. Returned here rather than from a public lookup
-        # endpoint so it cannot be harvested without a real login attempt,
-        # and the route's own rate limit bounds the guessing.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
                 "detail": "invalid credentials",
-                "password_hint": user.password_hint or "",
+                "password_hint": _hint_after_repeated_failure(request, user),
             },
         )
+    # Successful sign-in clears the failure counter below.
+    request.session.pop("lf_user", None)
+    request.session.pop("lf_n", None)
     request.session["user_id"] = user.id
     return _user_public(user)
 

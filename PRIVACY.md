@@ -66,10 +66,14 @@ contents cannot be recovered by us or by anyone else.
 
 ### About the password hint
 
-If you set a password hint, it is stored **unencrypted** and is shown after a
-failed sign-in attempt for your username — so anyone who guesses your username
-and enters a wrong password can read it. It is a memory aid, not a secret. **Do
-not put anything sensitive in it, and do not make it something that reveals your
+If you set a password hint, it is stored **unencrypted** and is shown back to
+you on the sign-in page after **three failed attempts from the same browser**.
+It is never returned to a caller that does not carry a browser session, so it
+cannot be collected in bulk, and it is never shown for administrator accounts.
+
+It is still a memory aid, not a secret: someone using a real browser who knows
+your username and gets your password wrong three times will see it. **Do not put
+anything sensitive in it, and do not make it something that reveals your
 password.** Setting a hint is entirely optional.
 
 ## 3. Access logs
