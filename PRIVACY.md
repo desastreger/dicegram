@@ -13,11 +13,17 @@
 
 ## 1. Who we are
 
-`[LEGAL NAME OR TRADING NAME]` (“we”, “us”) is the data controller for personal
-data processed through dicegram.desastreger.cloud.
+**Nacho De Saeger**, trading as **Desastreger Studio** (“we”, “us”), is the data
+controller for personal data processed through dicegram.desastreger.cloud.
 
-- **Contact:** `[CONTACT EMAIL]`
-- **Postal address:** `[ADDRESS]`
+- **Contact:** privacy@desastregerstudio.com
+- **Security reports:** security@desastregerstudio.com (see [SECURITY.md](./SECURITY.md))
+- **Postal address:** `[POSTAL ADDRESS — REQUIRED, see note below]`
+
+> **Two things still to fill in before this is relied upon:** the postal
+> address above, and the data-centre location in §5. A UK privacy notice must
+> give a real contact address for the controller, and must state where personal
+> data is held. Both are facts only you can supply.
 
 We are not required to appoint a Data Protection Officer.
 
@@ -27,10 +33,9 @@ This policy is written to meet the UK GDPR and the Data Protection Act 2018.
 
 | Data | When | Why | Lawful basis |
 |---|---|---|---|
-| Email address | You create an account | Identifies your account and is the credential you sign in with | Contract |
+| Username | You create an account | Identifies your account and is the name you sign in with. Shown alongside your work | Contract |
 | Password | You create an account | Authentication. Stored only as an Argon2 hash — we never hold the password itself | Contract |
-| Username (optional) | You create an account | Display name shown alongside your work | Contract |
-| Password hint (optional) | You choose to set one | The only account-recovery route we offer. **Stored as plain text** — see §3 | Consent |
+| Password hint (optional) | You choose to set one | The only account-recovery prompt we offer. **Stored as plain text** — see below | Consent |
 | Your dicegrams | You save work | To store and show you your diagrams | Contract |
 | Share records | You create a share link | To serve a diagram you chose to publish | Contract |
 | Colour/branding preferences | You change them | To render your diagrams as you configured | Contract |
@@ -41,19 +46,21 @@ This policy is written to meet the UK GDPR and the Data Protection Act 2018.
 behavioural profiling, or automated decision-making. We do not sell or rent
 personal data to anyone, ever.
 
-**We do not send email.** The service has no email subsystem at all. We will
-never email you — including for password resets.
+**We do not ask for an email address, and we do not send email.** The service
+has no email subsystem at all, so there is nothing to send a reset link to and
+no way for us to contact you. Accounts created before August 2026 still have an
+email on record, used only as a legacy sign-in identifier; it is never used to
+contact anyone and is scheduled for deletion.
 
-### About the email address we hold
-
-We currently use your email address only as your sign-in identifier. Because we
-have no email subsystem, we cannot and do not contact you at it.
+**There is no password reset.** If you lose your password, the account and its
+contents cannot be recovered by us or by anyone else.
 
 ### About the password hint
 
-If you set a password hint, it is stored **unencrypted** and is retrievable by
-anyone who knows your email address. It is a memory aid, not a secret. **Do not
-put anything sensitive in it, and do not make it something that reveals your
+If you set a password hint, it is stored **unencrypted** and is shown after a
+failed sign-in attempt for your username — so anyone who guesses your username
+and enters a wrong password can read it. It is a memory aid, not a secret. **Do
+not put anything sensitive in it, and do not make it something that reveals your
 password.** Setting a hint is entirely optional.
 
 ## 3. Access logs and visitor counting
@@ -104,9 +111,10 @@ That is the entire list. Hostinger acts as a processor on our behalf. Beyond
 that we share personal data with nobody, except where we are legally required
 to.
 
-**Where your data is held:** `[DATA CENTRE COUNTRY — CONFIRM WITH HOSTINGER]`.
-If this is outside the UK, transfers are covered by
-`[UK ADEQUACY REGULATIONS / INTERNATIONAL DATA TRANSFER ADDENDUM]`.
+**Where your data is held:** `[DATA CENTRE COUNTRY — CONFIRM IN THE HOSTINGER
+PANEL]`. If it is outside the UK, transfers rely on the UK adequacy
+regulations where they apply, or on an International Data Transfer Addendum
+with Hostinger where they do not.
 
 ## 6. How long we keep things
 
@@ -128,7 +136,7 @@ Under UK GDPR you have the right to:
 - **portability** — receive your data in a machine-readable form
 - **withdraw consent** where consent is the basis (the password hint)
 
-To exercise any of these, email `[CONTACT EMAIL]`. We will respond within one
+To exercise any of these, email privacy@desastregerstudio.com. We will respond within one
 month. You will not be charged.
 
 You can export your own diagrams at any time from inside the app (SVG, PNG, PDF,
@@ -169,4 +177,4 @@ you accept the updated policy.
 
 ## 11. Contact
 
-Questions about this policy or your data: `[CONTACT EMAIL]`
+Questions about this policy or your data: privacy@desastregerstudio.com
