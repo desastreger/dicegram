@@ -127,6 +127,7 @@
 <div
 	class="shape"
 	class:clipped
+	class:cylinder={data.shape === 'cylinder'}
 	style:width="{width}px"
 	style:height="{height}px"
 	style:--fill={fill}
@@ -194,6 +195,30 @@
 		background:
 			linear-gradient(var(--fill), var(--fill)) padding-box,
 			var(--stroke);
+	}
+
+	/* Cylinder — datastore.
+	   Previously approximated with `border-radius: 18px / 40%`, which renders
+	   as a rounded rectangle: on canvas a datastore was indistinguishable
+	   from `[rounded]`, so a data-pipeline diagram lost its shape vocabulary
+	   entirely. The SVG export drew a proper cylinder, so canvas and export
+	   also disagreed. Elliptical top/bottom radii give the barrel; the
+	   pseudo-element draws the visible top rim. */
+	.shape.cylinder .bg {
+		border-radius: 50% / 14px;
+	}
+	.shape.cylinder .bg::after {
+		content: '';
+		position: absolute;
+		left: calc(-1 * var(--stroke-width));
+		right: calc(-1 * var(--stroke-width));
+		top: calc(-1 * var(--stroke-width));
+		height: 28px;
+		box-sizing: border-box;
+		background: var(--fill);
+		border: var(--stroke-width) var(--border-style) var(--stroke);
+		border-radius: 50%;
+		pointer-events: none;
 	}
 
 	.label {

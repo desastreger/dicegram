@@ -51,6 +51,23 @@
 	let saveMsg = $state<string | null>(null);
 	let myDicegrams = $state<Dicegram[]>([]);
 	let showOpen = $state(false);
+	let shortcutsOpen = $state(false);
+	// Single source of truth for the `?` overlay. Keep in step with the table
+	// in README.md — the two drifting apart is what made `?` worth having.
+	const SHORTCUTS: { keys: string; action: string }[] = [
+		{ keys: 'Ctrl/Cmd + S', action: 'Save' },
+		{ keys: 'Ctrl/Cmd + Z', action: 'Undo' },
+		{ keys: 'Ctrl/Cmd + Shift + Z', action: 'Redo' },
+		{ keys: 'Ctrl/Cmd + N', action: 'New dicegram' },
+		{ keys: 'Ctrl/Cmd + O', action: 'Open list' },
+		{ keys: 'Ctrl/Cmd + E', action: 'Export SVG' },
+		{ keys: 'Ctrl/Cmd + B', action: 'Toggle dicetree' },
+		{ keys: 'Ctrl/Cmd + .', action: 'Toggle inspector' },
+		{ keys: 'Ctrl/Cmd + F', action: 'Focus filter' },
+		{ keys: 'Double-click node', action: 'Focus label in inspector' },
+		{ keys: 'Delete', action: 'Remove selected node' },
+		{ keys: '?', action: 'This help' }
+	];
 	let settingsOpen = $state(false);
 	let inspectorOpen = $state(false);
 	let treeOpen = $state(false);
@@ -529,6 +546,21 @@
 			return;
 		}
 		if (isEditableTarget(e.target)) return;
+		// `?` opens the shortcut reference. Both the landing page ("hit ? for
+		// keyboard shortcuts") and the README advertised this, but nothing
+		// was ever bound to it, so the whole shortcut set was undiscoverable
+		// from inside the app. Checked after the editable guard so typing a
+		// literal '?' into CodeMirror or a text field still works.
+		if (!mod && !e.altKey && e.key === '?') {
+			e.preventDefault();
+			shortcutsOpen = !shortcutsOpen;
+			return;
+		}
+		if (shortcutsOpen && e.key === 'Escape') {
+			e.preventDefault();
+			shortcutsOpen = false;
+			return;
+		}
 		// Delete removes the selected shape when focus is on the canvas or
 		// body. We avoid Backspace because Windows uses it for "navigate back"
 		// in some contexts.
@@ -1125,11 +1157,24 @@
 				}}
 			/>
 			{#if result?.errors?.length}
+				<!-- Every error, not just the first. Rendering only errors[0]
+				     meant a document with five broken lines surfaced them one
+				     at a time — fix, re-render, discover the next — with no
+				     sense of how many remained. Capped so a badly mangled
+				     paste cannot cover the whole canvas. -->
 				<div
 					role="alert"
-					class="toast toast-error pointer-events-none absolute bottom-2 left-2 right-2 px-2 py-1 text-[11px]"
+					class="toast toast-error pointer-events-none absolute bottom-2 left-2 right-2 max-h-32 overflow-y-auto px-2 py-1 text-[11px]"
 				>
-					Line {result.errors[0].line}, column {result.errors[0].column}: {result.errors[0].message}
+					{#if result.errors.length > 1}
+						<div class="font-semibold">{result.errors.length} errors</div>
+					{/if}
+					{#each result.errors.slice(0, 8) as err}
+						<div>Line {err.line}, column {err.column}: {err.message}</div>
+					{/each}
+					{#if result.errors.length > 8}
+						<div class="opacity-70">…and {result.errors.length - 8} more</div>
+					{/if}
 				</div>
 			{/if}
 		</section>
@@ -1289,6 +1334,37 @@
 	onConfirm={() => pendingNav?.resume()}
 	onCancel={() => pendingNav?.cancel()}
 />
+
+{#if shortcutsOpen}
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+	<div
+		class="modal-backdrop"
+		onclick={() => (shortcutsOpen = false)}
+		onkeydown={(e) => { if (e.key === 'Escape') shortcutsOpen = false; }}
+	>
+		<div
+			class="modal-panel w-[420px] max-w-[90vw] p-4 focus:outline-none"
+			onclick={(e) => e.stopPropagation()}
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="shortcuts-dialog-title"
+			tabindex="-1"
+		>
+			<h2 id="shortcuts-dialog-title" class="mb-3 text-lg font-semibold text-app">
+				Keyboard shortcuts
+			</h2>
+			<dl class="flex flex-col gap-1 text-sm">
+				{#each SHORTCUTS as s}
+					<div class="flex items-baseline justify-between gap-4">
+						<dt class="text-muted">{s.action}</dt>
+						<dd class="whitespace-nowrap font-mono text-[11px] text-app">{s.keys}</dd>
+					</div>
+				{/each}
+			</dl>
+			<p class="mt-3 text-[11px] text-dim">Press Esc or ? to close.</p>
+		</div>
+	</div>
+{/if}
 
 {#if showOpen}
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->

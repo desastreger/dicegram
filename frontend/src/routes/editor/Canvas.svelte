@@ -318,7 +318,14 @@
 					dimmed: !matched,
 					unique: n.style && Object.keys(n.style).length > 0
 				},
-				draggable: true,
+				// Deliberately left undefined rather than `true`.
+				// NodeWrapper resolves `_draggable ?? store.nodesDraggable`,
+				// so a hardcoded `true` here outranked the store and made the
+				// Controls padlock cosmetic: the icon closed, but nodes still
+				// dragged and each drag pinned an @(x,y) into the source.
+				// Undefined lets the lock actually govern. Containers below
+				// keep an explicit `false` — they are never draggable.
+				draggable: undefined,
 				selectable: true
 			};
 		});

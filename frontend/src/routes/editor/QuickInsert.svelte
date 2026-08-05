@@ -83,10 +83,25 @@
 		});
 	}
 
-	function lastTwoNodeIds(): [string, string] | null {
+	// Only these keywords declare a node. The previous `/^\s*\[\w+\]/` matched
+	// ANY bracket keyword, so `[note]` and `[solid_line]` lines counted as
+	// shapes — which let "+ Note" attach a note to a note, and made the
+	// connector buttons emit an edge pointing at a note id, which the compiler
+	// then pruned while reporting "unknown 'note_1'" about an id declared two
+	// lines above.
+	const SHAPE_IDS = new Set(SHAPE_GROUPS.flatMap((g) => g.shapes.map((s) => s.id)));
+
+	function declaredNodeIds(): string[] {
 		const ids: string[] = [];
-		const re = /^\s*\[\w+\]\s+(\w+)\s+"/gm;
-		for (const m of source.matchAll(re)) ids.push(m[1]);
+		const re = /^\s*\[(\w+)\]\s+(\w+)\s+"/gm;
+		for (const m of source.matchAll(re)) {
+			if (SHAPE_IDS.has(m[1])) ids.push(m[2]);
+		}
+		return ids;
+	}
+
+	function lastTwoNodeIds(): [string, string] | null {
+		const ids = declaredNodeIds();
 		if (ids.length < 2) return null;
 		return [ids[ids.length - 2], ids[ids.length - 1]];
 	}
@@ -103,13 +118,26 @@
 	function insertSwimlane() {
 		source = addSwimlane(source, nextLabel(source, 'swimlane', 'Swimlane'));
 	}
+	/** The swimlane a new box belongs to — the last one declared. */
+	function nearestSwimlane(): string | null {
+		const re = /^\s*swimlane\s+"([^"]+)"\s*\{/gm;
+		let last: string | null = null;
+		for (const m of source.matchAll(re)) last = m[1];
+		return last;
+	}
+
 	function insertBox() {
-		source = addBox(source, { label: nextLabel(source, 'box', 'Box') });
+		// Without passing `swimlane`, patch.ts's lane-placement branch was
+		// unreachable, so this appended a tab-indented orphan *after* the
+		// lane's closing brace and rendered nothing — despite the button
+		// tooltip promising "inside the nearest swimlane".
+		source = addBox(source, {
+			label: nextLabel(source, 'box', 'Box'),
+			swimlane: nearestSwimlane()
+		});
 	}
 	function insertNote() {
-		const re = /^\s*\[\w+\]\s+(\w+)\s+"/gm;
-		const ids: string[] = [];
-		for (const m of source.matchAll(re)) ids.push(m[1]);
+		const ids = declaredNodeIds();
 		if (ids.length === 0) return;
 		source = addNote(source, 'Note text', ids[ids.length - 1]);
 	}
