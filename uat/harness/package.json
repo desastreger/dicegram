@@ -1,0 +1,13 @@
+{
+  "name": "dicegram-uat-harness",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Playwright scripts that drive a local Dicegram against http://localhost:5173",
+  "scripts": {
+    "all": "node run-all.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}

@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# Bring up the full local dev stack: FastAPI on :8000 + Vite on :5173.
+#
+#   scripts/dev-up            # start both, wait until healthy
+#   scripts/dev-up --backend  # backend only
+#   scripts/dev-up --logs     # start both, then tail both logs
+#
+# Linux counterpart to scripts/restart-backend (which is Windows-only —
+# it shells out to taskkill/wmic and a %LOCALAPPDATA% venv).
+#
+# Vite proxies /api/* to 127.0.0.1:8000 (see frontend/vite.config.ts), so
+# everything is same-origin at http://localhost:5173 — that is the URL to
+# open, and the one the Playwright harness in uat/harness targets.
+#
+# Node note: frontend/.npmrc sets engine-strict=true and Vite 8 / rolldown
+# require Node >=20.19, but this box's system node is v20.14. We therefore
+# pin a portable Node 22 kept outside the repo.
+
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+NODE_HOME="${DICEGRAM_NODE_HOME:-$HOME/.local/lib/node-v22.20.0-linux-x64}"
+VENV_PY="$ROOT/backend/.venv/bin/python"
+RUN_DIR="${TMPDIR:-/tmp}/dicegram-dev"
+BE_LOG="$RUN_DIR/backend.log"
+FE_LOG="$RUN_DIR/frontend.log"
+
+mkdir -p "$RUN_DIR"
+
+log()  { printf '\033[1;34m→\033[0m %s\n' "$*"; }
+ok()   { printf '\033[1;32m✓\033[0m %s\n' "$*"; }
+fail() { printf '\033[1;31m✗\033[0m %s\n' "$*" >&2; exit 1; }
+
+BACKEND_ONLY=0
+TAIL_LOGS=0
+for arg in "$@"; do
+  case "$arg" in
+    --backend) BACKEND_ONLY=1 ;;
+    --logs)    TAIL_LOGS=1 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+  esac
+done
+
+# ─── Preflight ─────────────────────────────────────────────────────────────
+[[ -x "$VENV_PY" ]] || fail "no backend venv at $VENV_PY
+  Create it with:
+    python3 -m venv backend/.venv
+    curl -sSL https://bootstrap.pypa.io/get-pip.py | backend/.venv/bin/python
+    backend/.venv/bin/pip install -r backend/requirements.txt"
+
+[[ -f "$ROOT/backend/.env" ]] || fail "no backend/.env — needs a real SECRET_KEY (32+ chars).
+  Generate one with: python3 -c 'import secrets; print(secrets.token_urlsafe(48))'"
+
+if [[ "$BACKEND_ONLY" == "0" ]]; then
+  [[ -x "$NODE_HOME/bin/node" ]] || fail "no Node 22 at $NODE_HOME
+  System node is too old for Vite 8. Override with DICEGRAM_NODE_HOME=..."
+  [[ -d "$ROOT/frontend/node_modules" ]] || fail "frontend deps missing — run:
+    PATH=\"$NODE_HOME/bin:\$PATH\" npm --prefix frontend ci"
+fi
+
+# ─── Free the ports ────────────────────────────────────────────────────────
+# Kill whatever holds :8000/:5173 so repeated runs never wedge. fuser is the
+# most reliable of the three on a bare Ubuntu box; fall back progressively.
+kill_port() {
+  local port="$1"
+  if command -v fuser >/dev/null 2>&1; then
+    fuser -k "${port}/tcp" >/dev/null 2>&1 || true
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -ti ":${port}" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+  else
+    pkill -f "uvicorn.*--port ${port}" 2>/dev/null || true
+  fi
+}
+
+log "freeing ports"
+kill_port 8000
+[[ "$BACKEND_ONLY" == "0" ]] && kill_port 5173
+# Stale __pycache__ occasionally shadows a refactor.
+find "$ROOT/backend" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+sleep 1
+
+# ─── Backend ───────────────────────────────────────────────────────────────
+log "starting FastAPI on :8000"
+cd "$ROOT/backend"
+nohup "$VENV_PY" -m uvicorn app.main:app --reload --port 8000 > "$BE_LOG" 2>&1 &
+echo $! > "$RUN_DIR/backend.pid"
+
+for _ in {1..60}; do
+  code=$(curl -s -m 1 -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/health 2>/dev/null)
+  [[ "$code" == "200" ]] && break
+  sleep 0.25
+done
+if [[ "$(curl -s -m 1 -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/health 2>/dev/null)" != "200" ]]; then
+  tail -n 40 "$BE_LOG" >&2
+  fail "backend did not become healthy — log above ($BE_LOG)"
+fi
+ok "backend healthy  → http://127.0.0.1:8000/api/health"
+
+# ─── Frontend ──────────────────────────────────────────────────────────────
+if [[ "$BACKEND_ONLY" == "0" ]]; then
+  log "starting Vite on :5173"
+  cd "$ROOT/frontend"
+  PATH="$NODE_HOME/bin:$PATH" nohup npm run dev > "$FE_LOG" 2>&1 &
+  echo $! > "$RUN_DIR/frontend.pid"
+
+  # NB: Vite binds IPv6 loopback ([::1]) only, so probe `localhost` — a
+  # literal 127.0.0.1 here returns 000 even once the server is serving.
+  for _ in {1..120}; do
+    code=$(curl -s -m 1 -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null)
+    [[ "$code" == "200" ]] && break
+    sleep 0.25
+  done
+  if [[ "$(curl -s -m 1 -o /dev/null -w '%{http_code}' http://localhost:5173/ 2>/dev/null)" != "200" ]]; then
+    tail -n 40 "$FE_LOG" >&2
+    fail "vite did not come up — log above ($FE_LOG)"
+  fi
+  ok "frontend ready   → http://localhost:5173"
+fi
+
+echo
+ok "dev stack up.  logs: $BE_LOG  $FE_LOG"
+echo "  stop with: scripts/dev-down"
+
+if [[ "$TAIL_LOGS" == "1" ]]; then
+  echo
+  tail -f "$BE_LOG" "$FE_LOG"
+fi

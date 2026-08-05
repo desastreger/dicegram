@@ -54,3 +54,8 @@ Thumbs.db
 *.bak
 *.orig
 *.log
+
+# UAT playwright harness — deps and generated output
+uat/harness/node_modules/
+uat/harness/shots/
+uat/harness/explore/
