@@ -86,6 +86,7 @@ DEFAULT_DARK_PALETTE: dict[str, str] = {
 # Warm palette — cream canvas, salmon terminals, sage green for
 # processes/automated, lavender for decisions/gates, soft warm grays
 # for edges and chrome. Intentionally light/airy.
+
 WARM_PALETTE: dict[str, str] = {
     # Type fills.
     "type_start": "#fce4d6",         # salmon pill
@@ -113,6 +114,50 @@ WARM_PALETTE: dict[str, str] = {
     # Edges.
     "edge": "#8a8a82",               # warm gray, like the screenshots
     "edge_label": "#3d3d35",
+}
+
+# `auto` — the palette an unpinned dicegram gets.
+#
+# On canvas these are `color-mix(in srgb, var(--app-ok) 24%, var(--app-bg))`
+# style expressions that track the chrome (see AUTO_PALETTE in
+# frontend/src/lib/palette.svelte.ts). A static SVG cannot evaluate those, so
+# the export used to fall back to WARM — which assigns *different* colours per
+# type. Same document, two looks: on canvas a start node was sage green and an
+# end node rose (go/stop); in the export both came out the same salmon, losing
+# the distinction entirely.
+#
+# These values are those canvas expressions RESOLVED against the light chrome,
+# sampled from the running app rather than eyeballed. Layered over WARM so the
+# surface chrome `auto` leaves to CSS (lane / box / note backgrounds) keeps the
+# warm look that already matched. Re-sample if the --app-* tokens change.
+AUTO_PALETTE: dict[str, str] = {
+    **WARM_PALETTE,
+    # Type fills — canvas colour-mix() expressions resolved on light chrome.
+    "type_start": "#d1d7c9",         # sage  (--app-ok 24%)   "go"
+    "type_end": "#ecccc3",           # rose  (--app-danger 22%) "stop"
+    "type_decision": "#edd6bb",      # amber (--app-warn 26%)
+    "type_datastore": "#eed6ca",     # accent 18%
+    "type_process": "#e3d6bd",       # --app-surface-2
+    "type_input": "#f0ddd2",
+    "type_output": "#f0ddd2",
+    "type_manual": "#e3d6bd",
+    "type_automated": "#dfe1d5",
+    "type_approval": "#f1e0cb",
+    "type_external": "#f2e1d6",
+    # Node default fill / stroke / text.
+    "node_fill": "#e3d6bd",
+    "node_stroke": "#9a8771",
+    "node_text": "#1f1a16",
+    # Priority strokes.
+    "priority_critical": "#b8392a",
+    "priority_high": "#c47a2a",
+    # Status strokes / text.
+    "status_blocked": "#b8392a",
+    "status_complete": "#4d7553",
+    "status_deprecated_text": "#6b5f53",
+    # Edges.
+    "edge": "#5a5048",
+    "edge_label": "#1f1a16",
 }
 
 
@@ -164,17 +209,26 @@ THEME_PRESETS: dict[str, dict[str, str]] = {
     "solarized-light": LIGHT_PALETTE,
     "light": LIGHT_PALETTE,
     # `auto` on the canvas tracks chrome via CSS variables, but a static
-    # SVG export has to commit to one palette. Warm-light is the brand
-    # default, so unconfigured dicegrams ship as the warm-on-cream look
-    # rather than the deep-slate look (which used to render with pale
-    # labels on a white background — unreadable when shared).
-    "auto": WARM_PALETTE,
+    # SVG export has to commit to one palette. See AUTO_PALETTE above —
+    # these are the canvas's own colour-mix() expressions resolved against
+    # the light chrome, so screen and export finally agree.
+    "auto": AUTO_PALETTE,
 }
 
-# Default-Dark stays as the historical "no theme" baseline — used when
-# code asks for a palette without naming a theme.
+# Default-Dark remains the palette *shape* reference (ALLOWED_KEYS below is
+# derived from its keys), but it is no longer the default theme.
 DEFAULT_PALETTE = DEFAULT_DARK_PALETTE
-DEFAULT_THEME_ID = "default-dark"
+
+# Unconfigured dicegrams resolve to `auto` → warm-light, matching both the
+# note above ("unconfigured dicegrams ship as the warm-on-cream look") and
+# the frontend's own DEFAULT_THEME_ID in src/lib/themes.ts.
+#
+# This used to be "default-dark", which defeated that intent: the `auto`
+# mapping only applied to documents that explicitly wrote
+# `setting color_scheme auto`, so a document with no color_scheme line at
+# all — the landing-page example, and anything an LLM writes — exported as a
+# black diagram while the editor showed it light.
+DEFAULT_THEME_ID = "auto"
 
 # All keys clients are allowed to PUT. Anything else is silently dropped.
 ALLOWED_KEYS: frozenset[str] = frozenset(DEFAULT_PALETTE.keys())
@@ -182,9 +236,21 @@ ALLOWED_KEYS: frozenset[str] = frozenset(DEFAULT_PALETTE.keys())
 
 def theme_palette(theme_id: str | None) -> dict[str, str]:
     """Return the baseline palette for a theme id (case-insensitive). Falls
-    back to the default-dark preset when the id is unknown or empty."""
-    key = (theme_id or "").strip().lower()
-    return dict(THEME_PRESETS.get(key, DEFAULT_PALETTE))
+    back to DEFAULT_THEME_ID when the id is unknown or empty.
+
+    This must resolve the empty id the SAME way `merge_palette` resolves the
+    surface chrome below — both go through DEFAULT_THEME_ID. They used to
+    disagree: this function fell back to DEFAULT_PALETTE (dark) while the
+    chrome fell back to DEFAULT_THEME_ID, so an unthemed document rendered a
+    light page with dark node fills — a half-applied theme that looked worse
+    than either one applied consistently.
+    """
+    key = (theme_id or DEFAULT_THEME_ID).strip().lower()
+    return dict(
+        THEME_PRESETS.get(key)
+        or THEME_PRESETS.get(DEFAULT_THEME_ID)
+        or DEFAULT_PALETTE
+    )
 
 
 def merge_palette(

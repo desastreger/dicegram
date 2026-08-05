@@ -11,6 +11,9 @@ export type RenderNode = {
 	swimlane: string | null;
 	box: string | null;
 	parent_id: string;
+	/** Resolved rank along the flow axis. The parser pops `step` out of
+	 *  `attrs`, so it is only available here — not via `attrs.step`. */
+	step: number;
 	attrs: Record<string, string>;
 	style: Record<string, string>;
 };

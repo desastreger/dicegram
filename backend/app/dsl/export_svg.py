@@ -116,6 +116,86 @@ def _text_lines(
     return "".join(out)
 
 
+def _decorations(n: Node, x: float, y: float, w: float, h: float, theme: dict) -> str:
+    """Owner pill, tag pills and status badge — the chrome the canvas draws
+    around a node.
+
+    None of this reached the export before, so `owner:`, `tags:` and
+    `status:` were visible on screen and simply absent from the file the user
+    shared. Geometry mirrors ShapeNode.svelte: badge at the top-left corner,
+    tags bottom-left, owner bottom-right.
+    """
+    out: list[str] = []
+    chip_bg = theme.get("edge_label_bg", "#ffffff")
+    chip_text = theme.get("edge_label", theme["node_text"])
+
+    def pill(text: str, right_edge: float | None, left_edge: float | None, cy: float, fs: int) -> str:
+        pw = max(18.0, len(text) * (fs * 0.58) + 10)
+        px = (right_edge - pw) if right_edge is not None else (left_edge or 0.0)
+        return (
+            f'<rect x="{px:.1f}" y="{cy - 7:.1f}" width="{pw:.1f}" height="14" rx="7" '
+            f'fill="{chip_bg}" stroke="{chip_text}" stroke-opacity="0.3" stroke-width="1" />'
+            f'<text x="{px + pw / 2:.1f}" y="{cy + fs * 0.36:.1f}" text-anchor="middle" '
+            f'font-size="{fs}" fill="{chip_text}">{escape(text)}</text>'
+        ), pw
+
+    status = str(n.attrs.get("status") or "").lower()
+    badge = {
+        "active": ("●", theme["status_stroke"].get("complete")),
+        "complete": ("✓", theme["status_stroke"].get("complete")),
+        "blocked": ("!", theme["status_stroke"].get("blocked")),
+        "deprecated": ("×", theme["status_text"].get("deprecated")),
+    }.get(status)
+    if badge and badge[1]:
+        glyph, colour = badge
+        bx, by = x + 1, y + 1
+        out.append(
+            f'<circle cx="{bx:.1f}" cy="{by:.1f}" r="9" fill="{colour}" />'
+            f'<text x="{bx:.1f}" y="{by + 4:.1f}" text-anchor="middle" font-size="11" '
+            f'fill="#ffffff">{escape(glyph)}</text>'
+        )
+
+    owner = str(n.attrs.get("owner") or "").strip()
+    if owner:
+        el, _ = pill(owner, x + w - 8, None, y + h, 10)
+        out.append(el)
+
+    tags = [t.strip() for t in str(n.attrs.get("tags") or "").split(",") if t.strip()]
+    if tags:
+        shown = tags[:3]
+        if len(tags) > 3:
+            shown.append(f"+{len(tags) - 3}")
+        tx = x + 8
+        for tag in shown:
+            label = tag if tag.startswith("+") else f"#{tag}"
+            el, pw = pill(label, None, tx, y + h, 9)
+            out.append(el)
+            tx += pw + 3
+    return "".join(out)
+
+
+def _rect_edge_toward(rect: dict, px: float, py: float) -> tuple[float, float]:
+    """Point on `rect`'s border along the ray from its centre toward (px, py).
+
+    Used to start note leader lines at the shape's edge instead of its middle,
+    so the dashes don't cross the node's own label. Falls back to the centre
+    for a degenerate (zero-size, or coincident) rect.
+    """
+    cx = rect["x"] + rect["w"] / 2
+    cy = rect["y"] + rect["h"] / 2
+    dx, dy = px - cx, py - cy
+    if dx == 0 and dy == 0:
+        return cx, cy
+    hw, hh = rect["w"] / 2, rect["h"] / 2
+    if hw <= 0 or hh <= 0:
+        return cx, cy
+    # Scale the ray so it just touches whichever pair of sides it exits.
+    scale_x = hw / abs(dx) if dx else float("inf")
+    scale_y = hh / abs(dy) if dy else float("inf")
+    s = min(scale_x, scale_y)
+    return cx + dx * s, cy + dy * s
+
+
 def _safe_style_color(value: object, default: str) -> str:
     """Validate a user-supplied inline `{fill:...}` / `{stroke:...}` /
     `{text:...}` style colour before it reaches a raw SVG attribute.
@@ -217,6 +297,38 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
         ys.append(n["y"])
         xs2.append(n["x"] + n["w"])
         ys2.append(n["y"] + n["h"])
+
+    # Edge geometry. Without this the viewBox was derived purely from node,
+    # lane, box and note extents — but orthogonal routes routinely detour
+    # outside the node bounding box, so whole edge segments and edge-label
+    # chips were sliced off the exported file while looking fine on canvas.
+    # Measured on a plain branching flow: content spanned x 0..535 against a
+    # viewBox of 100..520, losing 100px on the left including a label chip.
+    for plan in edge_plans:
+        pts = [(p.x, p.y) for p in (getattr(plan, "waypoints", None) or [])]
+        # EdgePlan documents waypoints as excluding the attachment points,
+        # while the renderer treats them as the whole polyline. Include the
+        # attachment points explicitly so the bounds are right either way.
+        pts.append((plan.source_x, plan.source_y))
+        pts.append((plan.target_x, plan.target_y))
+        for px, py in pts:
+            xs.append(px)
+            ys.append(py)
+            xs2.append(px)
+            ys2.append(py)
+        # Label chips are drawn centred on (label_x, label_y); mirror the
+        # width/height maths used at draw time so the box is covered too.
+        label = getattr(plan, "label", None) or ""
+        lx = getattr(plan, "label_x", None)
+        ly = getattr(plan, "label_y", None)
+        if label and lx is not None and ly is not None:
+            lines = label.split("\n")
+            lw = max(30, max((len(ln) for ln in lines), default=0) * 6 + 12)
+            lh = max(14, len(lines) * 13 + 4)
+            xs.append(lx - lw / 2)
+            ys.append(ly - lh / 2)
+            xs2.append(lx + lw / 2)
+            ys2.append(ly + lh / 2)
 
     min_x = min(xs) - pad
     min_y = min(ys) - pad
@@ -326,13 +438,28 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
         style = box_style_by_label.get(label, {})
         align = _norm_align(style.get("title_align", box_align_default))
         tx, anchor = _title_text(align, r["x"], r["y"], r["w"], 10)
+        # Honour the box's own `{fill: …, stroke: …}` block. Only title_align
+        # was being read here, so a box styled `box "Serve" {fill:#1e3a5f}`
+        # rendered as the generic theme panel in the export while the canvas
+        # showed the custom colour. Routed through _safe_style_color so a
+        # hostile value still can't break out of the attribute.
+        box_fill = _safe_style_color(style.get("fill"), th["box_bg"])
+        box_stroke = _safe_style_color(style.get("stroke"), th["box_border"])
         parts.append(
             f'<rect x="{r["x"]:.1f}" y="{r["y"]:.1f}" width="{r["w"]:.1f}" height="{r["h"]:.1f}" '
-            f'rx="8" fill="{th["box_bg"]}" stroke="{th["box_border"]}" />'
+            f'rx="8" fill="{box_fill}" stroke="{box_stroke}" />'
             f'<text x="{tx:.1f}" y="{r["y"]+14:.1f}" text-anchor="{anchor}" font-size="10" fill="{th["box_label"]}" '
             f'style="text-transform:uppercase; letter-spacing: 0.06em">{escape(label)}</text>'
         )
 
+    # Nodes are collected here but appended AFTER the edge loop below, so
+    # edges paint underneath them exactly as they do on canvas. Drawing edges
+    # last meant a label chip that happened to land on a node was painted over
+    # it — a decision diamond reading "Credenti[lookup]?" in the export while
+    # the canvas rendered it cleanly. (The underlying collision is a routing
+    # concern; this only makes the export agree with the screen about which
+    # element wins.)
+    node_parts: list[str] = []
     for n in parsed.nodes:
         p = positions.get(n.name)
         if not p:
@@ -344,12 +471,25 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
         opacity = _style_num(n, "opacity")
         opacity_attr = f' opacity="{opacity}"' if opacity is not None else ""
-        parts.append(
+        node_parts.append(
             f'<g fill="{fill}" stroke="{stroke}" stroke-width="{sw}"{dash_attr}{opacity_attr}>{shape_el}</g>'
         )
         font_size = _style_num(n, "font_size") or 13
         font_family = n.style.get("font_family") or "-apple-system, Segoe UI, sans-serif"
-        parts.append(_text_lines(n.label, cx, cy, text_color, font_size, font_family))
+        label_el = _text_lines(n.label, cx, cy, text_color, font_size, font_family)
+        # `status:deprecated` strikes the label through on canvas; the export
+        # only greyed it.
+        if str(n.attrs.get("status") or "").lower() == "deprecated":
+            label_el = label_el.replace("<text ", '<text text-decoration="line-through" ')
+        # `opacity:` must fade the label too. It was applied only to the shape
+        # group, so a node at opacity 0.4 kept fully-opaque text in the export
+        # while the canvas faded the whole node.
+        if opacity_attr:
+            label_el = f"<g{opacity_attr}>{label_el}</g>"
+        node_parts.append(label_el)
+        deco = _decorations(n, x, y, w, h, th)
+        if deco:
+            node_parts.append(f"<g{opacity_attr}>{deco}</g>" if opacity_attr else deco)
 
     horizontal_dir = layout["direction"] in ("left-to-right", "right-to-left")
 
@@ -460,13 +600,19 @@ def render_svg(parsed: Parsed, theme: dict | None = None) -> str:
                     f'fill="{th["edge_label"]}">{escape(ln)}</text>'
                 )
 
+    # Nodes go on top of the edges drawn above — see the note where
+    # `node_parts` is built.
+    parts.extend(node_parts)
+
     for n in layout["note_positions"]:
         target = positions.get(n["target"])
         if target:
-            tx = target["x"] + target["w"] / 2
-            ty = target["y"] + target["h"] / 2
             nx_c = n["x"] + n["w"] / 2
             ny_c = n["y"] + n["h"] / 2
+            # Start the leader at the target's BORDER, not its centre. Running
+            # it centre-to-centre drew a dashed line straight across the
+            # node's own label ("Nightly job" with a leader through it).
+            tx, ty = _rect_edge_toward(target, nx_c, ny_c)
             parts.append(
                 f'<line x1="{tx:.1f}" y1="{ty:.1f}" x2="{nx_c:.1f}" y2="{ny_c:.1f}" '
                 f'stroke="{th["note_leader"]}" stroke-width="1" stroke-dasharray="3 3" />'

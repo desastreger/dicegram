@@ -28,6 +28,13 @@ class NodeOut(BaseModel):
     swimlane: str | None = None
     box: str | None = None
     parent_id: str = "__root__"
+    # Rank along the flow axis. Exposed as a first-class field because the
+    # parser POPS `step` out of `attrs` into `Node.step`, so consumers reading
+    # `attrs.step` got nothing — which is why the process-flow CSV's "Phase"
+    # column came out empty for every row. Note this is the *resolved* step:
+    # when a document omits `step:` entirely, layout derives it from the edge
+    # graph, so the CSV reflects the ranks actually drawn.
+    step: int = 0
     attrs: dict = Field(default_factory=dict)
     style: dict = Field(default_factory=dict)
 
@@ -219,6 +226,7 @@ def render(request: Request, response: Response, body: RenderIn) -> RenderOut:
                 swimlane=n.swimlane,
                 box=n.box,
                 parent_id=parent_id or "__root__",
+                step=n.step,
                 attrs=n.attrs,
                 style=n.style,
             )

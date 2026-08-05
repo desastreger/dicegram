@@ -218,7 +218,9 @@ export function buildProcessFlowCsv(result: RenderResult): string {
 			n.label,
 			processFlowShapeFor(n.shape, n.attrs.type),
 			n.swimlane ?? '',
-			n.attrs.step ?? '',
+			// `step` is a first-class field: the parser pops it out of attrs,
+			// so reading attrs.step left this column empty on every row.
+			n.step != null ? String(n.step) : (n.attrs.step ?? ''),
 			nextIds,
 			labels
 		]);
