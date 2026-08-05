@@ -16,7 +16,7 @@ from starlette.requests import Request
 from .config import settings
 from .db import init_db
 from .rate_limit import limiter
-from .routers import auth, dicegrams, export, render, shares
+from .routers import admin, auth, dicegrams, export, render, shares
 
 # Hard cap on request body size, checked via Content-Length before the
 # body is read. Generous headroom over `settings.max_source_bytes` (1
@@ -104,6 +104,7 @@ app.include_router(dicegrams.router)
 app.include_router(render.router)
 app.include_router(export.router)
 app.include_router(shares.router)
+app.include_router(admin.router)
 
 
 @app.get("/api/health")

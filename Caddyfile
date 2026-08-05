@@ -32,6 +32,11 @@
 			roll_size 20MiB
 			roll_keep 6
 			roll_keep_for 2160h
+			# World-readable so the app container (non-root) can count
+			# requests for the admin stats page. Safe here only because the
+			# log contains nothing about any individual — no address, no
+			# user-agent, no referer, no headers at all.
+			mode 0644
 		}
 		format filter {
 			wrap json

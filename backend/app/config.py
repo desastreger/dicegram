@@ -22,6 +22,27 @@ class Settings(BaseSettings):
     # dev runs without env config.
     app_base_url: str = "http://localhost:5173"
 
+    # Comma-separated usernames allowed to read /api/admin/*. Deliberately
+    # an env var rather than a DB column: a compromised database write
+    # cannot mint an admin, and there is no UI that could accidentally
+    # grant it. Empty (the default) means NOBODY is an admin, so a
+    # self-hosted instance exposes nothing until it opts in.
+    admin_usernames: str = ""
+
+    # Where the Caddy access log is mounted read-only (docker-compose.yml).
+    # Read through Settings, not os.environ, so a value in .env works in dev
+    # too — pydantic-settings loads .env into Settings, never into the
+    # process environment.
+    access_log_glob: str = "/var/log/caddy/access*.log"
+
+    @property
+    def admin_username_set(self) -> set[str]:
+        return {
+            u.strip().casefold()
+            for u in self.admin_usernames.split(",")
+            if u.strip()
+        }
+
     @model_validator(mode="after")
     def _reject_default_in_prod(self) -> "Settings":
         # Only enforce when NOT in dev — detection is crude: if the cookie is

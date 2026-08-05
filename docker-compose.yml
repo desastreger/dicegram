@@ -16,10 +16,16 @@ services:
       SECRET_KEY: "${SECRET_KEY:?SECRET_KEY must be set in .env — see .env.example}"
       DATABASE_URL: ${DATABASE_URL:-sqlite:////data/dicegram.db}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      # Comma-separated usernames allowed to see /admin/stats. Empty = nobody.
+      ADMIN_USERNAMES: ${ADMIN_USERNAMES:-}
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-3}
       PORT: "8000"
     volumes:
       - dicegram_data:/data
+      # Read-only so the admin stats page can count requests. The log holds
+      # no IP, user-agent or referer (see Caddyfile), so mounting it into the
+      # app exposes nothing about any individual.
+      - caddy_logs:/var/log/caddy:ro
     # Only expose to localhost. Caddy (below) or a host-level reverse proxy
     # terminates TLS and forwards to this port.
     ports:
