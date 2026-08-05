@@ -6,16 +6,24 @@
 	encode zstd gzip
 
 	# ─── Access log ───────────────────────────────────────────────────────
-	# Enough to answer "is anyone using this" without storing personal data.
+	# Records WHAT was requested and WHEN. Never WHO.
 	#
-	# ip_mask truncates the client address before it is ever written: IPv4
-	# keeps 24 bits (1.2.3.x), IPv6 keeps 48. Unique-visitor counts still
-	# work at that granularity, but no raw IP is retained, which keeps this
-	# out of GDPR territory and matches the app's existing posture.
+	# Every identifying field is deleted before the line is written: the
+	# client address (both remote_ip and client_ip), and the entire request
+	# and response header blocks — which is where User-Agent, Referer,
+	# Cookie and Authorization live. An earlier version merely truncated the
+	# IP to a /24, which is defensible but still automatic collection; the
+	# policy is stronger, and much shorter, if the answer is simply "we do
+	# not store it".
 	#
-	# Cookie and Authorization are deleted explicitly — Caddy's json format
-	# logs request headers, and a session cookie in a logfile would be a far
-	# worse leak than having no analytics at all.
+	# What survives: ts, method, uri, status, duration, size. That is enough
+	# for the question this exists to answer — POST /api/render counts are a
+	# near-perfect proxy for real editing, and one crawlers never generate,
+	# since bots do not POST DSL payloads to a render endpoint.
+	#
+	# What is deliberately given up: unique-visitor counts (no IP) and
+	# crawler filtering (no User-Agent). Totals here are REQUESTS, not
+	# people, and include bot traffic.
 	#
 	# The Docker healthcheck curls 127.0.0.1 *inside* the app container and
 	# never traverses Caddy, so it does not pollute these numbers.
@@ -28,17 +36,12 @@
 		format filter {
 			wrap json
 			fields {
-				request>remote_ip ip_mask {
-					ipv4 24
-					ipv6 48
-				}
-				request>client_ip ip_mask {
-					ipv4 24
-					ipv6 48
-				}
-				request>headers>Cookie delete
-				request>headers>Authorization delete
-				request>headers>Set-Cookie delete
+				request>remote_ip delete
+				request>client_ip delete
+				request>remote_port delete
+				request>headers delete
+				resp_headers delete
+				user_id delete
 			}
 		}
 	}

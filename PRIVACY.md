@@ -5,6 +5,12 @@
 
 **Last updated:** 5 August 2026
 
+**In short:** we store only what you type — your username, your password
+(hashed), an optional hint, and the diagrams you save. Our logs record which
+page was requested and when, with **no IP address, no browser identifier and no
+referrer**. The only cookie is the one that keeps you signed in. No advertising,
+no third-party analytics, no tracking of any kind.
+
 > This policy covers the *hosted* service only. If you self-host Dicegram from
 > this repository, you are the data controller for your own instance and this
 > policy does not apply to you.
@@ -40,7 +46,10 @@ This policy is written to meet the UK GDPR and the Data Protection Act 2018.
 | Share records | You create a share link | To serve a diagram you chose to publish | Contract |
 | Colour/branding preferences | You change them | To render your diagrams as you configured | Contract |
 | Account creation date | Automatically | Account administration and abuse handling | Legitimate interests |
-| Truncated IP address, URL, timestamp, status code, referrer, browser user-agent | Every request | Security, abuse prevention, and counting roughly how many people use the service | Legitimate interests |
+| Page requested, time, and response status | Every request | Seeing whether the service is being used, and that it is working | Legitimate interests |
+
+Apart from the account creation date, **every field we store is one you typed
+yourself.**
 
 **We do not** use advertising, third-party analytics, tracking pixels,
 behavioural profiling, or automated decision-making. We do not sell or rent
@@ -63,15 +72,26 @@ and enters a wrong password can read it. It is a memory aid, not a secret. **Do
 not put anything sensitive in it, and do not make it something that reveals your
 password.** Setting a hint is entirely optional.
 
-## 3. Access logs and visitor counting
+## 3. Access logs
 
-Our web server records a line per request. Before anything is written to disk,
-your IP address is **truncated** — the last octet of an IPv4 address is
-discarded (`203.0.113.x`), and IPv6 addresses are cut to their first 48 bits.
+Our web server records one line per request, containing the **time, the page
+requested, the response status, and how long it took**.
 
-This means we can see roughly how many distinct networks visit, but we cannot
-identify you from these logs or single you out as an individual. Session cookies
-and authorisation headers are stripped from log entries before they are written.
+It records **no IP address, no browser user-agent, and no referrer**. Those
+fields are discarded before the line is written, along with all other request
+and response headers — so no cookie or authorisation token ever reaches a
+logfile either.
+
+We cannot identify you from these logs, count how many distinct people visit,
+or tell where you arrived from. We accept that trade deliberately: knowing the
+service is being used does not require knowing who is using it.
+
+### Receiving is not storing
+
+Any web server necessarily *receives* your IP address — that is simply how an
+internet connection works; without it there is nowhere to send the reply. Ours
+uses it in memory to apply rate limits, and then discards it. **It is never
+written down.**
 
 Logs are rotated and deleted automatically after **90 days**.
 

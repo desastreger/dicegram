@@ -13,7 +13,7 @@ the hosted instance.
 
 - **Hosted**: **[https://dicegram.desastreger.cloud](https://dicegram.desastreger.cloud)** — live, free, no card
 - **No-signup demo**: [dicegram.desastreger.cloud/editor?demo=1](https://dicegram.desastreger.cloud/editor?demo=1) — your work stays in `localStorage`, no account needed
-- **Privacy**: [PRIVACY.md](./PRIVACY.md) — no ads, no third-party analytics, no tracking
+- **Privacy**: [PRIVACY.md](./PRIVACY.md) — we store only what you type. No IP logging, no analytics, no tracking
 
 > Note on the demo: your work is stored only in your browser, but diagram
 > **layout is computed server-side** — the text you are editing is sent to the
@@ -53,8 +53,9 @@ the hosted instance.
   read-only `/d/{slug}` share links you can revoke.
 - **Autosave** — 2 s debounced `PUT`, plus `Ctrl+S` for the impatient.
 - **Self-healing compiler** — trims trailing whitespace, snaps pinned
-  positions to the grid, drops dangling refs, renames duplicates. Every
-  normalization surfaces an inline Undo toast.
+  positions to the grid, comments out (never deletes) lines referencing an
+  unknown node, renames duplicates without stealing an id you already used.
+  Every normalization surfaces an inline Undo toast.
 
 ## DSL snippet
 

@@ -1,115 +1,96 @@
 #!/usr/bin/env bash
-# Turn Caddy's access log into a traffic report.
+# Summarise Caddy's access log.
 #
-#   scripts/traffic-report              # quick summary to the terminal
-#   scripts/traffic-report --html       # full GoAccess dashboard -> traffic.html
-#   scripts/traffic-report --live       # self-refreshing terminal dashboard
-#   scripts/traffic-report --days 7     # only the last N days
+#   scripts/traffic-report              # summary over the whole log
+#   scripts/traffic-report --days 7     # last N days only
+#   scripts/traffic-report --paths 30   # show more paths
 #
-# Run this on the VPS, where the caddy_logs volume lives. Everything runs in
+# Run on the VPS, where the caddy_logs volume lives. Everything runs in
 # throwaway containers, so nothing needs installing on the host.
 #
-# What the numbers mean:
-#   * Client IPs are masked to /24 (IPv4) and /48 (IPv6) by the Caddyfile
-#     before they are ever written, so "unique visitors" is really "unique
-#     /24 networks". Close enough to answer "is anyone out there", and a
-#     shared office or CGNAT will read as one visitor.
-#   * The Docker healthcheck never goes through Caddy, so it is absent here.
-#   * --ignore-crawlers is on by default. A public site gets a LOT of scanner
-#     noise; without it the totals are mostly bots and mean nothing. Pass
-#     --with-bots to see the unfiltered picture.
-#   * POST /api/render is the signal worth watching: the editor calls it on
-#     every debounced edit, so it tracks real editing rather than drive-by
-#     page loads.
+# WHAT THIS CAN AND CANNOT TELL YOU
+#
+# The log deliberately stores no client address, no User-Agent and no
+# Referer (see the Caddyfile). That means:
+#
+#   * There is NO unique-visitor count. Every total here is REQUESTS.
+#   * There is NO crawler filtering, because filtering needs a User-Agent.
+#     Raw page hits therefore include bot traffic and overstate real use.
+#
+# The number to watch instead is POST /api/render. The editor calls it on
+# every debounced edit, so it tracks actual editing — and crawlers never
+# generate it, because bots do not POST DSL payloads to a render endpoint.
+# It is a smaller number than "hits" and a far more honest one.
+#
+# GoAccess is deliberately not used: it needs a host/IP field to parse a
+# log at all, and this one has none by design.
 
 set -uo pipefail
 
 log()  { printf '\033[1;34m→\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m✗\033[0m %s\n' "$*" >&2; exit 1; }
 
-MODE=summary
 DAYS=0
-CRAWLERS="--ignore-crawlers"
-for arg in "$@"; do
-  case "$arg" in
-    --html)      MODE=html ;;
-    --live)      MODE=live ;;
-    --with-bots) CRAWLERS="" ;;
-    --days)      MODE="$MODE" ;;   # value consumed below
-    --days=*)    DAYS="${arg#*=}" ;;
-    -h|--help)   sed -n '2,30p' "$0"; exit 0 ;;
+PATHS=15
+while (($#)); do
+  case "$1" in
+    --days)   DAYS="${2:-0}"; shift 2 ;;
+    --days=*) DAYS="${1#*=}"; shift ;;
+    --paths)  PATHS="${2:-15}"; shift 2 ;;
+    --paths=*) PATHS="${1#*=}"; shift ;;
+    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    *) shift ;;
   esac
-done
-# Support `--days 7` as well as `--days=7`.
-for i in $(seq 1 $#); do
-  if [ "${!i}" = "--days" ]; then
-    n=$((i + 1)); DAYS="${!n:-0}"
-  fi
 done
 
 command -v docker >/dev/null 2>&1 || fail "docker not found — run this on the VPS."
 
-# Compose prefixes volume names with the project directory name.
 VOLUME=$(docker volume ls --format '{{.Name}}' | grep -E '_caddy_logs$' | head -1)
 [ -n "$VOLUME" ] || fail "no *_caddy_logs volume found.
-  Access logging may not be deployed yet. Redeploy with the updated
-  Caddyfile + docker-compose.yml, then reload Caddy:
-    docker compose --profile caddy up -d
-    docker exec dicegram-caddy caddy reload --config /etc/caddy/Caddyfile"
+  Access logging may not be deployed yet:
+    docker compose --profile caddy up -d --build"
 
-# Caddy rolls to access-*.log; concatenate everything, oldest first.
-read_logs() {
-  docker run --rm -v "$VOLUME":/logs:ro alpine:3 \
-    sh -c 'cat $(ls -tr /logs/access*.log 2>/dev/null) 2>/dev/null'
-}
+# Caddy rolls to access-*.log; concatenate oldest first, then run everything
+# through one jq pass inside a container so the host needs no jq.
+docker run --rm -i -v "$VOLUME":/logs:ro alpine:3 sh -c '
+  apk add --no-cache jq >/dev/null 2>&1 || exit 3
+  cat $(ls -tr /logs/access*.log 2>/dev/null) 2>/dev/null |
+  jq -rs --argjson days '"$DAYS"' --argjson paths '"$PATHS"' "
+    (if \$days > 0 then (now - (\$days * 86400)) else 0 end) as \$cutoff
+    | map(select(.ts >= \$cutoff)) as \$all
+    | if (\$all | length) == 0 then
+        \"no requests recorded in this window\"
+      else
+        (\$all | length) as \$total
+        | (\$all | map(select(.request.uri == \"/api/render\")) | length) as \$renders
+        | (\$all | map(select(.request.uri | startswith(\"/api/export\"))) | length) as \$exports
+        | (\$all | map(select(.request.uri == \"/api/auth/signup\" and .status == 201)) | length) as \$signups
+        | (\$all | map(select(.status >= 500)) | length) as \$errors
+        | (\$all | map(select(.status == 429)) | length) as \$limited
+        | [
+            \"REQUESTS\",
+            \"  total          \\(\$total)\",
+            \"  renders        \\(\$renders)   <- real editing; bots never generate these\",
+            \"  exports        \\(\$exports)\",
+            \"  signups        \\(\$signups)\",
+            \"  5xx            \\(\$errors)\",
+            \"  rate-limited   \\(\$limited)\",
+            \"\",
+            \"RENDERS PER DAY\"
+          ]
+          + (\$all | map(select(.request.uri == \"/api/render\"))
+                   | group_by(.ts | strftime(\"%Y-%m-%d\"))
+                   | map(\"  \\(.[0].ts | strftime(\"%Y-%m-%d\"))   \\(length)\")
+                   | .[-21:])
+          + [\"\", \"TOP PATHS (includes bot traffic — no User-Agent to filter on)\"]
+          + (\$all | group_by(.request.uri | split(\"?\")[0])
+                   | sort_by(-length)
+                   | map(\"  \\(length | tostring | (\"     \" + .)[-6:])  \\(.[0].request.uri | split(\"?\")[0])\")
+                   | .[:\$paths])
+          | .[]
+      end
+  "
+' || fail "could not read the log (is the volume empty?)"
 
-if [ "$DAYS" -gt 0 ] 2>/dev/null; then
-  CUTOFF=$(date -u -d "$DAYS days ago" +%s 2>/dev/null || echo 0)
-  filter() { awk -v c="$CUTOFF" -F'"ts":' '{ split($2,a,","); if (a[1]+0 >= c) print }'; }
-else
-  filter() { cat; }
-fi
-
-LINES=$(read_logs | filter | wc -l)
-[ "$LINES" -gt 0 ] || fail "access log is empty — no traffic recorded yet (or logging just went live)."
-
-case "$MODE" in
-  summary)
-    log "$LINES requests${DAYS:+ (last ${DAYS}d)}"
-    echo
-    read_logs | filter | docker run --rm -i alpine:3 sh -c '
-      apk add --no-cache jq >/dev/null 2>&1
-      jq -rs "
-        def human: if . > 1 then . else . end;
-        {
-          requests: length,
-          unique_networks: ([.[].request.remote_ip] | unique | length),
-          renders: ([.[] | select(.request.uri == \"/api/render\")] | length),
-          exports: ([.[] | select(.request.uri | startswith(\"/api/export\"))] | length),
-          signups: ([.[] | select(.request.uri == \"/api/auth/signup\")] | length),
-          errors: ([.[] | select(.status >= 500)] | length)
-        } | to_entries[] | \"  \(.key|.[0:16]|. + (\"                \"[0:16-length]))  \(.value)\"
-      "' 2>/dev/null || echo "  (install jq locally for the breakdown, or use --html)"
-    echo
-    log "top paths"
-    read_logs | filter | grep -oE '"uri":"[^"]*"' | cut -d'"' -f4 | cut -d'?' -f1 \
-      | sort | uniq -c | sort -rn | head -12 | sed 's/^/  /'
-    echo
-    log "busiest days"
-    read_logs | filter | grep -oE '"ts":[0-9]+' | cut -d: -f2 \
-      | while read -r t; do date -u -d "@${t%%.*}" +%F 2>/dev/null; done \
-      | sort | uniq -c | sort -k2 | tail -14 | sed 's/^/  /'
-    ;;
-  html)
-    OUT="${PWD}/traffic.html"
-    log "building GoAccess dashboard for $LINES requests"
-    read_logs | filter | docker run --rm -i allinurl/goaccess:latest \
-      - --log-format=CADDY $CRAWLERS -o html --html-report-title="Dicegram traffic" \
-      > "$OUT" || fail "goaccess failed"
-    log "wrote $OUT — open it in a browser (scp it down, or serve it locally)"
-    ;;
-  live)
-    read_logs | filter | docker run --rm -i allinurl/goaccess:latest \
-      - --log-format=CADDY $CRAWLERS
-    ;;
-esac
+echo
+log "requests, not people — this log stores no IP, User-Agent or Referer"
