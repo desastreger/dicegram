@@ -80,17 +80,35 @@ export async function downloadPng(name: string, source: string) {
 
 export async function downloadPdf(name: string, source: string) {
 	const svg = await fetchSvg(source);
-	const raster = await svgToRaster(svg, 2);
 	const { jsPDF } = await import('jspdf');
-	const orientation = raster.width >= raster.height ? 'l' : 'p';
-	const doc = new jsPDF({
-		orientation,
-		unit: 'pt',
-		format: [raster.width, raster.height]
-	});
-	doc.addImage(raster.dataUrl, 'PNG', 0, 0, raster.width, raster.height);
-	const blob = doc.output('blob');
-	triggerDownload(`${safeName(name)}.pdf`, blob);
+	const { svg2pdf } = await import('svg2pdf.js');
+
+	// Parse to a live SVG element — svg2pdf walks the DOM, so the node has to
+	// be attached (off-screen) for getBBox/getComputedStyle to resolve.
+	const holder = document.createElement('div');
+	holder.style.cssText = 'position:fixed;left:-10000px;top:0;opacity:0;pointer-events:none';
+	holder.innerHTML = svg;
+	const el = holder.querySelector('svg') as SVGSVGElement | null;
+	if (!el) throw new Error('export failed: no SVG returned');
+	document.body.appendChild(holder);
+
+	try {
+		const width = Number(el.getAttribute('width')) || el.viewBox.baseVal.width || 800;
+		const height = Number(el.getAttribute('height')) || el.viewBox.baseVal.height || 600;
+		const doc = new jsPDF({
+			orientation: width >= height ? 'l' : 'p',
+			unit: 'pt',
+			format: [width, height]
+		});
+		// Vector, not a bitmap. This used to rasterize the SVG to a 2x canvas
+		// PNG and addImage() it, which turned a 6KB diagram into a ~16MB PDF
+		// with nothing selectable, nothing searchable, and glyph edges that
+		// smeared visibly at print resolution.
+		await svg2pdf(el, doc, { x: 0, y: 0, width, height });
+		triggerDownload(`${safeName(name)}.pdf`, doc.output('blob'));
+	} finally {
+		holder.remove();
+	}
 }
 
 function escapeHtml(s: string): string {

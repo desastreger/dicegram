@@ -47,6 +47,7 @@
 		"@codemirror/view": "^6.41.0",
 		"@xyflow/svelte": "^1.5.2",
 		"codemirror": "^6.0.2",
-		"jspdf": "^4.2.1"
+		"jspdf": "^4.2.1",
+		"svg2pdf.js": "^2.7.0"
 	}
 }
