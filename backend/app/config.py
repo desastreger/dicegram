@@ -22,12 +22,21 @@ class Settings(BaseSettings):
     # dev runs without env config.
     app_base_url: str = "http://localhost:5173"
 
-    # Comma-separated usernames allowed to read /api/admin/*. Deliberately
-    # an env var rather than a DB column: a compromised database write
-    # cannot mint an admin, and there is no UI that could accidentally
-    # grant it. Empty (the default) means NOBODY is an admin, so a
-    # self-hosted instance exposes nothing until it opts in.
-    admin_usernames: str = ""
+    # Comma-separated USER IDS allowed to read /api/admin/*.
+    #
+    # IDS, NOT USERNAMES. A username is not a claim on anything: naming an
+    # account that does not exist yet means the first person to register
+    # that name becomes an administrator. With a public repository an
+    # attacker can read this setting's purpose and guess the likely name
+    # from the commit history. An id refers to an account that already
+    # exists and cannot be obtained by signing up.
+    #
+    # Still an env var rather than a DB column: a database write cannot
+    # mint an admin and no UI can grant it. Empty (the default) means
+    # NOBODY is an admin, so a fresh instance exposes no admin surface.
+    #
+    # Find yours while signed in:  GET /api/auth/me  ->  {"id": N, ...}
+    admin_user_ids: str = ""
 
     # Where the Caddy access log is mounted read-only (docker-compose.yml).
     # Read through Settings, not os.environ, so a value in .env works in dev
@@ -36,12 +45,13 @@ class Settings(BaseSettings):
     access_log_glob: str = "/var/log/caddy/access*.log"
 
     @property
-    def admin_username_set(self) -> set[str]:
-        return {
-            u.strip().casefold()
-            for u in self.admin_usernames.split(",")
-            if u.strip()
-        }
+    def admin_id_set(self) -> set[int]:
+        out: set[int] = set()
+        for part in self.admin_user_ids.split(","):
+            part = part.strip()
+            if part.isdigit():
+                out.add(int(part))
+        return out
 
     @model_validator(mode="after")
     def _reject_default_in_prod(self) -> "Settings":

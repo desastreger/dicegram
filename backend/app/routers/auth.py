@@ -111,14 +111,14 @@ def _hint_after_repeated_failure(request: Request, user: User) -> str:
     keeps no cookie jar never accumulates a count at all — so it never sees
     a hint, however many requests it makes.
 
-    Admin accounts never get a hint disclosed, at any count. Their username
-    is the most guessable one on the instance and their compromise matters
-    most; if an admin forgets their password, the recovery path is server
-    access, which they have by definition.
+    Admin accounts never get a hint disclosed, at any count. Theirs is the
+    account whose compromise matters most; if an admin forgets their
+    password, the recovery path is server access, which they have by
+    definition.
     """
     if not user.password_hint:
         return ""
-    if fold_username(user.username) in settings.admin_username_set:
+    if user.id in settings.admin_id_set:
         return ""
     key = fold_username(user.username)
     count = request.session.get("lf_n", 0) if request.session.get("lf_user") == key else 0

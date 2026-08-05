@@ -16,8 +16,10 @@ services:
       SECRET_KEY: "${SECRET_KEY:?SECRET_KEY must be set in .env — see .env.example}"
       DATABASE_URL: ${DATABASE_URL:-sqlite:////data/dicegram.db}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
-      # Comma-separated usernames allowed to see /admin/stats. Empty = nobody.
-      ADMIN_USERNAMES: ${ADMIN_USERNAMES:-}
+      # Comma-separated USER IDS allowed to see /admin/stats. Empty = nobody.
+      # Ids, not usernames — a username that does not exist yet can simply be
+      # registered by anyone, which would hand them admin.
+      ADMIN_USER_IDS: ${ADMIN_USER_IDS:-}
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-3}
       PORT: "8000"
     volumes:
