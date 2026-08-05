@@ -289,6 +289,14 @@ function settingsBlock(): string {
 	].join('\n');
 }
 
+// The instruction block a user pastes into a chat model alongside their
+// question. Every claim in here is checked against the backend ground
+// truth — grammar in dsl/parser.py, auto-fix rules in dsl/compiler.py,
+// rank derivation in dsl/layout.py, theme ids in palette.py — so when the
+// DSL changes, this is the other place that must change. Example-first
+// because models copy the example's habits far more reliably than they
+// follow prose rules; the reference exists to stop invention, not to
+// teach.
 export function buildLlmPrompt(source: string): string {
 	const lockRule = palette.locked
 		? '3. BRAND LOCK IS ON: do not emit any style dict ({fill:#…}, {stroke:#…}, {text:#…}). Colour must come from the palette via the `type:` / `status:` / `priority:` attributes only. An inline style override will be visually ignored — the Inspector hides those fields.'
@@ -298,177 +306,127 @@ directly into the Dicegram editor, so emit ONLY the DSL block — no prose,
 no Markdown fences, no commentary.
 
 ==============================
-GRAMMAR (authoritative)
+WORKED EXAMPLE (canonical style — copy its habits)
 ==============================
 
-// Lines starting with // are comments. Blank lines are ignored.
+direction top-to-bottom
 
-direction <top-to-bottom | left-to-right | bottom-to-top | right-to-left>
-    Sets flow axis. Default top-to-bottom. Shorthand TB / LR / BT / RL accepted.
+swimlane "Frontend" {
+  [circle] req  "Login clicked" type:start
+  [rect]   form "Submit form"   type:process
+  [circle] done "Home page"     type:end
+}
 
-setting <key> <value>
-    Runtime defaults. Useful keys:
-      node_width, node_height, h_gap, v_gap, swimlane_gap, snap_grid.
+swimlane "Backend" {
+  [diamond]  verify "Valid?"        type:decision
+  [rect]     issue  "Issue session" type:process
+  [rect]     reject "401 response"  type:process status:blocked
+  [cylinder] db     "Users DB"      type:datastore
+}
 
-swimlane "Display Name" { <objects + boxes> }
-    Groups objects into a lane. In TB/BT lanes are vertical columns;
-    in LR/RL lanes are horizontal rows. Objects outside any swimlane sit
-    in the "free" area.
+req -> form
+form -> verify
+verify --> db : "lookup"
+verify -> issue : "yes"
+verify -> reject : "no"
+issue -> done
+reject --> form : "retry"
 
-box "Label" { <objects> }
-box "Label" {fill:#hex, stroke:#hex} { <objects> }
-    A tinted sub-container. Lives INSIDE a swimlane block. The style dict
-    is OPTIONAL and comes BEFORE the body block.
+[note] n1 "Sessions expire" [linebreak] "after 24h" target:issue
 
-[note] name "Sticky text" target:object_id
-    A sticky note attached to an existing object. Same bracket-object
-    shape as shapes and connectors — surfaces in the inspector as a
-    first-class object.
+The habits that matter: no step: anywhere (rank derives from the
+arrows, retry loop-backs included), a type: on every node, labels of
+1-3 words, edges after the lane blocks.
 
-    Legacy form \`note "text" [target]\` is accepted on parse but gets
-    rewritten to the \`[note]\` bracket form on normalize; always emit
-    the bracket form in new content.
+==============================
+REFERENCE (authoritative — do not invent beyond it)
+==============================
 
-    Multi-line note text — both forms work, prefer the between-segments form:
-        GOOD: [note] n1 "Runs nightly" [linebreak] "via cron" target:service
-        OK:   [note] n1 "Runs nightly[linebreak]via cron" target:service
-        BAD:  [note] n1 "Runs nightly [linebreak] via cron" target:service
-              (extra spaces around the token are kept as part of the text)
+// Full-line or trailing comment. Blank lines are ignored.
 
-(Groups are temporarily disabled — do NOT emit \`group "Name" { … }\`
-lines. They still parse for back-compat with old files but are not
-rendered. Use swimlanes + boxes for grouping until groups return.)
+direction top-to-bottom | left-to-right | bottom-to-top | right-to-left
+    Default top-to-bottom. Full names only — TB/LR shorthands are NOT
+    understood by layout. TB/BT draws swimlanes as columns; LR/RL as rows.
 
-[shape] unique_name "Display Label" step:N [attrs] [{style}] [@(x,y)]
-    The ONLY way to declare an object. Every field after the label is
-    optional except step:.
+setting <key> <value>    (all optional)
+    color_scheme: warm | light | default-dark | dracula | gruvbox |
+      high-contrast | solarized-light | solarized-dark. Omit for the
+      default warm-light look.
+    node_width, node_height, h_gap, v_gap, swimlane_gap, snap_grid,
+    font_size: numeric px overrides — rarely needed.
 
-    shape (required, one of, in brackets):
-        [rect]           rectangle               (process / task)
-        [rounded]        rounded rectangle       (sub-process)
-        [diamond]        diamond                 (decision / gateway)
-        [circle]         circle / ellipse        (start or end event)
-        [parallelogram]  slanted rectangle       (data input / output)
-        [hexagon]        hexagon                 (preparation)
-        [cylinder]       cylinder                (datastore)
-        [stadium]        pill / capsule          (terminal / boundary)
+swimlane "Name" { …nodes… }     One lane per actor / system / team.
+box "Label" { …nodes… }         Tinted sub-container INSIDE a swimlane;
+    optional style dict before the body: box "L" {fill:#hex} { … }.
+There is no other grouping construct — never emit \`group\` blocks
+(they parse for legacy files but are not rendered).
 
-    unique_name: lowercase identifier, no spaces. Used as the ID in
-    connections. Must be unique across the whole document.
-
-    "Display Label": quoted string shown on the node. For multi-line
-    labels the canonical form is the linebreak token between segments:
-        [rect] api "First part" [linebreak] "Second part" step:0
-    The renderer also accepts the token / \`<br>\` / \\n inside a single
-    quoted string, but DO NOT pad with spaces — \`"Line one [linebreak]
-    Line two"\` will render with the surrounding spaces preserved. Pick
-    one form per file and stick with it.
-
-    step:N (required for layout): integer ordering along the flow axis.
-    Same step = parallel placement. Start at step:0.
+NODES — [shape] id "Label" attrs… {style}? @(x,y)?
+    Shapes: rect rounded diamond circle parallelogram hexagon cylinder
+    stadium. Anything else is a PARSE ERROR (no fallback).
+    id: snake_case, unique across the document.
+    "Label": 1-4 words — long labels stretch the node into a wide bar.
+    Multi-line: "Line one" [linebreak] "Line two" (don't pad the token
+    with spaces inside a quoted string; they are kept as text).
 
     attrs (all optional, space-separated):
-        type:<process|decision|input|output|datastore|start|end|manual|automated|approval|external>
-        owner:"Name"            responsibility assignment
-        status:<draft|active|blocked|deprecated|complete>
-            draft=dashed, blocked=red stroke, complete=green stroke,
-            deprecated=strikethrough.
-        priority:<low|medium|high|critical>
-            critical/high thicken + colour the stroke.
-        tags:"alpha, beta"      comma-separated free labels.
-        id:N                    external reference number.
+      type:<start|end|process|decision|input|output|datastore|manual|
+            automated|approval|external>
+        Give EVERY node a type where one fits. The palette colours by
+        type, and the compiler forces the matching shape (start/end→
+        circle, decision→diamond, datastore→cylinder, input/output→
+        parallelogram, approval→hexagon, manual→rounded) — type wins
+        over the bracket.
+      step:N — OPTIONAL and all-or-nothing. Omit it EVERYWHERE and rank
+        derives from the arrows (longest path; loop-back arrows such as
+        a retry are ignored for ranking). If ANY node has step:, the
+        derivation switches off and unstepped nodes land at step 0 —
+        except unstepped type:end nodes, placed after the last explicit
+        step. Same step = side by side. Prefer omitting.
+      status:<draft|active|blocked|complete|deprecated>
+        draft=dashed, blocked=red stroke, complete=green stroke,
+        deprecated=greyed + struck through.
+      priority:<low|medium|high|critical>  high/critical thicken and
+        colour the stroke.
+      owner:"Name"  tags:"alpha, beta"  — shown as chips on the node.
+    style dict: {fill:#hex, stroke:#hex, text:#hex, rx:<px>,
+    font_size:<px>, font_family:<name>, opacity:<0..1>, stroke_width:<px>}
+    @(x,y): absolute pin — avoid; the compiler strips pins inside lanes.
 
-    style dict (optional, in braces, comma-separated, each is key:value):
-        fill:#hex, stroke:#hex, text:#hex, rx:<px>,
-        font_size:<px>, font_family:<name>, opacity:<0..1>, stroke_width:<px>
-
-    @(x,y) (optional): pins the node to an absolute position, overriding
-    auto-layout. Omit unless you really need a fixed pin.
-
-Connections — the editor auto-rewrites every inline connector into the
-verbose bracket form (R8 self-heal). You can AUTHOR either way, but the
-compiler will expand inline shorthand into the explicit form on every
-render. Emit either — the output stays consistent.
-
-Inline shorthand (author-friendly, auto-expanded):
-    A -> B                    solid arrow             (sequence)
-    A --> B                   dashed arrow            (message / conditional)
-    A ==> B                   thick arrow             (critical path)
-    A --- B                   solid line, no arrow    (association)
-    A -.- B                   dotted line, no arrow   (dependency)
-    A -> B : "label text"
-    A -> B : "label" [above|below|center]
-    A -> B condition:"expr" weight:5
-    A -> A : "retry"          self-loops are allowed
-
-Verbose bracket form (what the editor actually stores after normalize):
-    [arrow]         c1 from:A from_anchor:bottom to:B to_anchor:top tip:arrow back:none
-    [dashed_arrow]  c2 from:A to:B kind-preset: dashed + arrow
-    [thick_arrow]   c3 from:A to:B kind-preset: thick + arrow
-    [line]          c4 from:A to:B kind-preset: solid_line + no tip
-    [dotted_line]   c5 from:A to:B kind-preset: dotted_line + no tip
-    [connector]     c6 from:A to:B kind:dashed tip:diamond back:circle
-      (generic — use when you need a non-standard kind/tip combo)
-
-Every bracket-form line surfaces the same six visible fields so the
-inspector, the code view, and the renderer stay in lockstep:
-    from:           source node ref (with optional \`@port\`)
-    from_anchor:    source anchor side — top, bottom, left, right
-    to:             target node ref (with optional \`@port\`)
-    to_anchor:      target anchor side
-    tip:            terminator at the target end (arrow, open_arrow,
-                    circle, diamond, tee, square, none)
-    back:           terminator at the source end (same values)
-Optional: \`label:"…"\`, \`opacity:\`, \`color:\`, \`condition:\`,
-\`weight:\`, any custom key. The connector name (c1, c2…) is also optional.
-
-    Explicit ports (optional — override the geometry-based auto-picker):
-        A@r -> B@l            source exits right, target enters left
-        A@top -> B@bottom     source exits top, target enters bottom
-        A@b -> B             only pin source side; target port auto
-        A -> B@t             only pin target side; source port auto
-        Accepted port values: t/top/n/north, b/bottom/s/south,
-                              l/left/w/west,  r/right/e/east.
-
-    Connector end decorations (optional — default is an arrow at the
-    target end for ->, -->, ==> and nothing for ---, -.-):
-        A -> B : "x" end:arrow       (default for -> )
-        A -> B end:circle             dot at target
-        A -> B end:diamond            filled diamond
-        A -> B end:open_arrow         outlined arrow
-        A -> B end:tee                perpendicular stop bar
-        A -> B end:square             square cap
-        A -> B end:none               no decoration at target
-        A -> B start:circle end:arrow dot at source, arrow at target
-        A -> B start:arrow            arrow at source too (bidirectional)
-        Opacity: \`opacity:0.5\` attr on the edge (0..1).
-
-    Verbose block form — spell every detail explicitly. Use this when
-    an edge carries more than 2-3 attrs, or when clarity matters more
-    than brevity. Everything supported inline is also supported here:
-
-        edge meet_love -> trust {
-            label:        "yes"
-            kind:         solid          (solid | dashed | thick | solid_line | dotted_line)
-            from_anchor:  right          (top, bottom, left, right — the anchor side)
-            to_anchor:    left
-            back:         none           (tip at the source end; same values as tip:)
-            tip:          arrow
-            opacity:      0.5
-            color:        #ff5500
-            condition:    "user agrees"
-            weight:       5
+EDGES — write them after the lane blocks, referencing node ids:
+    a -> b        solid arrow           a --> b   dashed arrow
+    a ==> b       thick arrow           a <-> b   arrows at both ends
+    a --- b       plain line, no tip    a -.- b   dotted line, no tip
+    a -> b : "yes"                      label — keep it to 1-2 words
+    a -> a : "retry"                    self-loops are allowed
+    Ports (optional): a@r -> b@l — values t/b/l/r (top/bottom/left/
+    right; n/s/w/e also accepted).
+    Extra attrs need a label first (a -> b : "x" end:circle) or the
+    block form — a bare \`a -> b end:circle\` silently DROPS the attr:
+        a -> b {
+          label: "yes"
+          tip:  circle      // target-end terminator: arrow, open_arrow,
+          back: none        //   circle, diamond, tee, square, none
+          opacity: 0.5      // back: is the source-end terminator
         }
+    The editor rewrites every inline edge to a canonical bracket line,
+    so the CURRENT DICEGRAM below may contain connectors like:
+        [solid_line] from:a from_anchor:bottom to:b to_anchor:top tip:arrow back:none label:"yes"
+    Keywords: [solid_line] [dashed_line] [thick_line] [dotted_line]
+    [bidirectional], or generic [connector] … kind:<solid|dashed|thick|
+    solid_line|dotted_line|bidirectional>. Anchors: top, bottom, left,
+    right. Author whichever form you like; both are valid input.
 
-    The \`edge\` keyword before the source name is optional; \`A -> B { … }\`
-    parses identically. Ports on the header line (\`A@r -> B@l { … }\`)
-    compose with any \`from_anchor:\` / \`to_anchor:\` inside the block — the
-    block wins when both are given.
+NOTES — [note] id "Sticky text" target:node_id
+    Sticky annotation beside its target. Text word-wraps by itself;
+    [linebreak] between quoted segments forces a break.
 
-    The verbose bracket form IS the canonical storage — see the
-    Connections section above. Use it directly when you want fine
-    control over every field up front, or author inline shorthand and
-    let the compiler expand it.
+AUTO-FIXES the compiler applies to your output (don't fight them):
+    - inline edges are rewritten to the bracket form above
+    - any line referencing an undeclared id is COMMENTED OUT — declare
+      every node you connect
+    - duplicate ids are renamed (second occurrence becomes id_2)
+    - the shape bracket is rewritten to match type:
 
 ==============================
 ${settingsBlock()}
@@ -478,41 +436,14 @@ ${paletteBlock()}
 
 RULES — follow these exactly:
 1. Emit the whole document. Do not truncate or add "(...)".
-2. Keep shape identifiers (\`unique_name\`) snake_case and terse.
+2. Keep ids snake_case and terse; keep labels short.
 ${lockRule}
-4. Include swimlanes when there's more than one actor/responsibility.
-5. Every node needs a step: value. Parallel siblings share a step.
-6. Connections live OUTSIDE swimlane blocks and reference nodes by
-   \`unique_name\`.
-7. Only use the shape brackets and attr values listed above — invented
-   shapes or types will silently fall back to \`[rect]\`.
-
-==============================
-WORKED EXAMPLE
-==============================
-
-direction top-to-bottom
-
-swimlane "Frontend" {
-  [circle] req     "Login clicked" step:0 type:start
-  [rect]   form    "Submit form"   step:1 type:process
-  [circle] done    "Home page"     step:4 type:end
-}
-
-swimlane "Backend" {
-  [diamond]  verify  "Credentials valid?" step:2 type:decision
-  [cylinder] db      "Users DB"           step:2 type:datastore
-  [rect]     issue   "Issue session"      step:3 type:process
-  [rect]     reject  "401 response"       step:3 type:process status:blocked
-}
-
-req -> form
-form -> verify
-verify --> db : "lookup"
-verify -> issue : "yes"
-verify -> reject : "no" [below]
-issue -> done
-reject --> done : "retry"
+4. Use swimlanes when there is more than one actor/responsibility.
+5. Omit step: and let the arrows carry the order. If you must pin
+   ranks, pin EVERY node — never mix stepped and unstepped.
+6. Give every node a type: where one applies.
+7. Only use the shapes, attrs and values listed above — unknown shape
+   brackets are parse errors; unknown attr values do nothing.
 
 ==============================
 CURRENT DICEGRAM (modify this)
