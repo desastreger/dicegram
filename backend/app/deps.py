@@ -1,6 +1,7 @@
 from fastapi import Depends, HTTPException, Request, status
 from sqlmodel import Session
 
+from .admin_grants import RESOLVED_ADMIN_IDS
 from .config import settings
 from .db import get_session
 from .models import User
@@ -30,7 +31,7 @@ def current_admin(user: User = Depends(current_user)) -> User:
 
     Returns 404 rather than 403 for a signed-in non-admin, so the existence
     of an admin surface is not confirmed to an ordinary account."""
-    allowed = settings.admin_id_set
+    allowed = settings.admin_id_set | RESOLVED_ADMIN_IDS
     if not allowed or user.id not in allowed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     return user

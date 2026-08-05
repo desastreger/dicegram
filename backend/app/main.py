@@ -14,6 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 
 from .config import settings
+from .admin_grants import resolve_admin_ids
 from .db import init_db
 from .rate_limit import limiter
 from .routers import admin, auth, dicegrams, export, render, shares
@@ -60,6 +61,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # After init_db, so the user table is guaranteed to exist.
+    resolve_admin_ids()
     yield
 
 

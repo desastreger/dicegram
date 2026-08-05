@@ -38,6 +38,24 @@ class Settings(BaseSettings):
     # Find yours while signed in:  GET /api/auth/me  ->  {"id": N, ...}
     admin_user_ids: str = ""
 
+    # Comma-separated USERNAMES to grant admin, resolved to ids ONCE at
+    # startup (see admin_grants.resolve_admin_ids). A name that does not
+    # resolve to an existing account is ignored and logged loudly.
+    #
+    # This is a convenience over ADMIN_USER_IDS, not a replacement, and it
+    # carries a caveat worth understanding: a username is only safe to name
+    # once that account EXISTS. Naming an unclaimed handle is a land-grab —
+    # whoever registers it first would become an administrator at the next
+    # restart. Resolving at boot means an unclaimed name grants nothing
+    # until someone restarts the process, and the warning tells you why.
+    #
+    # Prefer pinning ADMIN_USER_IDS; the startup log prints the resolved id.
+    admin_usernames: str = ""
+
+    @property
+    def admin_username_list(self) -> list[str]:
+        return [u.strip() for u in self.admin_usernames.split(",") if u.strip()]
+
     # Where the Caddy access log is mounted read-only (docker-compose.yml).
     # Read through Settings, not os.environ, so a value in .env works in dev
     # too — pydantic-settings loads .env into Settings, never into the

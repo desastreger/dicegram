@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
+from ..admin_grants import RESOLVED_ADMIN_IDS
 from ..config import settings
 from ..db import get_session
 from ..deps import current_user
@@ -118,7 +119,7 @@ def _hint_after_repeated_failure(request: Request, user: User) -> str:
     """
     if not user.password_hint:
         return ""
-    if user.id in settings.admin_id_set:
+    if user.id in (settings.admin_id_set | RESOLVED_ADMIN_IDS):
         return ""
     key = fold_username(user.username)
     count = request.session.get("lf_n", 0) if request.session.get("lf_user") == key else 0
