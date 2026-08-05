@@ -126,13 +126,6 @@ NOTE_LINE_H = 15
 NOTE_TEXT_PAD = 8
 
 
-def _snap_up(value: float, grid: int) -> int:
-    """Round up to the next grid multiple."""
-    if grid <= 1:
-        return int(math.ceil(value))
-    return int(math.ceil(value / grid) * grid)
-
-
 def _wrap_label(text: str, max_px: float) -> str:
     """Greedy word-wrap to a pixel width, preserving explicit newlines.
 
@@ -591,6 +584,12 @@ def compute_layout(parsed: Parsed) -> dict:
         x1, y1 = max(rect["x"] + rect["w"], cx1), max(rect["y"] + rect["h"], cy1)
         lane_rects[lane] = {"x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0}
 
+    def _bbox_overlaps(a: tuple[float, float, float, float],
+                       b: tuple[float, float, float, float]) -> bool:
+        ax, ay, aw, ah = a
+        bx, by, bw, bh = b
+        return not (ax + aw <= bx or bx + bw <= ax or ay + ah <= by or by + bh <= ay)
+
     # ── Boxes and groups ─────────────────────────────────────────────────
     def _bbox(names: list[str], pad: int) -> dict | None:
         rects = [positions[n] for n in names if n in positions]
@@ -609,6 +608,48 @@ def compute_layout(parsed: Parsed) -> dict:
         if rect:
             box_rects[b.label] = rect
 
+    # A box is only the bounding box of its members, so nothing stopped an
+    # unrelated node from being placed inside one — producing nodes drawn
+    # straddling a container border, which reads as "this step is in that
+    # box" when it is not. Push any such intruder out sideways.
+    #
+    # Sideways specifically: displacement is along the CROSS axis, so a
+    # node keeps its rank and the flow order is unchanged. Bounded, and it
+    # re-derives the box afterwards because moving a member's neighbour can
+    # change what the box needs to span.
+    if box_rects:
+        cross_is_x = direction in ("top-to-bottom", "bottom-to-top")
+        for b in parsed.boxes:
+            rect = box_rects.get(b.label)
+            if not rect:
+                continue
+            members = set(b.members)
+            for n in nodes:
+                if n.name in members or n.name not in positions:
+                    continue
+                for _ in range(40):  # cap the shove; never loop forever
+                    p = positions[n.name]
+                    if not _bbox_overlaps(
+                        (p["x"], p["y"], p["w"], p["h"]),
+                        (rect["x"], rect["y"], rect["w"], rect["h"]),
+                    ):
+                        break
+                    if cross_is_x:
+                        # Leave via whichever side is nearer, so the node
+                        # travels the shorter distance.
+                        left_gap = (p["x"] + p["w"]) - rect["x"]
+                        right_gap = (rect["x"] + rect["w"]) - p["x"]
+                        p["x"] += G if right_gap <= left_gap else -G
+                    else:
+                        top_gap = (p["y"] + p["h"]) - rect["y"]
+                        bot_gap = (rect["y"] + rect["h"]) - p["y"]
+                        p["y"] += G if bot_gap <= top_gap else -G
+            refreshed = _bbox(b.members, _container_pad(
+                b.label, cfg["box_padding"], G, max_pad=box_pad_cap
+            ))
+            if refreshed:
+                box_rects[b.label] = refreshed
+
     group_rects: dict[str, dict] = {}
     for g in parsed.groups:
         rect = _bbox(g.members, cfg["group_padding"])
@@ -624,12 +665,6 @@ def compute_layout(parsed: Parsed) -> dict:
     #
     # Width is narrower than the default node to signal supplementary
     # content; height grows to target_h + 2G to seat the clearance.
-    def _bbox_overlaps(a: tuple[float, float, float, float],
-                       b: tuple[float, float, float, float]) -> bool:
-        ax, ay, aw, ah = a
-        bx, by, bw, bh = b
-        return not (ax + aw <= bx or bx + bw <= ax or ay + ah <= by or by + bh <= ay)
-
     other_node_bboxes = [
         (p["x"], p["y"], p["w"], p["h"]) for p in positions.values()
     ]
@@ -698,6 +733,27 @@ def compute_layout(parsed: Parsed) -> dict:
             x1 = max(rect["x"] + rect["w"], nx2 + gp)
             y1 = max(rect["y"] + rect["h"], ny2 + gp)
             lane_rects[lane] = {"x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0}
+
+    # Same idea one level down: a note annotating a node that lives inside a
+    # box was placed to the node's right and landed ON the box border, so it
+    # read as half-in, half-out. Grow the box to wrap it, exactly as the lane
+    # pass above does — the note belongs to that box's member, so containing
+    # it is the honest depiction.
+    if note_positions and box_rects:
+        member_box = {m: b.label for b in parsed.boxes for m in b.members}
+        for npos in note_positions:
+            label = member_box.get(npos["target"])
+            rect = box_rects.get(label) if label else None
+            if not rect:
+                continue
+            bp = _container_pad(label, cfg["box_padding"], G, max_pad=box_pad_cap)
+            nx, ny = npos["x"], npos["y"]
+            nx2, ny2 = nx + npos["w"], ny + npos["h"]
+            x0 = min(rect["x"], nx - bp)
+            y0 = min(rect["y"], ny - bp)
+            x1 = max(rect["x"] + rect["w"], nx2 + bp)
+            y1 = max(rect["y"] + rect["h"], ny2 + bp)
+            box_rects[label] = {"x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0}
 
     return {
         "positions":      positions,
